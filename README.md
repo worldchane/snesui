@@ -5,7 +5,7 @@
 SNESUI es un emulador de Super Nintendo (SNES) hecho desde cero para la PS4 con GoldHEN. Tiene una interfaz en alta
 definición, carátulas automáticas, guardado de partidas y filtros de imagen.
 
-![Biblioteca](docs/biblioteca.png)
+![Biblioteca](docs/captura-biblioteca.png)
 
 ## Qué tiene
 
@@ -29,7 +29,7 @@ definición, carátulas automáticas, guardado de partidas y filtros de imagen.
   - Filtros: suave, nítido, nítido suavizado, líneas de TV y CRT.
 - **Interfaz.** Biblioteca con fondo pixel art animado y búsqueda de juegos en todo el USB, incluidas las subcarpetas.
 
-![Menú de pausa](docs/menu.png)
+![Menú de pausa](docs/captura-menu.png)
 
 ## Requisitos
 
