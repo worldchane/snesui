@@ -5,13 +5,13 @@
 SNESUI es un emulador de Super Nintendo (SNES) hecho desde cero para la PS4 con GoldHEN. Tiene una interfaz en alta
 definición, carátulas automáticas, guardado de partidas y filtros de imagen.
 
-![Biblioteca](docs/captura-biblioteca.png)
+![Biblioteca](docs/imagen-biblioteca.png)
 
 ## Qué tiene
 
 - **Emulación fiel.** Los gráficos, el sonido y el ritmo de la consola se compararon cuadro por cuadro con snes9x y
   bsnes:
-  - Donkey Kong Country sigue el mismo recorrido que en snes9x;
+  - en partidas largas, el juego sigue el mismo recorrido que en snes9x;
   - 51 de 61 pruebas de hardware dan la misma imagen que bsnes.
 - **Gráficos completos.** Están los 8 modos de video:
   - modo 7 (rotación y zoom);
@@ -32,7 +32,7 @@ definición, carátulas automáticas, guardado de partidas y filtros de imagen.
 - **Interfaz.** Biblioteca con fondo pixel art animado, pestañas de recientes y favoritos, y búsqueda de juegos en
   todo el USB, incluidas las subcarpetas.
 
-![Menú de pausa](docs/captura-menu.png)
+![Menú de pausa](docs/imagen-menu.png)
 
 ## Requisitos
 
@@ -86,9 +86,9 @@ Todo queda en `/data/snes-ps4/` en la consola:
 
 Todavía **no** funcionan los juegos con chips especiales en el cartucho:
 
-- Super FX: Star Fox, Yoshi's Island;
-- SA-1: Super Mario RPG, Kirby Super Star;
-- DSP-1: Super Mario Kart, Pilotwings;
+- Super FX;
+- SA-1;
+- DSP-1;
 - Cx4, S-DD1 y SPC7110.
 
 Están planeados para próximas versiones.
