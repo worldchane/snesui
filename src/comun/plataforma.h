@@ -34,6 +34,8 @@ struct Mando
 };
 void IniciarMando();
 void LeerMando(Mando& m, float dt);
+// Mando del jugador 2 (el de otro usuario con la sesión iniciada en la consola): los botones apretados (bits B_*).
+uint32_t LeerMando2(bool* conectado);
 
 // ---------- sonidos de la interfaz (un hilo de la consola los mezcla) ----------
 enum Sonido { SON_MOVER, SON_ACEPTAR, SON_ATRAS, SON_SECCION, SON_ERROR, SON_INICIO };

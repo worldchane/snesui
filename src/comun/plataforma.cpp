@@ -88,6 +88,7 @@ void EnParalelo(void (*f)(int, int, void*), void* arg)
 
 // ---------- mando ----------
 static int32_t pad = -1;
+static int32_t usuario1 = -1;
 static uint32_t antes;
 static float repEspera[4];   // tiempo hasta la próxima repetición de cada dirección
 
@@ -98,6 +99,7 @@ void IniciarMando()
     sceUserServiceInitialize(&up);
     int32_t usuario = -1;
     sceUserServiceGetInitialUser(&usuario);
+    usuario1 = usuario;
     scePadInit();
     pad = scePadOpen(usuario, 0, 0, NULL);
 }
@@ -112,12 +114,10 @@ static float Eje(uint8_t v)
     return (f - (f > 0 ? muerta : -muerta)) / (1 - muerta);
 }
 
-void LeerMando(Mando& m, float dt)
+// Los botones de la consola a los bits B_*.
+static uint32_t Botones(uint32_t b)
 {
-    OrbisPadData d;
-    memset(&d, 0, sizeof d);
-    m.conectado = pad >= 0 && scePadReadState(pad, &d) == 0 && d.connected;
-    uint32_t b = d.buttons, a = 0;
+    uint32_t a = 0;
     if (b & ORBIS_PAD_BUTTON_UP) a |= B_ARRIBA;
     if (b & ORBIS_PAD_BUTTON_DOWN) a |= B_ABAJO;
     if (b & ORBIS_PAD_BUTTON_LEFT) a |= B_IZQ;
@@ -134,6 +134,53 @@ void LeerMando(Mando& m, float dt)
     if (b & ORBIS_PAD_BUTTON_L3) a |= B_L3;
     if (b & ORBIS_PAD_BUTTON_R3) a |= B_R3;
     if (b & ORBIS_PAD_BUTTON_TOUCH_PAD) a |= B_TACTIL;
+    return a;
+}
+
+// Jugador 2: en la PS4 cada mando pertenece a un usuario con la sesión iniciada. Cada segundo se busca otro usuario
+// conectado (distinto del que abrió el programa) y se abre su mando.
+static int32_t pad2 = -1, usuario2 = -1;
+static double proximaBusqueda;
+
+uint32_t LeerMando2(bool* conectado)
+{
+    if (Segundos() >= proximaBusqueda)
+    {
+        proximaBusqueda = Segundos() + 1;
+        OrbisUserServiceLoginUserIdList lista;
+        memset(&lista, 0xFF, sizeof lista);
+        int32_t otro = -1;
+        if (sceUserServiceGetLoginUserIdList(&lista) == 0)
+            for (int i = 0; i < ORBIS_USER_SERVICE_MAX_LOGIN_USERS; i++)
+                if (lista.userId[i] != ORBIS_USER_SERVICE_USER_ID_INVALID && lista.userId[i] != usuario1) { otro = lista.userId[i]; break; }
+        if (otro != usuario2)
+        {
+            if (pad2 >= 0) scePadClose(pad2);
+            pad2 = otro != -1 ? scePadOpen(otro, 0, 0, NULL) : -1;
+            usuario2 = otro;
+        }
+    }
+    OrbisPadData d;
+    memset(&d, 0, sizeof d);
+    bool ok = pad2 >= 0 && scePadReadState(pad2, &d) == 0 && d.connected;
+    if (conectado) *conectado = ok;
+    if (!ok) return 0;
+    uint32_t a = Botones(d.buttons);
+    // El stick izquierdo también mueve.
+    int lx = d.leftStick.x - 128, ly = d.leftStick.y - 128;
+    if (ly < -64) a |= B_ARRIBA;
+    if (ly > 64) a |= B_ABAJO;
+    if (lx < -64) a |= B_IZQ;
+    if (lx > 64) a |= B_DER;
+    return a;
+}
+
+void LeerMando(Mando& m, float dt)
+{
+    OrbisPadData d;
+    memset(&d, 0, sizeof d);
+    m.conectado = pad >= 0 && scePadReadState(pad, &d) == 0 && d.connected;
+    uint32_t a = Botones(d.buttons);
     m.lx = m.conectado ? Eje(d.leftStick.x) : 0;
     m.ly = m.conectado ? Eje(d.leftStick.y) : 0;
     m.rx = m.conectado ? Eje(d.rightStick.x) : 0;

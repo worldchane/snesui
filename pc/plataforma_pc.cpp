@@ -59,6 +59,7 @@ void IniciarAudio() {}
 bool AudioListo() { return true; }
 void Sonar(Sonido) {}
 void SonidosActivos(bool) {}
+uint32_t LeerMando2(bool* c) { if (c) *c = false; return 0; }
 void AudioJuego(const int16_t*, int) {}
 void AudioJuegoVaciar() {}
 

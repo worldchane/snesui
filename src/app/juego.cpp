@@ -18,6 +18,7 @@
 #include "../comun/lienzo.h"
 #include "../comun/texto.h"
 #include "../nucleo/snes.h"
+#include "rebobinar.h"
 
 static bool abierto;
 static float vis;
@@ -30,7 +31,10 @@ static uint32_t marcos[2][SNES_ANCHO * SNES_ALTO];
 static int16_t audio[2048];
 static std::atomic<int> pedidos{0}, hechos{0};   // cuadros pedidos al hilo y cuadros terminados
 static std::atomic<int> listo{-1};               // el último cuadro terminado (0 o 1)
-static std::atomic<uint16_t> botones{0};
+static std::atomic<uint16_t> botones{0}, botones2{0};   // jugador 1 y jugador 2
+static std::atomic<int> velocidad{1};                   // cuadros por cuadro mostrado (R2: avance rápido)
+static std::atomic<bool> rebobinando{false};            // L2 mantenido
+static bool hayHistoria;                                // se pudo reservar la memoria para rebobinar
 static std::atomic<bool> hiloCreado{false};
 
 // ---------- archivos de guardado ----------
@@ -132,6 +136,8 @@ static void LeerMiniaturas()
 }
 
 // ---------- hilo de emulación ----------
+static unsigned cuadrosHistoria;
+
 static void* HiloEmulacion(void*)
 {
     int visto = 0, escribir = 0;
@@ -141,11 +147,32 @@ static void* HiloEmulacion(void*)
         if (p == visto) { Dormir(1); continue; }
         visto = p;
         SnesMando(0, botones.load(std::memory_order_relaxed));
-        int n = SnesCuadro(marcos[escribir], audio, sizeof audio / 4);
-        AudioJuego(audio, n);
-        // Batería: se escribe 1,5 s después del último cambio (los juegos guardan varios bytes seguidos).
-        if (SnesSramCambiada()) contadorSram = 90;
-        else if (contadorSram > 0 && --contadorSram == 0) GuardarSram();
+        SnesMando(1, botones2.load(std::memory_order_relaxed));
+        if (rebobinando.load(std::memory_order_relaxed) && hayHistoria)
+        {
+            // Rebobinar: un paso atrás (2 cuadros) por cuadro mostrado, sin sonido. Se corre un cuadro para tener la
+            // imagen de ese momento.
+            RebobinarAtras();
+            SnesCuadro(marcos[escribir], audio, sizeof audio / 4);
+        }
+        else
+        {
+            // Normal: 1 cuadro. Avance rápido: hasta 'velocidad' cuadros mientras entren en el tiempo de uno (12 ms),
+            // sin sonido (se oiría entrecortado).
+            int vel = velocidad.load(std::memory_order_relaxed);
+            double t0 = Segundos();
+            for (int k = 0; k < vel; k++)
+            {
+                int n = SnesCuadro(marcos[escribir], audio, sizeof audio / 4);
+                if (vel == 1) AudioJuego(audio, n);
+                // Batería: se escribe 1,5 s después del último cambio (los juegos guardan varios bytes seguidos).
+                if (SnesSramCambiada()) contadorSram = 90;
+                else if (contadorSram > 0 && --contadorSram == 0) GuardarSram();
+                // Historia para rebobinar: un estado cada 2 cuadros.
+                if (hayHistoria && (++cuadrosHistoria & 1) == 0) RebobinarCapturar();
+                if (k + 1 < vel && Segundos() - t0 > .012) break;
+            }
+        }
         listo.store(escribir, std::memory_order_release);
         escribir ^= 1;
         hechos.store(p, std::memory_order_release);
@@ -158,22 +185,29 @@ static void EsperarHilo()
     while (hechos.load(std::memory_order_acquire) != pedidos.load(std::memory_order_acquire)) Dormir(1);
 }
 
-static uint16_t ABotonesSnes(const Mando& m)
+static uint16_t ABotonesSnes(uint32_t a)
 {
     uint16_t b = 0;
-    if (m.apretados & B_CRUZ) b |= SB_B;
-    if (m.apretados & B_CIRCULO) b |= SB_A;
-    if (m.apretados & B_CUADRADO) b |= SB_Y;
-    if (m.apretados & B_TRIANGULO) b |= SB_X;
-    if (m.apretados & B_L1) b |= SB_L;
-    if (m.apretados & B_R1) b |= SB_R;
-    if (m.apretados & B_ARRIBA) b |= SB_ARRIBA;
-    if (m.apretados & B_ABAJO) b |= SB_ABAJO;
-    if (m.apretados & B_IZQ) b |= SB_IZQ;
-    if (m.apretados & B_DER) b |= SB_DER;
-    if (m.apretados & B_OPTIONS) b |= SB_START;
-    if (m.apretados & B_TACTIL) b |= SB_SELECT;
+    if (a & B_CRUZ) b |= SB_B;
+    if (a & B_CIRCULO) b |= SB_A;
+    if (a & B_CUADRADO) b |= SB_Y;
+    if (a & B_TRIANGULO) b |= SB_X;
+    if (a & B_L1) b |= SB_L;
+    if (a & B_R1) b |= SB_R;
+    if (a & B_ARRIBA) b |= SB_ARRIBA;
+    if (a & B_ABAJO) b |= SB_ABAJO;
+    if (a & B_IZQ) b |= SB_IZQ;
+    if (a & B_DER) b |= SB_DER;
+    if (a & B_OPTIONS) b |= SB_START;
+    if (a & B_TACTIL) b |= SB_SELECT;
     return b;
+}
+
+// La historia de rebobinado se reinicia cuando el juego salta a otro momento (abrir, cargar estado, reiniciar).
+static void NuevaHistoria()
+{
+    hayHistoria = RebobinarIniciar();
+    cuadrosHistoria = 0;
 }
 
 // ---------- imagen: proporción y filtros ----------
@@ -383,6 +417,7 @@ static bool CargarEstado(int r)
     free(d);
     if (!ok) { Avisar("El estado es de otra versión o está dañado", C_MAL); return false; }
     AudioJuegoVaciar();
+    NuevaHistoria();
     char t[64];
     snprintf(t, sizeof t, "Estado de la ranura %d cargado", r + 1);
     Avisar(t, C_BIEN);
@@ -418,7 +453,7 @@ static void MenuEntrada(const Mando& m)
     case OP_FILTRO: filtro = (filtro + 1) % NUM_FILTROS; GuardarAjustes(); Sonar(SON_MOVER); break;
     case OP_GUARDAR: GuardarEstado(ranura); Sonar(SON_ACEPTAR); menu = false; break;
     case OP_CARGAR: if (CargarEstado(ranura)) { Sonar(SON_ACEPTAR); menu = false; } else Sonar(SON_ERROR); break;
-    case OP_REINICIAR: SnesReiniciar(); AudioJuegoVaciar(); Avisar("Juego reiniciado", C_TEXTO); Sonar(SON_ACEPTAR); menu = false; break;
+    case OP_REINICIAR: SnesReiniciar(); AudioJuegoVaciar(); NuevaHistoria(); Avisar("Juego reiniciado", C_TEXTO); Sonar(SON_ACEPTAR); menu = false; break;
     case OP_SALIR: Salir(); break;
     }
 }
@@ -509,6 +544,7 @@ bool JuegoAbrir(const char* ruta, const char* nom)
     {
         CargarSram();
         LeerMiniaturas();
+        NuevaHistoria();
     }
     contadorSram = 0;
     AudioJuegoVaciar();
@@ -522,6 +558,25 @@ bool JuegoAbrir(const char* ruta, const char* nom)
 }
 
 bool JuegoActivo() { return abierto || vis > .01f; }
+
+static bool jugador2;
+
+// Indicador arriba a la izquierda mientras se acelera o rebobina.
+static void DibujarVelocidad(const Mando& m)
+{
+    const char* t = NULL;
+    char buf[48];
+    if ((m.apretados & B_L2) && hayHistoria)
+    {
+        snprintf(buf, sizeof buf, "«« Rebobinando   %.0f s", RebobinarSegundos());
+        t = buf;
+    }
+    else if (m.apretados & B_R2) t = "»» Avance rápido";
+    if (!t || menu) return;
+    float w = AnchoTexto(F_CUERPO_M, t) + 48;
+    Caja(MARGEN - 40, 40, w, 52, 26, 0x0A0614, .78f);
+    Texto(F_CUERPO_M, t, MARGEN - 16, 52, C_TEXTO, 1);
+}
 
 void JuegoCuadro(float t, float dt, const Mando& m)
 {
@@ -545,9 +600,20 @@ void JuegoCuadro(float t, float dt, const Mando& m)
     if (vis <= .01f) return;
 
     // Pedir el cuadro siguiente si el hilo ya terminó el anterior (si va atrasado, se muestra el último que tenga).
+    // Jugador 2 (se busca su mando aunque el juego esté en pausa, para avisar cuando se conecta).
+    bool con2 = false;
+    uint32_t a2 = abierto ? LeerMando2(&con2) : 0;
+    if (abierto && con2 != jugador2)
+    {
+        jugador2 = con2;
+        Avisar(con2 ? "Jugador 2 conectado" : "Jugador 2 desconectado", con2 ? C_BIEN : C_AVISO);
+    }
     if (abierto && !error[0] && !menu)
     {
-        botones.store(ABotonesSnes(m), std::memory_order_relaxed);
+        botones.store(ABotonesSnes(m.apretados), std::memory_order_relaxed);
+        botones2.store(ABotonesSnes(a2), std::memory_order_relaxed);
+        velocidad.store((m.apretados & B_R2) ? 4 : 1, std::memory_order_relaxed);
+        rebobinando.store((m.apretados & B_L2) != 0, std::memory_order_relaxed);
         if (hechos.load(std::memory_order_acquire) == pedidos.load(std::memory_order_acquire))
             pedidos.fetch_add(1, std::memory_order_release);
     }
@@ -575,10 +641,11 @@ void JuegoCuadro(float t, float dt, const Mando& m)
         float a = tAyuda < 3 ? 1 : (4 - tAyuda);
         Velo(0, ALTO - 70, ANCHO, 70, 0, 0x000000, 0, .6f * a);
         char txt[128];
-        snprintf(txt, sizeof txt, "%s   ·   L3 + R3: menú (guardar, cargar, salir)", nombre);
+        snprintf(txt, sizeof txt, "%s   ·   L3 + R3: menú   ·   R2: acelerar   ·   L2: rebobinar", nombre);
         Texto(F_CUERPO, txt, ANCHO / 2, ALTO - 50, C_TEXTO_2, a, 1);
     }
 
+    DibujarVelocidad(m);
     MenuDibujar(visMenu);
 
     // Aviso breve (estado guardado, cargado...).

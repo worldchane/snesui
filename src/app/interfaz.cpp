@@ -15,7 +15,7 @@
 #include "fondo.h"
 #include "juego.h"
 
-static const char* const VERSION = "0.7";
+static const char* const VERSION = "0.8";
 
 static Juego juegos[MAX_JUEGOS];
 static int nJuegos;
@@ -98,10 +98,113 @@ static const int COLS = 5;
 static const float CW = 300, CH = 300, GAPX = 36, GAPY = 56;
 static const float X0 = MARGEN, Y0 = 258;
 
+// ---------- pestañas: todos, recientes y favoritos ----------
+// Los recientes (los últimos abiertos, el más nuevo primero) y los favoritos se guardan por clave (nombre de archivo) en
+// /data/snes-ps4/recientes.txt y favoritos.txt, una por línea.
+enum { V_TODOS, V_RECIENTES, V_FAVORITOS, NUM_VISTAS };
+static const char* const VISTAS[NUM_VISTAS] = {"Todos", "Recientes", "Favoritos"};
+static int vistaActual;
+static float vistaSuave;
+static int vista[MAX_JUEGOS], nVista;   // índices de 'juegos' que se muestran
+static const int MAX_RECIENTES = 15, MAX_FAVORITOS = 300;
+static char recientes[MAX_RECIENTES][96], favoritos[MAX_FAVORITOS][96];
+static int nRecientes, nFavoritos;
+
+static int LeerLista(const char* archivo, char (*l)[96], int max)
+{
+    char ruta[160];
+    snprintf(ruta, sizeof ruta, "%s/%s", CARPETA_DATOS, archivo);
+    static char txt[32 * 1024];
+    if (LeerTexto(ruta, txt, sizeof txt) <= 0) return 0;
+    int n = 0;
+    for (char* p = txt; *p && n < max;)
+    {
+        char* fin = strchr(p, '\n');
+        if (fin) *fin = 0;
+        if (*p) snprintf(l[n++], 96, "%s", p);
+        if (!fin) break;
+        p = fin + 1;
+    }
+    return n;
+}
+
+static void GuardarLista(const char* archivo, char (*l)[96], int n)
+{
+    char ruta[160];
+    snprintf(ruta, sizeof ruta, "%s/%s", CARPETA_DATOS, archivo);
+    static char txt[32 * 1024];
+    int k = 0;
+    for (int i = 0; i < n && k < (int)sizeof txt - 100; i++) k += snprintf(txt + k, sizeof txt - k, "%s\n", l[i]);
+    txt[k] = 0;
+    EscribirTexto(ruta, txt);
+}
+
+static bool EsFavorito(const char* clave)
+{
+    for (int i = 0; i < nFavoritos; i++) if (!strcmp(favoritos[i], clave)) return true;
+    return false;
+}
+
+static void CambiarFavorito(const char* clave)
+{
+    for (int i = 0; i < nFavoritos; i++)
+        if (!strcmp(favoritos[i], clave))
+        {
+            memmove(favoritos[i], favoritos[i + 1], (size_t)(nFavoritos - i - 1) * sizeof favoritos[0]);
+            nFavoritos--;
+            GuardarLista("favoritos.txt", favoritos, nFavoritos);
+            return;
+        }
+    if (nFavoritos < MAX_FAVORITOS) snprintf(favoritos[nFavoritos++], 96, "%s", clave);
+    GuardarLista("favoritos.txt", favoritos, nFavoritos);
+}
+
+static void AnotarReciente(const char* clave)
+{
+    int i = 0;
+    while (i < nRecientes && strcmp(recientes[i], clave)) i++;
+    if (i == nRecientes && nRecientes < MAX_RECIENTES) nRecientes++;
+    if (i >= MAX_RECIENTES) i = MAX_RECIENTES - 1;
+    memmove(recientes[1], recientes[0], (size_t)i * sizeof recientes[0]);   // correr los anteriores un lugar
+    snprintf(recientes[0], 96, "%s", clave);
+    GuardarLista("recientes.txt", recientes, nRecientes);
+}
+
+static void ArmarVista()
+{
+    nVista = 0;
+    if (vistaActual == V_RECIENTES)
+    {
+        for (int r = 0; r < nRecientes; r++)
+            for (int i = 0; i < nJuegos; i++)
+                if (!strcmp(juegos[i].clave, recientes[r])) { vista[nVista++] = i; break; }
+    }
+    else
+        for (int i = 0; i < nJuegos; i++)
+            if (vistaActual == V_TODOS || EsFavorito(juegos[i].clave)) vista[nVista++] = i;
+    if (sel >= nVista) sel = nVista > 0 ? nVista - 1 : 0;
+}
+
 void InterfazIniciar()
 {
     logo = CargarImagen(RUTA_ASSETS "/logo.png", &logoW, &logoH);
     nJuegos = BuscarJuegos(juegos, MAX_JUEGOS);
+    nRecientes = LeerLista("recientes.txt", recientes, MAX_RECIENTES);
+    nFavoritos = LeerLista("favoritos.txt", favoritos, MAX_FAVORITOS);
+    ArmarVista();
+}
+
+// Estrella dibujada con líneas (la letra no trae el símbolo).
+static void Estrella(float cx, float cy, float r, uint32_t c, float a)
+{
+    float px[5], py[5];
+    for (int i = 0; i < 5; i++)
+    {
+        float ang = -1.5708f + i * 1.2566f;
+        px[i] = cx + r * cosf(ang);
+        py[i] = cy + r * sinf(ang);
+    }
+    for (int i = 0; i < 5; i++) Linea(px[i], py[i], px[(i + 2) % 5], py[(i + 2) % 5], r * .32f, c, a);
 }
 
 // Franja con los cuatro colores de los botones de la Super Famicom (el toque "SNES").
@@ -144,11 +247,29 @@ static void Tarjeta(const Juego& j, float x, float y, float f)
         Texto(F_ETIQUETA, Acortar(F_ETIQUETA, j.nombre, w - 48, buf, sizeof buf), X + 26, Y + h - 76, C_TEXTO);
         Texto(F_PEQUENA, j.pal ? "PAL" : "NTSC", X + 26, Y + h - 42, C_TEXTO_2);
     }
+    // Favorito: una insignia dorada con estrella en la esquina.
+    if (EsFavorito(j.clave))
+    {
+        Circulo(X + w - 22, Y + 22, 20, C_SNES_B, 1);
+        Estrella(X + w - 22, Y + 23, 11, 0x2A1A06, 1);
+    }
     // Aro de selección en morado SNES.
     if (f > .01f) Borde(X - 6, Y - 6, w + 12, h + 12, 26, 4, C_ACENTO, .95f * f);
 }
 
 static void Biblioteca(float t, float dt, const Mando& m);
+
+// Las pestañas bajo la cabecera, con L1 y R1 a los costados y una pastilla que se desliza a la elegida.
+static void DibujarPestanas()
+{
+    float y = 160, alto = 48, ancho = 190, x0 = MARGEN + 70;
+    DibujarBoton(BM_L1, MARGEN + 24, y + alto / 2);
+    Caja(x0 + vistaSuave * ancho, y, ancho - 10, alto, 24, C_ACENTO, .3f);
+    Borde(x0 + vistaSuave * ancho, y, ancho - 10, alto, 24, 2, C_ACENTO, .8f);
+    for (int i = 0; i < NUM_VISTAS; i++)
+        Texto(F_CUERPO_M, VISTAS[i], x0 + i * ancho + (ancho - 10) / 2, y + 10, i == vistaActual ? C_TEXTO : C_TEXTO_2, 1, 1);
+    DibujarBoton(BM_R1, x0 + (float)NUM_VISTAS * ancho + 20, y + alto / 2);
+}
 
 void InterfazCuadro(float t, float dt, const Mando& m)
 {
@@ -177,8 +298,34 @@ static void Biblioteca(float t, float dt, const Mando& m)
     Texto(F_CUERPO, cont, ANCHO - MARGEN, 100, C_TEXTO_2, 1, 2);
 
 
-    if (m.pulsados & B_CRUZ) { Sonar(SON_ACEPTAR); JuegoAbrir(juegos[sel].ruta, juegos[sel].nombre); }
-    if (m.pulsados & B_TRIANGULO) { Sonar(SON_ACEPTAR); nJuegos = BuscarJuegos(juegos, MAX_JUEGOS); }
+    // Pestañas: L1 / R1.
+    int cambio = (m.pulsados & B_R1) ? 1 : (m.pulsados & B_L1) ? -1 : 0;
+    if (cambio)
+    {
+        vistaActual = (vistaActual + NUM_VISTAS + cambio) % NUM_VISTAS;
+        sel = 0;
+        scrollVis = 0;
+        ArmarVista();
+        Sonar(SON_SECCION);
+    }
+    Suave(vistaSuave, (float)vistaActual, 14, dt);
+    DibujarPestanas();
+
+    if ((m.pulsados & B_CRUZ) && nVista > 0)
+    {
+        const Juego& j = juegos[vista[sel]];
+        Sonar(SON_ACEPTAR);
+        AnotarReciente(j.clave);
+        JuegoAbrir(j.ruta, j.nombre);
+        if (vistaActual == V_RECIENTES) { ArmarVista(); sel = 0; }
+    }
+    if ((m.pulsados & B_OPTIONS) && nVista > 0)
+    {
+        CambiarFavorito(juegos[vista[sel]].clave);
+        Sonar(SON_ACEPTAR);
+        if (vistaActual == V_FAVORITOS) ArmarVista();
+    }
+    if (m.pulsados & B_TRIANGULO) { Sonar(SON_ACEPTAR); nJuegos = BuscarJuegos(juegos, MAX_JUEGOS); ArmarVista(); }
     if ((m.pulsados & B_CUADRADO) && nJuegos > 0)
     {
         static const char* lista[MAX_JUEGOS];
@@ -192,7 +339,7 @@ static void Biblioteca(float t, float dt, const Mando& m)
     if (m.pulsados & B_ARRIBA) sel -= COLS;
     if (m.pulsados & B_ABAJO) sel += COLS;
     if (sel < 0) sel = 0;
-    if (sel >= nJuegos) sel = nJuegos > 0 ? nJuegos - 1 : 0;
+    if (sel >= nVista) sel = nVista > 0 ? nVista - 1 : 0;
     if (sel != antes) Sonar(SON_MOVER);
 
     if (nJuegos <= 0)
@@ -209,38 +356,51 @@ static void Biblioteca(float t, float dt, const Mando& m)
         return;
     }
 
+    if (nVista <= 0)
+    {
+        float w = 900, h = 260, x = (ANCHO - w) / 2, y = 380;
+        Caja(x, y, w, h, 30, C_PANEL, .85f);
+        const char* t = vistaActual == V_RECIENTES ? "Todavía no jugaste nada" : "Todavía no hay favoritos";
+        const char* d = vistaActual == V_RECIENTES ? "Los juegos que abras van a aparecer acá, el último primero."
+                                                   : "Pulsa OPTIONS sobre un juego para marcarlo con una estrella.";
+        Texto(F_SUBTITULO, t, x + w / 2, y + 80, C_TEXTO, 1, 1);
+        Texto(F_CUERPO, d, x + w / 2, y + 150, C_TEXTO_2, 1, 1);
+        DibujarDescarga(dt);
+        return;
+    }
+
     int fila = sel / COLS;
     const float paso = CH + GAPY;
     float objScroll = fila * paso - paso;
     if (objScroll < 0) objScroll = 0;
-    int filas = (nJuegos + COLS - 1) / COLS;
+    int filas = (nVista + COLS - 1) / COLS;
     float maxScroll = filas * paso - (ALTO - Y0 - 110);
     if (maxScroll < 0) maxScroll = 0;
     if (objScroll > maxScroll) objScroll = maxScroll;
     Suave(scrollVis, objScroll, 12, dt);
 
     Recorte(0, Y0 - 30, ANCHO, ALTO - Y0 - 80);
-    for (int i = 0; i < nJuegos; i++)
+    for (int i = 0; i < nVista; i++)
     {
         Suave(foco[i], i == sel ? 1 : 0, 14, dt);
         float x = X0 + (i % COLS) * (CW + GAPX);
         float y = Y0 + (i / COLS) * paso - scrollVis;
         if (y > ALTO || y + CH < 100) continue;
-        if (i != sel) Tarjeta(juegos[i], x, y, foco[i]);
+        if (i != sel) Tarjeta(juegos[vista[i]], x, y, foco[i]);
     }
     float sx = X0 + (sel % COLS) * (CW + GAPX), sy = Y0 + (sel / COLS) * paso - scrollVis;
-    Tarjeta(juegos[sel], sx, sy, foco[sel]);
+    Tarjeta(juegos[vista[sel]], sx, sy, foco[sel]);
     SinRecorte();
 
     // Pie: datos del juego + pistas.
     Velo(0, ALTO - 86, ANCHO, 86, 0, 0x120A24, 0, .82f);
-    const Juego& j = juegos[sel];
+    const Juego& j = juegos[vista[sel]];
     char buf[120];
     snprintf(buf, sizeof buf, "%s   ·   %d KB   ·   %s%s", j.mapeo, j.tamKB, j.pal ? "PAL" : "NTSC", j.tieneRam ? "   ·   guarda partida" : "");
     Texto(F_CUERPO_M, j.nombre, MARGEN, ALTO - 70, C_TEXTO);
     Texto(F_PEQUENA, buf, MARGEN, ALTO - 38, C_TEXTO_2);
-    int b[3] = {BM_CRUZ, BM_TRIANGULO, BM_CUADRADO};
-    const char* tx[3] = {"Jugar", "Buscar juegos", "Bajar carátulas"};
-    Pistas(b, tx, 3);
+    int b[4] = {BM_CRUZ, BM_OPTIONS, BM_TRIANGULO, BM_CUADRADO};
+    const char* tx[4] = {"Jugar", EsFavorito(j.clave) ? "Quitar favorito" : "Favorito", "Buscar juegos", "Bajar carátulas"};
+    Pistas(b, tx, 4);
     DibujarDescarga(dt);
 }

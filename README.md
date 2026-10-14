@@ -27,7 +27,10 @@ definición, carátulas automáticas, guardado de partidas y filtros de imagen.
 - **Imagen.**
   - Proporción: 4:3, 8:7, píxel exacto o 16:9.
   - Filtros: suave, nítido, nítido suavizado, líneas de TV y CRT.
-- **Interfaz.** Biblioteca con fondo pixel art animado y búsqueda de juegos en todo el USB, incluidas las subcarpetas.
+- **Avance rápido y rebobinar.** R2 acelera hasta ×4 y L2 vuelve atrás en el tiempo.
+- **Dos jugadores.** Con un segundo mando.
+- **Interfaz.** Biblioteca con fondo pixel art animado, pestañas de recientes y favoritos, y búsqueda de juegos en
+  todo el USB, incluidas las subcarpetas.
 
 ![Menú de pausa](docs/captura-menu.png)
 
@@ -55,6 +58,8 @@ Hay dos versiones del PKG:
 | ✕ | Jugar |
 | △ | Buscar juegos en el USB |
 | □ | Bajar las carátulas que falten |
+| OPTIONS | Marcar o quitar de favoritos (★) |
+| L1 / R1 | Cambiar de pestaña: Todos, Recientes, Favoritos |
 
 | Jugando | Botón de la SNES |
 |---|---|
@@ -62,7 +67,12 @@ Hay dos versiones del PKG:
 | L1 / R1 | L / R |
 | OPTIONS | Start |
 | Panel táctil | Select |
+| **R2** (mantener) | Avance rápido |
+| **L2** (mantener) | Rebobinar (vuelve atrás en el tiempo) |
 | **L3 + R3** | Menú de pausa: guardar o cargar estado, proporción, filtro, reiniciar, salir |
+
+**Dos jugadores:** inicia sesión con un segundo usuario de la PS4 en el otro mando; SNESUI lo detecta solo y lo pone
+como jugador 2.
 
 ## Dónde guarda las cosas
 
