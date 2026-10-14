@@ -1,0 +1,22 @@
+# Lo que se genera al compilar
+obj/
+paquete/
+salida/
+*.pkg
+*.elf
+*.exe
+
+# Pruebas de PC: capturas, datos y USB simulado (con roms y carátulas)
+pc/salida/
+pc/data/
+pc/usb/
+
+# Roms, BIOS y guardados: nunca se suben (tienen derechos de autor o son personales)
+*.sfc
+*.smc
+*.fig
+*.swc
+*.srm
+*.st[0-9]
+*.st[0-9].img
+bios/
