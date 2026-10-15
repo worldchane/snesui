@@ -70,11 +70,45 @@ static inline int32_t MapaSram(uint8_t banco, uint16_t off)
     return -1;
 }
 
+extern uint64_t ciclosMaestros;
+
+// Cartuchos Super FX: rom LoROM en 00-3F:8000-FFFF y lineal en 40-5F; RAM del chip en 70-71 (y sus primeros 8 KB en
+// 00-3F:6000-7FFF); registros del chip en 00-3F:3000-32FF. Antes de tocar algo del chip se lo pone al día.
+// Devuelve true si la dirección es del cartucho Super FX (y deja el valor en 'v').
+static inline bool LeerSuperFx(uint8_t banco, uint16_t off, uint8_t& v)
+{
+    uint8_t b = banco & 0x7F;
+    if (b < 0x40)
+    {
+        if (off >= 0x3000 && off < 0x3300) { GsuCorrerHasta(ciclosMaestros); v = GsuLeer(off); return true; }
+        if (off >= 0x6000 && off < 0x8000) { GsuCorrerHasta(ciclosMaestros); v = sram[off - 0x6000]; return true; }
+        return false;
+    }
+    if (b < 0x60) { v = romDatos[(((uint32_t)(b & 0x1F) << 16) | off) % romTam]; return true; }
+    if (b == 0x70 || b == 0x71) { GsuCorrerHasta(ciclosMaestros); v = sram[((uint32_t)(b & 1) << 16) | off]; return true; }
+    if (b >= 0x60 && b < 0x7E) { v = mdr; return true; }
+    return false;
+}
+
+static inline bool EscribirSuperFx(uint8_t banco, uint16_t off, uint8_t v)
+{
+    uint8_t b = banco & 0x7F;
+    if (b < 0x40)
+    {
+        if (off >= 0x3000 && off < 0x3300) { GsuCorrerHasta(ciclosMaestros); GsuEscribir(off, v); return true; }
+        if (off >= 0x6000 && off < 0x8000) { GsuCorrerHasta(ciclosMaestros); sram[off - 0x6000] = v; sramCambiada = true; return true; }
+        return false;
+    }
+    if (b == 0x70 || b == 0x71) { GsuCorrerHasta(ciclosMaestros); sram[((uint32_t)(b & 1) << 16) | off] = v; sramCambiada = true; return true; }
+    return b >= 0x40 && b < 0x7E;   // la rom y lo que no existe no se escriben
+}
+
 uint8_t BusLeer(uint32_t dir)
 {
     uint8_t banco = dir >> 16;
     uint16_t off = dir & 0xFFFF;
     uint8_t b = banco & 0x7F;
+    if (gsuPresente && banco != 0x7E && banco != 0x7F) { uint8_t v; if (LeerSuperFx(banco, off, v)) return mdr = v; }
 
     if (banco == 0x7E || banco == 0x7F) return mdr = wram[(banco - 0x7E) << 16 | off];
 
@@ -145,6 +179,7 @@ void BusEscribir(uint32_t dir, uint8_t v)
     uint16_t off = dir & 0xFFFF;
     uint8_t b = banco & 0x7F;
     mdr = v;
+    if (gsuPresente && banco != 0x7E && banco != 0x7F && EscribirSuperFx(banco, off, v)) return;
 
     if (banco == 0x7E || banco == 0x7F) { wram[(banco - 0x7E) << 16 | off] = v; return; }
 
@@ -236,8 +271,20 @@ static void IniciarDma(uint8_t mascara)
         int modo = c.ctrl & 7;
         uint32_t cuenta = c.tam ? c.tam : 0x10000;
         int fase = 0;
+        // Si el canal también hace HDMA, el próximo HDMA corta esta copia (así lo hace la consola): se copian solo
+        // los bytes que entran hasta ese momento (en pantalla, el hblank de esta línea o la siguiente; en el vblank,
+        // el comienzo del cuadro siguiente).
+        int64_t limite = -1;
+        if (hdmaen & (1 << i))
+        {
+            extern uint64_t SnesProximoHdma();
+            extern uint64_t ciclosMaestros;
+            uint64_t hasta = SnesProximoHdma();
+            limite = hasta > ciclosMaestros ? (int64_t)((hasta - ciclosMaestros) / 8) : 0;
+        }
         while (cuenta--)
         {
+            if (limite >= 0 && limite-- == 0) break;
             uint16_t regB = 0x2100 + c.dest + PATRON[modo][fase];
             uint32_t dirA = ((uint32_t)c.banco << 16) | c.dir;
             if (aPpu) BusEscribir(regB, BusLeer(dirA));

@@ -19,6 +19,7 @@ definición, carátulas automáticas, guardado de partidas y filtros de imagen.
   - transparencias y mezcla de colores;
   - ventanas, mosaico y HDMA (degradados y efectos por línea);
   - entrelazado.
+- **Chip Super FX.** Los juegos que lo usan (gráficos 3D y efectos) funcionan.
 - **Sonido completo.** Están el procesador de sonido y el DSP, con eco.
 - **Guardado.**
   - La batería del cartucho se guarda sola en `.srm`, compatible con snes9x y bsnes.
@@ -99,9 +100,10 @@ Todo queda en `/data/snes-ps4/` en la consola:
 
 ## Estado actual
 
-Todavía **no** funcionan los juegos con chips especiales en el cartucho:
+- **Super FX (GSU):** soportado. Pasa las 58 pruebas de hardware públicas del chip igual que bsnes.
 
-- Super FX;
+Todavía **no** funcionan los juegos con estos otros chips especiales en el cartucho:
+
 - SA-1;
 - DSP-1;
 - Cx4, S-DD1 y SPC7110.

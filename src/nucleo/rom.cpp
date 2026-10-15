@@ -9,10 +9,12 @@
 #include <string.h>
 
 #include "../comun/plataforma.h"
+#include "interno.h"
 
 uint8_t* romDatos;
 uint32_t romTam;
 bool romHiRom;
+bool romSuperFx;
 uint8_t sram[128 * 1024];
 uint32_t sramTam;
 
@@ -95,9 +97,26 @@ bool RomCargar(const char* ruta, InfoRom& info)
     romHiRom = hi;
     // Tamaño de la SRAM según la cabecera (1 KB << valor). Tiene que ser el exacto: algunos juegos
     // escriben más allá y revisan que se repita, para detectar copiadoras.
-    uint8_t ramCod = d[(hi ? 0xFFC0 : 0x7FC0) + 0x18];
+    const uint8_t* h = d + (hi ? 0xFFC0 : 0x7FC0);
+    uint8_t ramCod = h[0x18];
     sramTam = info.tieneRam && ramCod ? (1024u << (ramCod > 7 ? 7 : ramCod)) : 0;
     memset(sram, 0, sizeof sram);
+
+    // Super FX: mapa LoROM (0x20/0x30) y tipo de cartucho 0x13..0x1A. La RAM del chip va en el mismo búfer que la
+    // SRAM; su tamaño sale de la cabecera extendida (0x7FBD) y, si no la hay, 64 KB. Con batería (0x15, 0x1A) se guarda.
+    uint8_t tipo = h[0x16];
+    bool superfx = !hi && (h[0x15] & 0xEF) == 0x20 && tipo >= 0x13 && tipo <= 0x1A;
+    romSuperFx = superfx;
+    if (superfx)
+    {
+        uint8_t exp = (h[0x1A] == 0x33) ? h[-3] : 0;   // 0x7FBD: tamaño de la RAM de expansión
+        uint32_t ram = exp >= 1 && exp <= 7 ? (1024u << exp) : 64 * 1024;
+        bool bateria = tipo == 0x15 || tipo == 0x1A;
+        sramTam = bateria ? ram : 0;
+        info.tieneRam = bateria;
+        GsuConfigurar(true, ram, tipo == 0x1A || ram > 64 * 1024 || tam > 1024 * 1024);
+    }
+    else GsuConfigurar(false, 0, false);
     return true;
 }
 

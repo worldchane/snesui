@@ -53,6 +53,7 @@ void SnesReiniciar()
 {
     ciclosMaestros = 0;
     BusReiniciar();
+    GsuReiniciar();
     PpuReiniciar();
     ApuReiniciar();
     CpuReiniciar();
@@ -62,8 +63,22 @@ void SnesMando(int jugador, uint16_t botones) { if (jugador >= 0 && jugador < 2)
 const InfoRom& SnesInfo() { return info; }
 
 // Posición del haz, para los contadores que lee el juego ($2137/$213C/$213D).
-static uint64_t inicioLinea;
-static int lineaActual;
+static uint64_t inicioLinea, inicioCuadro;
+static int lineaActual, lineasCuadro = 262;
+
+// Cuándo (en el reloj maestro) es la próxima vez que corre el HDMA: el hblank de una línea visible, o el comienzo del
+// cuadro siguiente. Un DMA en un canal que también hace HDMA se corta ahí (ver bus.cpp).
+uint64_t SnesProximoHdma()
+{
+    const int HBLANK = 1096, VBLANK = 225;
+    uint64_t t = ciclosMaestros;
+    uint64_t finCuadro = inicioCuadro + (uint64_t)lineasCuadro * CICLOS_LINEA;
+    if (t >= finCuadro) return finCuadro;   // ya pasó: el corte es inmediato
+    uint64_t linea = (t - inicioCuadro) / CICLOS_LINEA, h = (t - inicioCuadro) % CICLOS_LINEA;
+    if (linea < VBLANK && h < HBLANK) return inicioCuadro + linea * CICLOS_LINEA + HBLANK;
+    if (linea + 1 < VBLANK) return inicioCuadro + (linea + 1) * CICLOS_LINEA + HBLANK;
+    return finCuadro;
+}
 void SnesContadores(int* h, int* v)
 {
     int64_t d = (int64_t)(ciclosMaestros - inicioLinea) / 4;
@@ -78,6 +93,8 @@ int SnesCuadro(uint32_t* pantalla, int16_t* audio, int maxAudio)
     if (!cargado) return 0;
     int lineasTotales = info.pal ? 312 : 262;
     uint64_t base = ciclosMaestros;
+    inicioCuadro = base;
+    lineasCuadro = lineasTotales;
 
     // Cada línea: se dibuja al empezar (con lo que dejó la línea anterior, incluido su HDMA), corre el procesador hasta
     // la interrupción por tiempo si toca, luego hasta el hblank (ahí corre el HDMA para la línea siguiente) y al final
@@ -132,6 +149,7 @@ int SnesCuadro(uint32_t* pantalla, int16_t* audio, int maxAudio)
             BusDispararIrq();
         }
         CpuCorrerHasta(inicioLinea + CICLOS_LINEA);
+        GsuCorrerHasta(inicioLinea + CICLOS_LINEA);   // el Super FX corre en paralelo: se lo pone al día cada línea
     }
     return ApuCuadro(audio, maxAudio, info.pal);
 }
@@ -165,7 +183,13 @@ static void Estado(Serial& s)
     BusEstado(s);
     PpuEstado(s);
     ApuEstado(s);
-    s.Bloque(sram, sramTam);
+    if (gsuPresente)
+    {
+        // El chip y toda su RAM (no solo la parte con batería).
+        GsuEstado(s);
+        s.Bloque(sram, 128 * 1024);
+    }
+    else s.Bloque(sram, sramTam);
 }
 
 uint32_t SnesEstadoTam()

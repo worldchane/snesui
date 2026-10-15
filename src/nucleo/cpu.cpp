@@ -225,8 +225,8 @@ void CpuCorrerHasta(uint64_t hasta)
         // Interrupciones pendientes: la NMI siempre; la IRQ si no está bloqueada (bandera I). WAI despierta con
         // cualquiera de las dos, aunque la IRQ esté bloqueada.
         if (nmiPendiente) { nmiPendiente = false; CpuInterrupcion(true); }
-        else if (irqLinea && !(cpu.p & F_I)) CpuInterrupcion(false);
-        else if (irqLinea && cpu.esperando) cpu.esperando = false;
+        else if ((irqLinea || irqGsu) && !(cpu.p & F_I)) CpuInterrupcion(false);
+        else if ((irqLinea || irqGsu) && cpu.esperando) cpu.esperando = false;
         if (cpu.parado || cpu.esperando) { ciclosMaestros = hasta; return; }
         uint8_t op = fetch8();
         switch (op)
