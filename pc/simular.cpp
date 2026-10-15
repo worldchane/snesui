@@ -155,12 +155,16 @@ int main()
         {13.3f, 0, "56_config"},
         {13.4f, B_CRUZ, NULL},
         {14.0f, 0, "57_copiar_todos"},
+        {14.2f, B_CIRCULO, NULL},
+        {14.5f, B_R1, NULL},
+        {14.9f, B_OPTIONS, NULL},
+        {15.4f, 0, "58_menu_con_todos"},
     };
     const char* g = getenv("GUION");
     bool corto = g && !strcmp(g, "acerca"), larga = g && !strcmp(g, "lista"), muchos = g && !strcmp(g, "mil"), copia = g && !strcmp(g, "copiar");
     const Paso* pasos = corto ? acerca : larga ? lista : muchos ? mil : copia ? copiar : guion;
     const int N = corto ? (int)(sizeof acerca / sizeof acerca[0]) : larga ? (int)(sizeof lista / sizeof lista[0]) : muchos ? (int)(sizeof mil / sizeof mil[0]) : copia ? (int)(sizeof copiar / sizeof copiar[0]) : (int)(sizeof guion / sizeof guion[0]);
-    const double FIN = corto ? 7.0 : larga ? 9.0 : muchos ? 7.5 : copia ? 14.2 : 42.0;
+    const double FIN = corto ? 7.0 : larga ? 9.0 : muchos ? 7.5 : copia ? 15.6 : 42.0;
     double peor = 0;
     int k = 0;
     for (int cuadro = 0; tiempoSimulado < FIN; cuadro++)

@@ -438,7 +438,7 @@ static void AbrirMenuJuego(const Juego& j)
 
 static void VentanaEntrada(const Mando& m)
 {
-    int opciones = ventana == VN_JUEGO ? 3 : 2;
+    int opciones = ventana == VN_JUEGO ? 4 : 2;
     if (m.pulsados & B_ARRIBA) { opVentana = (opVentana + opciones - 1) % opciones; Sonar(SON_MOVER); }
     if (m.pulsados & B_ABAJO) { opVentana = (opVentana + 1) % opciones; Sonar(SON_MOVER); }
     if (m.pulsados & (B_CIRCULO | B_OPTIONS)) { ventana = VN_NADA; Sonar(SON_ATRAS); return; }
@@ -460,6 +460,7 @@ static void VentanaEntrada(const Mando& m)
             ventana = VN_NADA;
         }
         else if (opVentana == 1) { ventana = VN_BORRAR; opVentana = 1; Sonar(SON_ACEPTAR); }   // primero "Cancelar"
+        else if (opVentana == 2) { ventana = VN_COPIAR_TODOS; opVentana = 1; tMedida = 99; Sonar(SON_ACEPTAR); }   // ídem
         else { ventana = VN_NADA; Sonar(SON_ATRAS); }
         return;
     }
@@ -490,13 +491,14 @@ static void VentanaDibujar(float dt)
     float a = ventanaVis;
     if (a <= .01f || ventana == VN_NADA) return;
     Velo(0, 0, ANCHO, ALTO, 0, 0x05030C, .6f * a, .6f * a);
-    float w = 860, h = 470, x = (ANCHO - w) / 2, y = (ALTO - h) / 2 + (1 - a) * 40;
+    float w = 860, h = ventana == VN_JUEGO ? 530 : ventana == VN_COPIAR_TODOS ? 560 : 470;
+    float x = (ANCHO - w) / 2, y = (ALTO - h) / 2 + (1 - a) * 40;
     Sombra(x, y, w, h, 28, 50, .6f * a);
     Caja(x, y, w, h, 28, 0x1A1033, .98f * a);
     Borde(x, y, w, h, 28, 2, C_ACENTO, .5f * a);
     char t[200], tam[32], libre[96];
     TextoLibre(libre, sizeof libre);
-    const char* op[3] = {NULL, NULL, NULL};
+    const char* op[4] = {NULL, NULL, NULL, NULL};
     int n = 0;
     if (ventana == VN_JUEGO)
     {
@@ -508,8 +510,9 @@ static void VentanaDibujar(float dt)
         Texto(F_PEQUENA, libre, x + 48, y + 132, C_TEXTO_3, a);
         op[0] = EsFavorito(elegido.clave) ? "Quitar de favoritos" : "Agregar a favoritos";
         op[1] = elegido.enUsb ? "Copiar a la consola" : "Borrar de la consola";
-        op[2] = "Cancelar";
-        n = 3;
+        op[2] = "Copiar todos los juegos del USB a la consola";
+        op[3] = "Cancelar";
+        n = 4;
     }
     else if (ventana == VN_BORRAR)
     {
@@ -531,11 +534,18 @@ static void VentanaDibujar(float dt)
         Texto(F_CUERPO_M, t, x + 48, y + 100, C_TEXTO, a);
         Texto(F_CUERPO, libre, x + 48, y + 142, C_TEXTO_2, a);
         bool alcanza = libreMedido && bytes + RESERVA_SISTEMA <= libreConsola;
-        const char* nota = !pend ? "Todos los juegos del USB ya están en la consola."
-                         : !libreMedido ? "No se pudo medir el espacio: no se va a copiar nada."
-                         : alcanza ? "Entran todos. Siempre se deja 1 GB libre para el sistema."
-                                   : "No entran todos: se copiarán los que entren, dejando 1 GB libre para el sistema.";
-        Parrafo(F_PEQUENA, nota, x + 48, y + 186, w - 96, alcanza || !pend ? C_TEXTO_3 : C_AVISO, a);
+        // Aviso destacado: que el usuario revise la capacidad de su consola antes de copiar.
+        float ay = y + 188, ah = 150;
+        Caja(x + 32, ay, w - 64, ah, 16, C_AVISO, .1f * a);
+        Borde(x + 32, ay, w - 64, ah, 16, 2, C_AVISO, .6f * a);
+        Texto(F_CUERPO_M, "Antes de copiar, verifica la capacidad de tu consola", x + 56, ay + 16, C_AVISO, a);
+        const char* nota = !pend ? "Todos los juegos del USB ya están en la consola: no hay nada para copiar."
+                         : !libreMedido ? "No se pudo medir el espacio libre: por seguridad, no se va a copiar nada."
+                         : alcanza ? "Entran todos. Igual revisa que te quede espacio para tus juegos y aplicaciones de PS4: "
+                                     "SNESUI siempre deja 1 GB libre para el sistema."
+                                   : "No entran todos: se copiarán solo los que entren, dejando 1 GB libre para el sistema. "
+                                     "Si quieres copiarlos todos, libera espacio en la consola primero.";
+        Parrafo(F_PEQUENA, nota, x + 56, ay + 58, w - 112, C_TEXTO_2, a);
         op[0] = "Copiar";
         op[1] = "Cancelar";
         n = 2;
@@ -621,7 +631,7 @@ static void Configuracion(float dt, const Mando& m)
         return;
     }
     if (selConfig == CF_ACERCA && (m.pulsados & (B_CRUZ | B_DER))) { viendoAcerca = true; Sonar(SON_ACEPTAR); return; }
-    if (selConfig == CF_COPIAR_TODOS && (m.pulsados & (B_CRUZ | B_DER))) { ventana = VN_COPIAR_TODOS; opVentana = 0; tMedida = 99; Sonar(SON_ACEPTAR); return; }
+    if (selConfig == CF_COPIAR_TODOS && (m.pulsados & (B_CRUZ | B_DER))) { ventana = VN_COPIAR_TODOS; opVentana = 1; tMedida = 99; Sonar(SON_ACEPTAR); return; }
     if (m.pulsados & B_ARRIBA) { selConfig = (selConfig + NUM_CF - 1) % NUM_CF; Sonar(SON_MOVER); }
     if (m.pulsados & B_ABAJO) { selConfig = (selConfig + 1) % NUM_CF; Sonar(SON_MOVER); }
     int d = (m.pulsados & (B_DER | B_CRUZ)) ? 1 : (m.pulsados & B_IZQ) ? -1 : 0;
