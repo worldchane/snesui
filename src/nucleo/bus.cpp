@@ -187,7 +187,8 @@ uint8_t BusLeer(uint32_t dir)
             if (cerrojoMando) serieMando[j] = registroMando[j];
             uint8_t bit = serieMando[j] >> 15;
             serieMando[j] = (uint16_t)(serieMando[j] << 1 | 1);
-            return mdr = (mdr & 0xFC) | bit;
+            // $4017: los bits 2-4 están siempre en 1 en la consola (algunos juegos lo usan para detectar el multitap).
+            return mdr = j ? (uint8_t)((mdr & 0xE0) | 0x1C | bit) : (uint8_t)((mdr & 0xFC) | bit);
         }
         if (off == 0x4210) { uint8_t v = (rdnmi & 0x80) | (mdr & 0x70) | 0x02; rdnmi &= 0x7F; return mdr = v; }   // NMI ocurrida (bit 7, se borra al leer); 4-6 bus abierto
         if (off == 0x4211) { uint8_t v = (irqBandera ? 0x80 : 0) | (mdr & 0x7F); irqBandera = irqLinea = false; return mdr = v; }   // IRQ por tiempo (se borra al leer)
@@ -201,6 +202,7 @@ uint8_t BusLeer(uint32_t dir)
         if (off == 0x4219) return mdr = mandoLeido[0] >> 8;
         if (off == 0x421A) return mdr = mandoLeido[1] & 0xFF;
         if (off == 0x421B) return mdr = mandoLeido[1] >> 8;
+        if (off >= 0x421C && off <= 0x421F) return mdr = 0;   // mandos 3 y 4 (por un multitap): no hay ninguno
         if (off >= 0x4300 && off < 0x4380)
         {
             Canal& c = dma[(off >> 4) & 7];
@@ -280,7 +282,11 @@ void BusEscribir(uint32_t dir, uint8_t v)
             if (v) { cociente = dividendo / v; prodDiv = dividendo % v; }
             else { cociente = 0xFFFF; prodDiv = dividendo; }
             return;
-        case 0x420B: IniciarDma(v); return;         // DMA general
+        case 0x420B:
+#ifdef GSU_TRAZA
+            { extern int depurCuadro; static int l_ = getenv("PPUREG") ? 1 : 0; if (l_ && depurCuadro) { void SnesContadores(int*, int*); int h_, li; SnesContadores(&h_, &li); printf("  DMA %02X linea %d h %d", v, li, h_); for (int k = 0; k < 8; k++) if (v & (1 << k)) printf(" [c%d %02X:%04X -> 21%02X tam %u]", k, dma[k].banco, dma[k].dir, dma[k].dest, dma[k].tam ? dma[k].tam : 65536); printf("\n"); } }
+#endif
+            IniciarDma(v); return;         // DMA general
         case 0x420C: hdmaen = v;
 #ifdef GSU_TRAZA
             { extern int depurCuadro; static int l_ = getenv("PPUREG") ? 1 : 0; if (l_ && depurCuadro) { { void SnesContadores(int*, int*); int h_, l_; SnesContadores(&h_, &l_); printf("  HDMAEN=%02X linea %d\n", v, l_); } for (int k = 0; k < 8; k++) if (v & (1 << k)) printf("    canal %d ctrl=%02X dest=21%02X fuente=%02X:%04X ind=%02X\n", k, dma[k].ctrl, dma[k].dest, dma[k].banco, dma[k].dir, dma[k].bancoInd); } }
@@ -389,10 +395,12 @@ void HdmaIniciar()
 {
     // Como en la consola: todos los canales quedan "sin terminar" al empezar el cuadro, aunque estén apagados. Si el
     // juego enciende uno a mitad de cuadro ($420C), sigue desde donde estaba su tabla (hay juegos que lo hacen).
+    // Si no hay ninguno encendido, quedan sin dato pendiente: al encenderlos, la primera línea solo cuenta y lee la
+    // tabla (Yoshi's Island lo usa en su pantalla del logo). Igual que bsnes.
     for (int i = 0; i < 8; i++)
     {
         hdmaFin[i] = false;
-        hdmaHacer[i] = true;
+        hdmaHacer[i] = hdmaen != 0;
         if (!(hdmaen & (1 << i))) continue;
         dma[i].dirHdma = dma[i].dir;
         HdmaRecargar(i);

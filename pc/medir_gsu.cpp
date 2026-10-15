@@ -33,7 +33,7 @@ int main()
     GsuEscribir(0x3034, 0);      // PBR
     GsuEscribir(0x3037, 0xA0);   // CFGR: sin IRQ, multiplicación rápida
     GsuEscribir(0x3039, 1);      // CLSR: 21 MHz
-    GsuEscribir(0x303A, 0x09);   // SCMR: 4 bpp, alto 128, la RAM es del chip
+    GsuEscribir(0x303A, 0x19);   // SCMR: 4 bpp, alto 128, la rom y la RAM son del chip
     GsuEscribir(0x301E, 0x00);
     GsuEscribir(0x301F, 0x80);   // R15 = 0x8000: arranca
     const uint64_t CUADRO = 357366;   // ciclos maestros por cuadro (NTSC)

@@ -44,6 +44,11 @@ uint32_t ramMascara = 0xFFFF;   // también la usa el bus: la RAM se repite igua
 // Diagnóstico: cuántas veces arrancó y paró, cuántas instrucciones corrió y cuánto tiempo estuvo ocupado.
 static struct { uint64_t arranques, paradas, instrucciones, ocupado; uint16_t r15Inicio; uint8_t pbrInicio; } diag;
 static uint8_t version = 1;
+// Aceleración opcional (como el "overclock" de bsnes y snes9x): el chip hace más trabajo en el mismo tiempo, así los
+// juegos 3D muestran más imágenes por segundo. 1 = como la consola.
+static int velocidad = 1;
+static uint32_t restoVelocidad;
+void GsuVelocidad(int v) { velocidad = v < 1 ? 1 : v > 4 ? 4 : v; }
 
 // ---------- memoria ----------
 static inline uint8_t& Ram(uint32_t a);
@@ -562,8 +567,16 @@ void GsuCorrerHasta(uint64_t hasta)
     while ((g.sfr & S_G) && g.ciclos < hasta)
     {
         // Sin la memoria que necesita (la SNES se la quitó con SCMR), el chip espera; la SNES la devuelve más tarde.
-        if (!BusLibre()) { g.ciclos = hasta; break; }
-        Paso();
+        if ((g.scmr & 0x18) != 0x18 && !BusLibre()) { g.ciclos = hasta; break; }   // con rom y RAM propias, siempre puede
+        if (velocidad == 1) Paso();
+        else
+        {
+            uint64_t c0 = g.ciclos;
+            Paso();
+            uint64_t d = g.ciclos - c0 + restoVelocidad;
+            g.ciclos = c0 + d / velocidad;
+            restoVelocidad = (uint32_t)(d % velocidad);
+        }
     }
     diag.ocupado += g.ciclos - antes;
     if (!(g.sfr & S_G) && g.ciclos < hasta) g.ciclos = hasta;

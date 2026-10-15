@@ -62,6 +62,7 @@ int main(int argc, char** argv)
     char error[160];
     if (!SnesCargar(ruta, error)) { printf("no cargó: %s\n", error); return 1; }
 
+    if (getenv("SUPERFX")) SnesSuperFxVelocidad(atoi(getenv("SUPERFX")));   // aceleración del Super FX
     static uint32_t pantalla[SNES_ANCHO * SNES_ALTO];
     static int16_t audio[4096];
     std::vector<int16_t> wav;
@@ -77,6 +78,18 @@ int main(int argc, char** argv)
             if (i > 1500) b |= SB_DER | ((i / 40) % 2 ? SB_B : 0);
         }
         SnesMando(0, b);
+        // TIEMPOS=1: cada 300 cuadros, cuánto tardó en promedio cada cuadro y el peor.
+        static bool tiempos = getenv("TIEMPOS") != NULL;
+        static double suma, peor;
+        static auto tc = std::chrono::steady_clock::now();
+        if (tiempos)
+        {
+            auto ahora = std::chrono::steady_clock::now();
+            double ms = std::chrono::duration<double, std::milli>(ahora - tc).count();
+            tc = ahora;
+            if (i) { suma += ms; if (ms > peor) peor = ms; }
+            if (i % 300 == 299) { printf("cuadros %4d-%4d: %.2f ms promedio, peor %.2f ms\n", i - 299, i, suma / 300, peor); suma = peor = 0; }
+        }
         static bool sinPpu = getenv("SINPPU") != NULL;
         int na = SnesCuadro(sinPpu ? NULL : pantalla, audio, 2048);
         wav.insert(wav.end(), audio, audio + na * 2);

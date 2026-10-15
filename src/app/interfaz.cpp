@@ -847,7 +847,7 @@ static void DibujarCopia(float dt)
 }
 
 // ---------- pestaña de configuración (vale para todos los juegos) ----------
-enum { CF_PROPORCION, CF_FILTRO, CF_AVANCE, CF_REBOBINAR, CF_COPIAR_AUTO, CF_ADMINISTRAR, CF_ACERCA, NUM_CF };
+enum { CF_PROPORCION, CF_FILTRO, CF_AVANCE, CF_REBOBINAR, CF_SUPERFX, CF_COPIAR_AUTO, CF_ADMINISTRAR, CF_ACERCA, NUM_CF };
 static int selConfig;
 static bool viendoAcerca;
 static void AcercaDe();
@@ -875,6 +875,7 @@ static void Configuracion(float dt, const Mando& m)
         case CF_FILTRO: g.filtro = (g.filtro + NUM_FILTROS + d) % NUM_FILTROS; break;
         case CF_AVANCE: g.avance = 2 + (g.avance - 2 + 3 + d) % 3; break;
         case CF_REBOBINAR: g.rebobinar = !g.rebobinar; break;
+        case CF_SUPERFX: g.superfx = 1 + (g.superfx - 1 + 4 + d) % 4; break;
         case CF_COPIAR_AUTO: g.copiarAuto = !g.copiarAuto; break;
         }
         AjustesGuardar();
@@ -882,7 +883,7 @@ static void Configuracion(float dt, const Mando& m)
     }
     Suave(selConfigSuave, (float)selConfig, 18, dt);
 
-    float w = 1180, x = (ANCHO - w) / 2, y = 228, paso = 92, h = 124 + (float)NUM_CF * paso;
+    float w = 1180, x = (ANCHO - w) / 2, y = 200, paso = 84, h = 124 + (float)NUM_CF * paso;
     Sombra(x, y, w, h, 28, 40, .5f, true);
     Caja(x, y, w, h, 28, C_PANEL, .92f);
     Texto(F_SUBTITULO, "Configuración general", x + 48, y + 36, C_TEXTO);
@@ -892,12 +893,13 @@ static void Configuracion(float dt, const Mando& m)
     Caja(x + 24, y0 + selConfigSuave * paso - 14, w - 48, paso - 12, 18, C_ACENTO, .2f);
     Borde(x + 24, y0 + selConfigSuave * paso - 14, w - 48, paso - 12, 18, 2, C_ACENTO, .7f);
     static const char* const TITULOS[NUM_CF] = {"Proporción de la imagen", "Filtro", "Avance rápido (mantener R2)", "Rebobinar (mantener L2)",
-                                                "Copiar juegos nuevos del USB automáticamente", "Copiar o borrar todos los juegos", "Acerca de SNESUI"};
+                                                "Velocidad del Super FX", "Copiar juegos nuevos del USB automáticamente", "Copiar o borrar todos los juegos", "Acerca de SNESUI"};
     static const char* const AYUDAS[NUM_CF] = {
         "Cómo se ajusta la imagen a la pantalla.",
         "Suave, nítido o el aspecto de un televisor antiguo.",
         "Cuántas veces más rápido corre el juego.",
         "Guarda los últimos segundos para volver atrás. Desactivado, la consola trabaja menos.",
+        "Más rápido: los juegos 3D con este chip se ven más fluidos (la consola original va a ×1).",
         "Los juegos que aparezcan en el USB se copian solos a la consola, si hay espacio.",
         NULL,   // el espacio libre (se calcula)
         "Versión, autor y página del proyecto.",
@@ -912,6 +914,7 @@ static void Configuracion(float dt, const Mando& m)
         case CF_FILTRO: snprintf(v, sizeof v, "« %s »", FILTROS[g.filtro]); break;
         case CF_AVANCE: snprintf(v, sizeof v, "« ×%d »", g.avance); break;
         case CF_REBOBINAR: snprintf(v, sizeof v, "« %s »", g.rebobinar ? "Activado" : "Desactivado"); break;
+        case CF_SUPERFX: snprintf(v, sizeof v, g.superfx == 1 ? "« ×1 (original) »" : "« ×%d »", g.superfx); break;
         case CF_COPIAR_AUTO: snprintf(v, sizeof v, "« %s »", g.copiarAuto ? "Sí" : "No"); break;
         default: snprintf(v, sizeof v, "Ver  »"); break;
         }

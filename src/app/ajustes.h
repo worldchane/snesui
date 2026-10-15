@@ -13,6 +13,7 @@ struct AjustesGenerales
     int avance;      // velocidad del avance rápido: 2, 3 o 4
     int rebobinar;   // 1 = guardar historia para rebobinar con L2
     int copiarAuto;  // 1 = copiar a la consola los juegos nuevos que aparezcan en el USB (si hay espacio)
+    int superfx;     // velocidad del chip Super FX: 1 (como la consola) a 4
 };
 AjustesGenerales& General();
 void AjustesLeer();

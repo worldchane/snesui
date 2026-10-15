@@ -38,7 +38,7 @@ int main(int argc, char** argv)
         uint16_t b = 0;
         if (jugar) { if (i % 180 < 6) b |= SB_START; if (i > 1500) b |= SB_DER | ((i / 40) % 2 ? SB_B : 0); }
         SnesMando(0, b);
-        depurCuadro = i == cuadros - 1;
+        depurCuadro = i >= cuadros - (getenv("DEPUR_CUADROS") ? atoi(getenv("DEPUR_CUADROS")) : 1);
         SnesCuadro(fb, au, 2048);
         // VOLCAR=c1,c2,...: guarda la WRAM y la RAM del cartucho al final de esos cuadros (pc/salida/mem_<c>_*.bin).
         static const char* volcar = getenv("VOLCAR");

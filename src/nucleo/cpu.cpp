@@ -245,6 +245,20 @@ void CpuCorrerHasta(uint64_t hasta)
             static int brk = getenv("CPUBRK") ? 1 : 0;
             uint8_t opv = BusLeer((uint32_t)cpu.pbr << 16 | cpu.pc);
             anillo[n++ & 255] = {cpu.pbr, cpu.pc, cpu.a, cpu.x, cpu.y, cpu.s, cpu.p, opv};
+            // CPULOG=desde,hasta: cada instrucción entre esas líneas, en los cuadros de depuración.
+            static int lDesde = -2, lHasta;
+            if (lDesde == -2) { lDesde = -1; if (getenv("CPULOG")) sscanf(getenv("CPULOG"), "%d,%d", &lDesde, &lHasta); }
+            extern int depurCuadro;
+            if (lDesde >= 0 && depurCuadro)
+            {
+                void SnesContadores(int*, int*);
+                int h, l;
+                SnesContadores(&h, &l);
+                static uint64_t antes;
+                if (l >= lDesde && l <= lHasta)
+                    printf("  [%3d] %02X:%04X op=%02X A=%04X X=%04X Y=%04X S=%04X P=%02X  (+%d)\n", l, cpu.pbr, cpu.pc, opv, cpu.a, cpu.x, cpu.y, cpu.s, cpu.p, (int)(ciclosMaestros - antes));
+                antes = ciclosMaestros;
+            }
             if (brk == 1 && opv == 0x00)
             {
                 brk = 2;

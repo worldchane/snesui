@@ -205,6 +205,10 @@ int SnesCuadro(uint32_t* pantalla, int16_t* audio, int maxAudio)
     for (int y = 0; y < lineasTotales; y++)
     {
         inicioLinea = base + (uint64_t)y * CICLOS_LINEA;
+#ifdef GSU_TRAZA
+        { extern int depurCuadro; static int l_ = getenv("LINEAS") ? 1 : 0;
+          if (l_ && depurCuadro) printf("linea %3d: CPU %02X:%04X %s%s P=%02X\n", y, cpu.pbr, cpu.pc, cpu.esperando ? "WAI " : "", gsuCorre ? "GSU " : "", cpu.p); }
+#endif
         lineaActual = y;
         int lineaVblank = PpuSobrebarrido() ? 240 : 225;
         bool enVblank = y >= lineaVblank;
@@ -223,7 +227,9 @@ int SnesCuadro(uint32_t* pantalla, int16_t* audio, int maxAudio)
         }
         BusHvbjoy(enVblank ? 0x80 : 0);
         BusMandoLinea();
-        if (y >= 1 && y <= 224 && pantalla) PpuLinea(y - 1, pantalla + (y - 1) * SNES_ANCHO);
+        // Se muestran 224 líneas: las 1..224, o en el modo de 239 líneas las del centro (8..231), como bsnes.
+        int primera = PpuSobrebarrido() ? 8 : 1;
+        if (y >= primera && y < primera + SNES_ALTO && pantalla) PpuLinea(y - 1, pantalla + (y - primera) * SNES_ANCHO);
 
         // Interrupción por tiempo (H/V IRQ).
         int modo = BusIrqModo(), puntoIrq = -1;
@@ -324,6 +330,8 @@ bool SnesCargarEstado(const uint8_t* buf, uint32_t n)
     Estado(s);
     return s.ok;
 }
+
+void SnesSuperFxVelocidad(int v) { GsuVelocidad(v); }
 
 // Informe de diagnóstico en texto: la rom, el estado de cada parte y el historial de los últimos segundos.
 int SnesDiagnostico(char* o, int m)

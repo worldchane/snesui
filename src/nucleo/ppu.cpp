@@ -445,6 +445,10 @@ static void DibujarModo7(int capa, const uint8_t z[2], int V)
     int psy = ((c * ox) & ~63) + ((d * oy) & ~63) + ((d * y) & ~63) + (cy << 8);
     bool directo = capa == 0 && (cgwsel & 1);
     int fuera = m7sel >> 6;
+#ifdef GSU_TRAZA
+    { extern int depurCuadro; static int l_ = getenv("MODO7") ? 1 : 0;
+      if (l_ && depurCuadro && V % 20 == 0) printf("m7 V=%d a=%d b=%d c=%d d=%d cx=%d cy=%d hof=%d vof=%d psx=%d psy=%d sel=%02X\n", V, a, b, c, d, cx, cy, hof, vof, psx, psy, m7sel); }
+#endif
     for (int x = 0; x < 256; x++)
     {
         int xm = tam > 1 ? x - x % tam : x;
@@ -625,6 +629,10 @@ static void ComponerLinea(int y, int vFondo, int campo, uint16_t* linea)
     default: t = &MODO7; break;
     }
     bool porColumna = modo == 2 || modo == 4 || modo == 6;
+#ifdef GSU_TRAZA
+    { extern int depurCuadro; static int l_ = getenv("MODO7") ? 1 : 0;
+      if (l_ && depurCuadro && V % 20 == 0) printf("linea V=%d modo=%d bgmode=%02X activas=%02X inidisp=%02X\n", V, modo, bgmode, activas, inidisp); }
+#endif
 
     bool hay[4] = {false, false, false, false};
     if (modo == 7)

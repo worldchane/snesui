@@ -714,6 +714,7 @@ bool JuegoAbrir(const char* ruta, const char* nom)
         NuevaHistoria();
     }
     contadorSram = 0;
+    SnesSuperFxVelocidad(General().superfx);
     AudioJuegoVaciar();
     abierto = true;
     menu = false;

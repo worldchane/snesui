@@ -53,5 +53,7 @@ int SnesDiagnostico(char* out, int max);
 // Problemas que el núcleo detecta solo (juego trabado, Super FX perdido...). Devuelve true una vez por cada uno, con la
 // explicación en 'txt'. Llamar desde el mismo hilo que SnesCuadro.
 bool SnesAnomalia(char* txt, int max);
+// Aceleración del Super FX (1 = como la consola, hasta 4): más imágenes por segundo en los juegos 3D.
+void SnesSuperFxVelocidad(int v);
 // Revisa la rom sin cargarla del todo (para la biblioteca).
 void SnesAnalizar(const char* ruta, InfoRom& info);
