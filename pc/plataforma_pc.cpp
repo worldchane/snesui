@@ -75,6 +75,16 @@ static std::string Ruta(const char* r)
 FILE* AbrirArchivo(const char* r, const char* modo) { return fopen(Ruta(r).c_str(), modo); }
 
 bool CrearCarpeta(const char* r) { return std::filesystem::create_directories(Ruta(r)); }
+bool EspacioLibre(const char* r, uint64_t* libres, uint64_t* total)
+{
+    std::error_code e;
+    auto sp = std::filesystem::space(Ruta(r), e);
+    if (e) return false;
+    *libres = sp.available;
+    if (total) *total = sp.capacity;
+    return true;
+}
+bool BorrarArchivo(const char* r) { std::error_code e; return std::filesystem::remove(Ruta(r), e); }
 bool CrearCarpetas(const char* r) { std::error_code e; std::filesystem::create_directories(Ruta(r), e); return std::filesystem::is_directory(Ruta(r)); }
 
 // Red con Winsock (la misma lógica de descarga que en la consola).

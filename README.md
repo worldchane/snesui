@@ -33,6 +33,9 @@ definición, carátulas automáticas, guardado de partidas y filtros de imagen.
 - **Dos jugadores.** Con un segundo mando.
 - **Interfaz.** Biblioteca con fondo pixel art animado, pestañas de recientes y favoritos, y búsqueda de juegos en
   todo el USB, incluidas las subcarpetas.
+- **Juegos en el USB o en la consola.** Cada juego muestra dónde está. Se pueden copiar a la consola uno por uno
+  (OPTIONS), todos juntos o automáticamente al aparecer en el USB (Configuración). Antes de copiar se mide el espacio
+  libre y siempre se deja 1 GB para el sistema; cada copia se verifica.
 - **Bibliotecas grandes.** Hasta 10.000 juegos: la lista aparece al instante (se guarda un índice), el USB se revisa
   en segundo plano analizando solo las ROMs nuevas, y se puede buscar por nombre.
 
@@ -62,7 +65,7 @@ Hay dos versiones del PKG:
 | ✕ | Jugar |
 | △ | Buscar juegos en el USB |
 | □ | Bajar las carátulas que falten |
-| OPTIONS | Marcar o quitar de favoritos (★) |
+| OPTIONS | Opciones del juego: favorito, copiar a la consola, borrar de la consola |
 | L1 / R1 | Cambiar de pestaña: Todos, Recientes, Favoritos, Configuración |
 | L2 / R2 | Subir o bajar una página |
 | Stick derecho ← → | Saltar a la letra anterior o siguiente |
@@ -85,6 +88,7 @@ como jugador 2.
 
 Todo queda en `/data/snes-ps4/` en la consola:
 
+- `juegos/`: los juegos copiados desde el USB;
 - `guardados/`: las partidas (`.srm`) y los estados rápidos (`.st0` a `.st3`);
 - `caratulas/`: las carátulas bajadas;
 - `biblioteca.txt`: el índice de la biblioteca (para que aparezca al instante; se actualiza solo);

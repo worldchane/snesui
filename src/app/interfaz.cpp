@@ -13,6 +13,7 @@
 #include "biblioteca.h"
 #include "ajustes.h"
 #include "caratula.h"
+#include "copiar.h"
 #include "fondo.h"
 #include "juego.h"
 
@@ -203,11 +204,12 @@ static void ArmarVista()
     {
         for (int r = 0; r < nRecientes; r++)
             for (int i = 0; i < nJuegos; i++)
-                if (!strcmp(juegos[i].clave, recientes[r])) { if (Coincide(juegos[i].nombre)) vista[nVista++] = i; break; }
+                if (!juegos[i].copiado && !strcmp(juegos[i].clave, recientes[r])) { if (Coincide(juegos[i].nombre)) vista[nVista++] = i; break; }
     }
     else
         for (int i = 0; i < nJuegos; i++)
-            if ((vistaActual == V_TODOS || EsFavorito(juegos[i].clave)) && Coincide(juegos[i].nombre)) vista[nVista++] = i;
+            if (!juegos[i].copiado && (vistaActual == V_TODOS || EsFavorito(juegos[i].clave)) && Coincide(juegos[i].nombre))
+                vista[nVista++] = i;
     if (sel >= nVista) sel = nVista > 0 ? nVista - 1 : 0;
 }
 
@@ -302,11 +304,20 @@ static void Tarjeta(const Juego& j, float x, float y, float f)
         Circulo(X + w - 22, Y + 22, 20, C_SNES_B, 1);
         Estrella(X + w - 22, Y + 23, 11, 0x2A1A06, 1);
     }
+    // Dónde está: USB (ámbar) o consola (turquesa), abajo a la izquierda.
+    {
+        const char* lugar = j.enUsb ? "USB" : "CONSOLA";
+        float lw = AnchoTexto(F_BOTON, lugar) + 20;
+        Caja(X + 14, Y + h - 38, lw, 26, 13, 0x0A0614, .85f);
+        Texto(F_BOTON, lugar, X + 24, Y + h - 35, j.enUsb ? C_AVISO : C_ACENTO_2, 1);
+    }
     // Aro de selección en morado SNES.
     if (f > .01f) Borde(X - 6, Y - 6, w + 12, h + 12, 26, 4, C_ACENTO, .95f * f);
 }
 
 static void Biblioteca(float t, float dt, const Mando& m);
+static void DibujarCopia(float dt);
+static void VentanaDibujar(float dt);
 
 // La búsqueda activa, a la derecha de las pestañas; o la pista de cómo buscar.
 static void DibujarBusqueda()
@@ -348,11 +359,253 @@ void InterfazCuadro(float t, float dt, const Mando& m)
     // Después del logo, la biblioteca aparece desde negro.
     Suave(entrada, 1, 5, dt);
     Biblioteca(t, dt, entrada > .98f ? m : Mando{});
+    DibujarCopia(dt);
+    VentanaDibujar(dt);
     if (entrada < .995f) Caja(0, 0, ANCHO, ALTO, 0, 0x000000, 1 - entrada);
 }
 
+// ---------- copiar a la consola: ventanas, avisos y progreso ----------
+enum { VN_NADA, VN_JUEGO, VN_BORRAR, VN_COPIAR_TODOS };
+static int ventana = VN_NADA, opVentana;
+static float ventanaVis;
+struct Elegido { char ruta[512], archivo[96], nombre[64], clave[96]; uint64_t bytes; bool enUsb, otraEnUsb; };
+static Elegido elegido;
+static char aviso[160];
+static uint32_t avisoColor;
+static float tAviso = 99;
+static bool releer;            // volver a buscar juegos apenas se pueda (después de copiar o borrar)
+static bool copiaVista = true; // ya se atendió el final de la última copia
+static uint64_t libreConsola;
+static bool libreMedido;
+static float tMedida = 99;
+
+static void Avisar(const char* t, uint32_t c) { snprintf(aviso, sizeof aviso, "%s", t); avisoColor = c; tAviso = 0; }
+
+static void MedirEspacio(float dt)
+{
+    tMedida += dt;
+    if (tMedida < 1) return;   // una vez por segundo alcanza
+    tMedida = 0;
+    libreMedido = EspacioConsola(&libreConsola);
+}
+
+static void TextoLibre(char* out, int max)
+{
+    char t[32];
+    if (!libreMedido) { snprintf(out, max, "Espacio libre en la consola: no se pudo medir"); return; }
+    TextoTamano(libreConsola, t, sizeof t);
+    snprintf(out, max, "Espacio libre en la consola: %s", t);
+}
+
+// Los juegos del USB que todavía no están en la consola (lo que copiaría "Copiar todos").
+static int PendientesUsb(const char** rutas, uint64_t* bytes)
+{
+    int n = 0;
+    uint64_t b = 0;
+    for (int i = 0; i < nJuegos; i++)
+        if (juegos[i].enUsb && !juegos[i].copiado)
+        {
+            if (rutas) rutas[n] = juegos[i].ruta;
+            b += juegos[i].bytes;
+            n++;
+        }
+    if (bytes) *bytes = b;
+    return n;
+}
+
+static void CopiarPendientes()
+{
+    static const char* lista[MAX_JUEGOS];
+    int n = PendientesUsb(lista, NULL);
+    if (n && EmpezarCopia(lista, n)) copiaVista = false;
+}
+
+static void AbrirMenuJuego(const Juego& j)
+{
+    snprintf(elegido.ruta, sizeof elegido.ruta, "%s", j.ruta);
+    snprintf(elegido.archivo, sizeof elegido.archivo, "%s", j.archivo);
+    snprintf(elegido.nombre, sizeof elegido.nombre, "%s", j.nombre);
+    snprintf(elegido.clave, sizeof elegido.clave, "%s", j.clave);
+    elegido.bytes = j.bytes;
+    elegido.enUsb = j.enUsb;
+    elegido.otraEnUsb = false;
+    for (int i = 0; i < nJuegos; i++)
+        if (juegos[i].enUsb && juegos[i].copiado && !strcmp(juegos[i].archivo, j.archivo)) { elegido.otraEnUsb = true; break; }
+    ventana = VN_JUEGO;
+    opVentana = 0;
+    tMedida = 99;
+}
+
+static void VentanaEntrada(const Mando& m)
+{
+    int opciones = ventana == VN_JUEGO ? 3 : 2;
+    if (m.pulsados & B_ARRIBA) { opVentana = (opVentana + opciones - 1) % opciones; Sonar(SON_MOVER); }
+    if (m.pulsados & B_ABAJO) { opVentana = (opVentana + 1) % opciones; Sonar(SON_MOVER); }
+    if (m.pulsados & (B_CIRCULO | B_OPTIONS)) { ventana = VN_NADA; Sonar(SON_ATRAS); return; }
+    if (!(m.pulsados & B_CRUZ)) return;
+    if (ventana == VN_JUEGO)
+    {
+        if (opVentana == 0)
+        {
+            CambiarFavorito(elegido.clave);
+            if (vistaActual == V_FAVORITOS) ArmarVista();
+            Sonar(SON_ACEPTAR);
+            ventana = VN_NADA;
+        }
+        else if (opVentana == 1 && elegido.enUsb)
+        {
+            const char* r[1] = {elegido.ruta};
+            if (EmpezarCopia(r, 1)) { copiaVista = false; Sonar(SON_ACEPTAR); }
+            else { Avisar("Ya hay una copia en curso: espera a que termine.", C_AVISO); Sonar(SON_ERROR); }
+            ventana = VN_NADA;
+        }
+        else if (opVentana == 1) { ventana = VN_BORRAR; opVentana = 1; Sonar(SON_ACEPTAR); }   // primero "Cancelar"
+        else { ventana = VN_NADA; Sonar(SON_ATRAS); }
+        return;
+    }
+    if (ventana == VN_BORRAR)
+    {
+        if (opVentana == 0)
+        {
+            if (BorrarDeConsola(elegido.ruta)) { Avisar("Juego borrado de la consola.", C_BIEN); releer = true; Sonar(SON_ACEPTAR); }
+            else { Avisar("No se pudo borrar el juego de la consola.", C_MAL); Sonar(SON_ERROR); }
+        }
+        else Sonar(SON_ATRAS);
+        ventana = VN_NADA;
+        return;
+    }
+    // Copiar todos.
+    if (opVentana == 0)
+    {
+        if (CopiaEnCurso()) { Avisar("Ya hay una copia en curso: espera a que termine.", C_AVISO); Sonar(SON_ERROR); }
+        else { CopiarPendientes(); Sonar(SON_ACEPTAR); }
+    }
+    else Sonar(SON_ATRAS);
+    ventana = VN_NADA;
+}
+
+static void VentanaDibujar(float dt)
+{
+    Suave(ventanaVis, ventana != VN_NADA ? 1 : 0, 16, dt);
+    float a = ventanaVis;
+    if (a <= .01f || ventana == VN_NADA) return;
+    Velo(0, 0, ANCHO, ALTO, 0, 0x05030C, .6f * a, .6f * a);
+    float w = 860, h = 470, x = (ANCHO - w) / 2, y = (ALTO - h) / 2 + (1 - a) * 40;
+    Sombra(x, y, w, h, 28, 50, .6f * a);
+    Caja(x, y, w, h, 28, 0x1A1033, .98f * a);
+    Borde(x, y, w, h, 28, 2, C_ACENTO, .5f * a);
+    char t[200], tam[32], libre[96];
+    TextoLibre(libre, sizeof libre);
+    const char* op[3] = {NULL, NULL, NULL};
+    int n = 0;
+    if (ventana == VN_JUEGO)
+    {
+        char corto[96];
+        Texto(F_SUBTITULO, Acortar(F_SUBTITULO, elegido.nombre, w - 96, corto, sizeof corto), x + 48, y + 40, C_TEXTO, a);
+        TextoTamano(elegido.bytes, tam, sizeof tam);
+        snprintf(t, sizeof t, "%s   ·   %s", elegido.enUsb ? "En el USB" : "En la consola", tam);
+        Texto(F_CUERPO, t, x + 48, y + 92, elegido.enUsb ? C_AVISO : C_ACENTO_2, a);
+        Texto(F_PEQUENA, libre, x + 48, y + 132, C_TEXTO_3, a);
+        op[0] = EsFavorito(elegido.clave) ? "Quitar de favoritos" : "Agregar a favoritos";
+        op[1] = elegido.enUsb ? "Copiar a la consola" : "Borrar de la consola";
+        op[2] = "Cancelar";
+        n = 3;
+    }
+    else if (ventana == VN_BORRAR)
+    {
+        Texto(F_SUBTITULO, "¿Borrar de la consola?", x + 48, y + 40, C_TEXTO, a);
+        Parrafo(F_CUERPO, elegido.otraEnUsb ? "Se borra solo la copia de la consola. El juego sigue en el USB y tus partidas no se tocan."
+                                            : "No hay otra copia de este juego en el USB: para volver a jugarlo tendrás que copiarlo otra vez. Tus partidas no se tocan.",
+                x + 48, y + 100, w - 96, C_TEXTO_2, a);
+        op[0] = "Borrar";
+        op[1] = "Cancelar";
+        n = 2;
+    }
+    else
+    {
+        uint64_t bytes = 0;
+        int pend = PendientesUsb(NULL, &bytes);
+        TextoTamano(bytes, tam, sizeof tam);
+        Texto(F_SUBTITULO, "Copiar los juegos del USB a la consola", x + 48, y + 40, C_TEXTO, a);
+        snprintf(t, sizeof t, pend == 1 ? "%d juego por copiar   ·   %s" : "%d juegos por copiar   ·   %s", pend, tam);
+        Texto(F_CUERPO_M, t, x + 48, y + 100, C_TEXTO, a);
+        Texto(F_CUERPO, libre, x + 48, y + 142, C_TEXTO_2, a);
+        bool alcanza = libreMedido && bytes + RESERVA_SISTEMA <= libreConsola;
+        const char* nota = !pend ? "Todos los juegos del USB ya están en la consola."
+                         : !libreMedido ? "No se pudo medir el espacio: no se va a copiar nada."
+                         : alcanza ? "Entran todos. Siempre se deja 1 GB libre para el sistema."
+                                   : "No entran todos: se copiarán los que entren, dejando 1 GB libre para el sistema.";
+        Parrafo(F_PEQUENA, nota, x + 48, y + 186, w - 96, alcanza || !pend ? C_TEXTO_3 : C_AVISO, a);
+        op[0] = "Copiar";
+        op[1] = "Cancelar";
+        n = 2;
+    }
+    float oy = y + h - 64 - n * 62;
+    for (int i = 0; i < n; i++)
+    {
+        bool sel2 = i == opVentana;
+        Caja(x + 32, oy + i * 62, w - 64, 52, 14, sel2 ? C_ACENTO : 0xFFFFFF, (sel2 ? .35f : .05f) * a);
+        if (sel2) Borde(x + 32, oy + i * 62, w - 64, 52, 14, 2, C_ACENTO, .8f * a);
+        Texto(F_CUERPO_M, op[i], x + 56, oy + i * 62 + 12, sel2 ? C_TEXTO : C_TEXTO_2, a);
+    }
+    int b[2] = {BM_CRUZ, BM_CIRCULO};
+    const char* tx[2] = {"Aceptar", "Cancelar"};
+    Pistas(b, tx, 2, a);
+}
+
+// La copia en curso (arriba al centro, debajo de la descarga de carátulas si las dos están activas), su resultado, y
+// los avisos breves.
+static void DibujarCopia(float dt)
+{
+    ProgresoCopia p = ProgresoDeCopia();
+    // Al terminar: avisar el resultado y volver a buscar para que aparezcan las copias.
+    if (p.terminada && !copiaVista)
+    {
+        copiaVista = true;
+        char t[200], b1[32];
+        TextoTamano(p.bytesHechos, b1, sizeof b1);
+        if (p.fallo && !p.copiados) snprintf(t, sizeof t, "%s", p.detalle);
+        else if (p.copiados == 1 && !p.sinEspacio && !p.errores) snprintf(t, sizeof t, "1 juego copiado a la consola (%s).", b1);
+        else if (p.copiados && !p.sinEspacio && !p.errores) snprintf(t, sizeof t, "%d juegos copiados a la consola (%s).", p.copiados, b1);
+        else if (p.copiados) snprintf(t, sizeof t, "%d copiados; %d no entraron por espacio; %d con error.", p.copiados, p.sinEspacio, p.errores);
+        else if (p.yaEstaban) snprintf(t, sizeof t, "Ya estaban todos en la consola.");
+        else snprintf(t, sizeof t, "%s", p.detalle[0] ? p.detalle : "No se copió ningún juego.");
+        Avisar(t, p.copiados && !p.errores && !p.sinEspacio ? C_BIEN : p.copiados ? C_AVISO : C_MAL);
+        if (p.copiados) releer = true;
+    }
+    if (p.activa)
+    {
+        ProgresoDescarga d = Progreso();
+        float w = 720, h = 76, x = (ANCHO - w) / 2, y = d.activa ? 130 : 40;
+        Sombra(x, y, w, h, 22, 24, .45f);
+        Caja(x, y, w, h, 22, C_PANEL, .96f);
+        char t[160], a1[32], a2[32];
+        TextoTamano(p.bytesHechos, a1, sizeof a1);
+        TextoTamano(p.bytesTotal, a2, sizeof a2);
+        snprintf(t, sizeof t, "Copiando a la consola   %d de %d   ·   %s de %s", p.hechos + 1 > p.total ? p.total : p.hechos + 1, p.total, a1, a2);
+        Texto(F_CUERPO_M, t, x + 28, y + 12, C_TEXTO, 1);
+        char corto[120];
+        Texto(F_PEQUENA, Acortar(F_PEQUENA, p.actual, w - 56, corto, sizeof corto), x + 28, y + 44, C_TEXTO_3, 1);
+        float f = p.bytesTotal ? (float)((double)p.bytesHechos / p.bytesTotal) : 0;
+        Caja(x + 20, y + h - 8, w - 40, 4, 2, 0xFFFFFF, .1f);
+        Caja(x + 20, y + h - 8, (w - 40) * f, 4, 2, C_ACENTO_2, 1);
+    }
+    // Aviso breve, abajo al centro (sobre el pie).
+    tAviso += dt;
+    if (tAviso < 5)
+    {
+        float a = tAviso < .2f ? tAviso / .2f : tAviso > 4.5f ? (5 - tAviso) / .5f : 1;
+        float w = AnchoTexto(F_CUERPO_M, aviso) + 80;
+        float x = (ANCHO - w) / 2, y = ALTO - 170;
+        Sombra(x, y, w, 56, 28, 20, .4f * a);
+        Caja(x, y, w, 56, 28, C_PANEL, .96f * a);
+        Circulo(x + 30, y + 28, 7, avisoColor, a);
+        Texto(F_CUERPO_M, aviso, x + 50, y + 14, C_TEXTO, a);
+    }
+}
+
 // ---------- pestaña de configuración (vale para todos los juegos) ----------
-enum { CF_PROPORCION, CF_FILTRO, CF_AVANCE, CF_REBOBINAR, CF_ACERCA, NUM_CF };
+enum { CF_PROPORCION, CF_FILTRO, CF_AVANCE, CF_REBOBINAR, CF_COPIAR_AUTO, CF_COPIAR_TODOS, CF_ACERCA, NUM_CF };
 static int selConfig;
 static bool viendoAcerca;
 static void AcercaDe();
@@ -368,10 +621,11 @@ static void Configuracion(float dt, const Mando& m)
         return;
     }
     if (selConfig == CF_ACERCA && (m.pulsados & (B_CRUZ | B_DER))) { viendoAcerca = true; Sonar(SON_ACEPTAR); return; }
+    if (selConfig == CF_COPIAR_TODOS && (m.pulsados & (B_CRUZ | B_DER))) { ventana = VN_COPIAR_TODOS; opVentana = 0; tMedida = 99; Sonar(SON_ACEPTAR); return; }
     if (m.pulsados & B_ARRIBA) { selConfig = (selConfig + NUM_CF - 1) % NUM_CF; Sonar(SON_MOVER); }
     if (m.pulsados & B_ABAJO) { selConfig = (selConfig + 1) % NUM_CF; Sonar(SON_MOVER); }
     int d = (m.pulsados & (B_DER | B_CRUZ)) ? 1 : (m.pulsados & B_IZQ) ? -1 : 0;
-    if (d && selConfig != CF_ACERCA)
+    if (d && selConfig != CF_ACERCA && selConfig != CF_COPIAR_TODOS)
     {
         switch (selConfig)
         {
@@ -379,27 +633,31 @@ static void Configuracion(float dt, const Mando& m)
         case CF_FILTRO: g.filtro = (g.filtro + NUM_FILTROS + d) % NUM_FILTROS; break;
         case CF_AVANCE: g.avance = 2 + (g.avance - 2 + 3 + d) % 3; break;
         case CF_REBOBINAR: g.rebobinar = !g.rebobinar; break;
+        case CF_COPIAR_AUTO: g.copiarAuto = !g.copiarAuto; break;
         }
         AjustesGuardar();
         Sonar(SON_MOVER);
     }
     Suave(selConfigSuave, (float)selConfig, 18, dt);
 
-    float w = 1180, x = (ANCHO - w) / 2, y = 236, paso = 112, h = 130 + (float)NUM_CF * paso;
+    float w = 1180, x = (ANCHO - w) / 2, y = 228, paso = 92, h = 124 + (float)NUM_CF * paso;
     Sombra(x, y, w, h, 28, 40, .5f, true);
     Caja(x, y, w, h, 28, C_PANEL, .92f);
     Texto(F_SUBTITULO, "Configuración general", x + 48, y + 36, C_TEXTO);
     Texto(F_PEQUENA, "Vale para todos los juegos. Cada juego puede tener su propia proporción y filtro desde el menú de pausa (L3 + R3).",
           x + 48, y + 86, C_TEXTO_3);
-    float y0 = y + 130;
+    float y0 = y + 124;
     Caja(x + 24, y0 + selConfigSuave * paso - 14, w - 48, paso - 12, 18, C_ACENTO, .2f);
     Borde(x + 24, y0 + selConfigSuave * paso - 14, w - 48, paso - 12, 18, 2, C_ACENTO, .7f);
-    static const char* const TITULOS[NUM_CF] = {"Proporción de la imagen", "Filtro", "Avance rápido (mantener R2)", "Rebobinar (mantener L2)", "Acerca de SNESUI"};
+    static const char* const TITULOS[NUM_CF] = {"Proporción de la imagen", "Filtro", "Avance rápido (mantener R2)", "Rebobinar (mantener L2)",
+                                                "Copiar juegos nuevos del USB automáticamente", "Copiar todos los juegos del USB a la consola", "Acerca de SNESUI"};
     static const char* const AYUDAS[NUM_CF] = {
         "Cómo se ajusta la imagen a la pantalla.",
         "Suave, nítido o el aspecto de un televisor antiguo.",
         "Cuántas veces más rápido corre el juego.",
         "Guarda los últimos segundos para volver atrás. Desactivado, la consola trabaja menos.",
+        "Los juegos que aparezcan en el USB se copian solos a la consola, si hay espacio.",
+        NULL,   // el espacio libre (se calcula)
         "Versión, autor y página del proyecto.",
     };
     for (int i = 0; i < NUM_CF; i++)
@@ -412,12 +670,16 @@ static void Configuracion(float dt, const Mando& m)
         case CF_FILTRO: snprintf(v, sizeof v, "« %s »", FILTROS[g.filtro]); break;
         case CF_AVANCE: snprintf(v, sizeof v, "« ×%d »", g.avance); break;
         case CF_REBOBINAR: snprintf(v, sizeof v, "« %s »", g.rebobinar ? "Activado" : "Desactivado"); break;
+        case CF_COPIAR_AUTO: snprintf(v, sizeof v, "« %s »", g.copiarAuto ? "Sí" : "No"); break;
         default: snprintf(v, sizeof v, "Ver  »"); break;
         }
         bool elegida = i == selConfig;
-        Texto(F_CUERPO_M, TITULOS[i], x + 56, fy + 6, elegida ? C_TEXTO : C_TEXTO_2);
-        Texto(F_PEQUENA, AYUDAS[i], x + 56, fy + 46, C_TEXTO_3);
-        Texto(F_CUERPO_M, v, x + w - 56, fy + 16, elegida ? C_ACENTO : C_TEXTO_2, 1, 2);
+        char libre[96];
+        const char* ayuda = AYUDAS[i];
+        if (!ayuda) { TextoLibre(libre, sizeof libre); ayuda = libre; }
+        Texto(F_CUERPO_M, TITULOS[i], x + 56, fy + 2, elegida ? C_TEXTO : C_TEXTO_2);
+        Texto(F_PEQUENA, ayuda, x + 56, fy + 38, C_TEXTO_3);
+        Texto(F_CUERPO_M, v, x + w - 56, fy + 12, elegida ? C_ACENTO : C_TEXTO_2, 1, 2);
     }
     Texto(F_PEQUENA, "↑ ↓ elegir   ·   ← → cambiar   ·   L1 / R1 otras pestañas", ANCHO / 2, ALTO - 50, C_TEXTO_3, 1, 1);
 }
@@ -464,13 +726,17 @@ static void AcercaDe()
 // Cuando termina una búsqueda, la lista nueva reemplaza a la anterior y la selección se queda en el mismo juego.
 static void TomarListaNueva()
 {
+    // Después de copiar o borrar: buscar de nuevo apenas termine la búsqueda en curso.
+    if (releer && !BibliotecaBuscando(NULL)) { releer = false; BibliotecaBuscar(); }
     if (!BibliotecaNueva()) return;
-    char elegido[96] = "";
-    if (nVista > 0 && sel < nVista) snprintf(elegido, sizeof elegido, "%s", juegos[vista[sel]].clave);
+    char elegidoClave[96] = "";
+    if (nVista > 0 && sel < nVista) snprintf(elegidoClave, sizeof elegidoClave, "%s", juegos[vista[sel]].clave);
     juegos = BibliotecaJuegos(&nJuegos);
     ArmarVista();
     for (int i = 0; i < nVista; i++)
-        if (!strcmp(juegos[vista[i]].clave, elegido)) { sel = i; break; }
+        if (!strcmp(juegos[vista[i]].clave, elegidoClave)) { sel = i; break; }
+    // Copia automática: los juegos nuevos del USB pasan a la consola (si hay espacio; el hilo de copia lo verifica).
+    if (General().copiarAuto && !CopiaEnCurso()) CopiarPendientes();
 }
 
 // ---------- teclado en pantalla (búsqueda por nombre) ----------
@@ -573,15 +839,23 @@ static void Biblioteca(float t, float dt, const Mando& m)
     char cont[48];
     int halladas = 0;
     if (BibliotecaBuscando(&halladas)) snprintf(cont, sizeof cont, "Buscando juegos…  %d", halladas);
-    else snprintf(cont, sizeof cont, nJuegos == 1 ? "%d juego" : "%d juegos", nJuegos > 0 ? nJuegos : 0);
+    else
+    {
+        // Los que están en el USB y también en la consola cuentan una sola vez.
+        int distintos = 0;
+        for (int i = 0; i < nJuegos; i++) if (!juegos[i].copiado) distintos++;
+        snprintf(cont, sizeof cont, distintos == 1 ? "%d juego" : "%d juegos", distintos);
+    }
     Texto(F_CUERPO, cont, ANCHO - MARGEN, 100, C_TEXTO_2, 1, 2);
 
 
-    // El teclado en pantalla se lleva los botones mientras está abierto.
+    // El teclado en pantalla y las ventanas se llevan los botones mientras están abiertos.
     Suave(tecladoVis, teclado ? 1 : 0, 14, dt);
+    MedirEspacio(dt);
     static const Mando nada = {};
-    const Mando& mb = teclado ? nada : m;
-    if (teclado) TecladoEntrada(m);
+    const Mando& mb = teclado || ventana != VN_NADA ? nada : m;
+    if (ventana != VN_NADA) VentanaEntrada(m);
+    else if (teclado) TecladoEntrada(m);
 
     // Pestañas: L1 / R1.
     int cambio = (mb.pulsados & B_R1) ? 1 : (mb.pulsados & B_L1) ? -1 : 0;
@@ -611,12 +885,7 @@ static void Biblioteca(float t, float dt, const Mando& m)
         JuegoAbrir(j.ruta, j.nombre);
         if (vistaActual == V_RECIENTES) { ArmarVista(); sel = 0; }
     }
-    if ((mb.pulsados & B_OPTIONS) && nVista > 0)
-    {
-        CambiarFavorito(juegos[vista[sel]].clave);
-        Sonar(SON_ACEPTAR);
-        if (vistaActual == V_FAVORITOS) ArmarVista();
-    }
+    if ((mb.pulsados & B_OPTIONS) && nVista > 0) { AbrirMenuJuego(juegos[vista[sel]]); Sonar(SON_SECCION); }
     if (mb.pulsados & B_TRIANGULO) { Sonar(BibliotecaBuscando(NULL) ? SON_ERROR : SON_ACEPTAR); BibliotecaBuscar(); }
     // Panel táctil: buscar por nombre. ○ quita la búsqueda.
     if ((mb.pulsados & B_TACTIL) && nJuegos > 0) { teclado = true; Sonar(SON_SECCION); }
@@ -756,7 +1025,8 @@ static void Biblioteca(float t, float dt, const Mando& m)
     Velo(0, ALTO - 86, ANCHO, 86, 0, 0x120A24, 0, .82f);
     const Juego& j = juegos[vista[sel]];
     char buf[120];
-    snprintf(buf, sizeof buf, "%s   ·   %d KB   ·   %s%s", j.mapeo, j.tamKB, j.pal ? "PAL" : "NTSC", j.tieneRam ? "   ·   guarda partida" : "");
+    snprintf(buf, sizeof buf, "%s   ·   %s   ·   %d KB   ·   %s%s", j.enUsb ? "En el USB" : "En la consola", j.mapeo, j.tamKB,
+             j.pal ? "PAL" : "NTSC", j.tieneRam ? "   ·   guarda partida" : "");
     Texto(F_CUERPO_M, j.nombre, MARGEN, ALTO - 70, C_TEXTO);
     char pos[48];
     snprintf(pos, sizeof pos, "%d de %d   ·   ", sel + 1, nVista);
@@ -764,8 +1034,10 @@ static void Biblioteca(float t, float dt, const Mando& m)
     Texto(F_PEQUENA, pos, MARGEN, ALTO - 38, C_ACENTO);
     Texto(F_PEQUENA, buf, MARGEN + pw, ALTO - 38, C_TEXTO_2);
     int b[4] = {BM_CRUZ, BM_OPTIONS, BM_TRIANGULO, BM_CUADRADO};
-    const char* tx[4] = {"Jugar", EsFavorito(j.clave) ? "Quitar favorito" : "Favorito", "Buscar juegos", "Bajar carátulas"};
-    if (tecladoVis < .5f) Pistas(b, tx, 4, 1 - tecladoVis * 2);   // con el teclado abierto, sus pistas reemplazan a estas
+    const char* tx[4] = {"Jugar", "Opciones", "Buscar juegos", "Bajar carátulas"};
+    // Con el teclado o una ventana abiertos, sus pistas reemplazan a estas.
+    float tapa = tecladoVis > ventanaVis ? tecladoVis : ventanaVis;
+    if (tapa < .5f) Pistas(b, tx, 4, 1 - tapa * 2);
     DibujarBusqueda();
     TecladoDibujar(tecladoVis);
     DibujarDescarga(dt);

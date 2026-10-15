@@ -137,11 +137,30 @@ int main()
         {6.5f, B_CIRCULO, NULL},
         {7.2f, 0, "43_mil_filtrado"},
     };
+    // GUION=copiar: copiar un juego del USB a la consola, borrarlo, y la ventana de "copiar todos".
+    static const Paso copiar[] = {
+        {4.4f, B_DER, NULL}, {4.6f, B_DER, NULL},
+        {5.0f, 0, "50_usb"},
+        {5.2f, B_OPTIONS, NULL},
+        {5.7f, 0, "51_menu_juego"},
+        {5.9f, B_ABAJO, NULL}, {6.1f, B_CRUZ, NULL},
+        {6.3f, 0, "52_copiando"},
+        {8.5f, 0, "53_copiado"},
+        {8.7f, B_OPTIONS, NULL}, {9.0f, B_ABAJO, NULL}, {9.2f, B_CRUZ, NULL},
+        {9.7f, 0, "54_confirmar_borrar"},
+        {9.9f, B_ARRIBA, NULL}, {10.1f, B_CRUZ, NULL},
+        {11.8f, 0, "55_borrado"},
+        {12.0f, B_L1, NULL},
+        {12.3f, B_ABAJO, NULL}, {12.45f, B_ABAJO, NULL}, {12.6f, B_ABAJO, NULL}, {12.75f, B_ABAJO, NULL}, {12.9f, B_ABAJO, NULL},
+        {13.3f, 0, "56_config"},
+        {13.4f, B_CRUZ, NULL},
+        {14.0f, 0, "57_copiar_todos"},
+    };
     const char* g = getenv("GUION");
-    bool corto = g && !strcmp(g, "acerca"), larga = g && !strcmp(g, "lista"), muchos = g && !strcmp(g, "mil");
-    const Paso* pasos = corto ? acerca : larga ? lista : muchos ? mil : guion;
-    const int N = corto ? (int)(sizeof acerca / sizeof acerca[0]) : larga ? (int)(sizeof lista / sizeof lista[0]) : muchos ? (int)(sizeof mil / sizeof mil[0]) : (int)(sizeof guion / sizeof guion[0]);
-    const double FIN = corto ? 7.0 : larga ? 9.0 : muchos ? 7.5 : 42.0;
+    bool corto = g && !strcmp(g, "acerca"), larga = g && !strcmp(g, "lista"), muchos = g && !strcmp(g, "mil"), copia = g && !strcmp(g, "copiar");
+    const Paso* pasos = corto ? acerca : larga ? lista : muchos ? mil : copia ? copiar : guion;
+    const int N = corto ? (int)(sizeof acerca / sizeof acerca[0]) : larga ? (int)(sizeof lista / sizeof lista[0]) : muchos ? (int)(sizeof mil / sizeof mil[0]) : copia ? (int)(sizeof copiar / sizeof copiar[0]) : (int)(sizeof guion / sizeof guion[0]);
+    const double FIN = corto ? 7.0 : larga ? 9.0 : muchos ? 7.5 : copia ? 14.2 : 42.0;
     double peor = 0;
     int k = 0;
     for (int cuadro = 0; tiempoSimulado < FIN; cuadro++)

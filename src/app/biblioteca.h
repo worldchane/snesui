@@ -20,6 +20,8 @@ struct Juego
     bool pal;
     bool tieneRam;
     bool valida;
+    bool enUsb;            // está en un USB (si no, en la consola: /data/snes-ps4/juegos)
+    bool copiado;          // está en el USB y también hay una copia igual en la consola (se muestra solo la copia)
     uint32_t color1, color2;
 };
 
@@ -31,3 +33,5 @@ bool BibliotecaBuscando(int* encontrados); // true mientras busca; cuántas roms
 bool BibliotecaNueva();                    // true (una vez) cuando hay una lista nueva: volver a pedir BibliotecaJuegos
 const Juego* BibliotecaJuegos(int* n);     // la lista actual, ordenada por nombre (no cambia hasta BibliotecaNueva)
 const char* CarpetasDeJuegos();
+// Carpeta de la consola donde se copian los juegos (y donde también se buscan).
+static const char* const CARPETA_JUEGOS_CONSOLA = "/data/snes-ps4/juegos";

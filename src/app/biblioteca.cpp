@@ -84,6 +84,7 @@ static Lista activa, nueva;
 static std::atomic<bool> buscando{false}, hayNueva{false};
 static std::atomic<int> encontrados{0};
 static bool iniciada;
+static uint32_t HashRuta(const char* s) { uint32_t h = 2166136261u; for (; *s; s++) h = (h ^ (unsigned char)*s) * 16777619u; return h; }
 
 static bool Crecer(Lista& l)
 {
@@ -101,7 +102,6 @@ static bool Crecer(Lista& l)
 // Índice por ruta de la lista activa (tabla hash): para reusar lo ya analizado sin volver a leer la rom.
 static int* tabla;
 static int tablaTam;
-static uint32_t HashRuta(const char* s) { uint32_t h = 2166136261u; for (; *s; s++) h = (h ^ (unsigned char)*s) * 16777619u; return h; }
 static void ArmarTabla()
 {
     int t = 1;
@@ -124,6 +124,7 @@ static const Juego* BuscarAnterior(const char* ruta)
     return NULL;
 }
 
+
 // Completa lo que se calcula del nombre (clave, iniciales, colores).
 static void Completar(Juego& j)
 {
@@ -134,6 +135,36 @@ static void Completar(Juego& j)
     if (ext) *ext = 0;
     Iniciales(j);
     ColoresE(j);
+    j.enUsb = !strncmp(j.ruta, "/mnt/usb", 8);
+}
+
+// Marca los juegos del USB que ya tienen una copia igual (mismo archivo y tamaño) en la consola.
+static void MarcarCopiados(Lista& l)
+{
+    int t = 1;
+    while (t < l.n * 2 + 16) t <<= 1;
+    int* h = (int*)malloc(sizeof(int) * t);
+    if (!h) return;
+    for (int i = 0; i < t; i++) h[i] = -1;
+    for (int i = 0; i < l.n; i++)
+    {
+        l.j[i].copiado = false;
+        if (l.j[i].enUsb) continue;
+        uint32_t k = HashRuta(l.j[i].archivo) & (t - 1);
+        while (h[k] >= 0) k = (k + 1) & (t - 1);
+        h[k] = i;
+    }
+    for (int i = 0; i < l.n; i++)
+    {
+        Juego& j = l.j[i];
+        if (!j.enUsb) continue;
+        for (uint32_t k = HashRuta(j.archivo) & (t - 1); h[k] >= 0; k = (k + 1) & (t - 1))
+        {
+            const Juego& c = l.j[h[k]];
+            if (c.bytes == j.bytes && !strcmp(c.archivo, j.archivo)) { j.copiado = true; break; }
+        }
+    }
+    free(h);
 }
 
 // ---------- recorrido del USB ----------
@@ -262,6 +293,7 @@ static void* HiloBusqueda(void*)
     }
     CerrarAccesoCompleto();
     if (nueva.n > 1) qsort(nueva.j, nueva.n, sizeof(Juego), PorNombre);
+    MarcarCopiados(nueva);
     // Si no se pudo abrir ninguna carpeta (sin acceso, o la variante sin listado), se conserva la lista anterior.
     if (algo)
     {
@@ -284,6 +316,7 @@ void BibliotecaIniciar()
     if (iniciada) return;
     iniciada = true;
     LeerIndice();
+    MarcarCopiados(activa);
     BibliotecaBuscar();
 }
 

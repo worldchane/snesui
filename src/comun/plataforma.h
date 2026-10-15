@@ -73,6 +73,9 @@ FILE* AbrirArchivo(const char* ruta, const char* modo);
 // Lee hasta max-1 bytes y termina con 0; -1 si no existe.
 int LeerTexto(const char* ruta, char* buf, int max);
 bool EscribirTexto(const char* ruta, const char* texto);
+// Espacio libre (bytes) en el disco donde está 'ruta' (y el total). false si no se pudo medir.
+bool EspacioLibre(const char* ruta, uint64_t* libres, uint64_t* total = 0);
+bool BorrarArchivo(const char* ruta);
 
 static const char* const CARPETA_DATOS = "/data/snes-ps4";
 

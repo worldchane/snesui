@@ -527,6 +527,34 @@ __asm__(
     "1:\n"
     "  retq\n");
 
+// ---------- espacio libre y borrar archivos ----------
+// Con llamadas directas al sistema (las de FreeBSD, la base del sistema de la PS4), por el mismo camino que la de
+// GoldHEN: no se piden funciones nuevas. statfs = 396, unlink = 10.
+bool EspacioLibre(const char* ruta, uint64_t* libres, uint64_t* total)
+{
+    // Los primeros campos de struct statfs de FreeBSD; el resto (nombres del montaje) no se usa.
+    struct
+    {
+        uint32_t version, tipo;
+        uint64_t banderas, bloque, bloqueEs, bloques, bloquesLibres;
+        int64_t disponibles;
+        uint64_t archivos;
+        int64_t archivosLibres;
+        uint8_t resto[1024];
+    } st;
+    memset(&st, 0, sizeof st);
+    if (LlamadaSistema(396, (long)ruta, (long)&st) != 0) return false;
+    // Que los números tengan sentido (si no, mejor no copiar nada).
+    if (st.bloque < 512 || st.bloque > (1u << 24) || (st.bloque & (st.bloque - 1)) || st.disponibles < 0 ||
+        (uint64_t)st.disponibles > st.bloques || st.bloques == 0)
+        return false;
+    *libres = (uint64_t)st.disponibles * st.bloque;
+    if (total) *total = st.bloques * st.bloque;
+    return true;
+}
+
+bool BorrarArchivo(const char* ruta) { return LlamadaSistema(10, (long)ruta, 0) == 0; }
+
 static char accesoDetalle[120];
 static uint64_t respaldo[16];   // struct jailbreak_backup del SDK (72 bytes): cómo estaba el encierro
 static bool afuera;

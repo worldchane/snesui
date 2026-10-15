@@ -12,6 +12,7 @@ struct AjustesGenerales
     int proporcion, filtro;
     int avance;      // velocidad del avance rápido: 2, 3 o 4
     int rebobinar;   // 1 = guardar historia para rebobinar con L2
+    int copiarAuto;  // 1 = copiar a la consola los juegos nuevos que aparezcan en el USB (si hay espacio)
 };
 AjustesGenerales& General();
 void AjustesLeer();
