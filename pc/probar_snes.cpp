@@ -46,6 +46,9 @@ static void CrearRomPrueba(const char* ruta)
     fclose(f);
 }
 
+// Carpeta de las imágenes y el sonido: pc/salida, o la que diga SALIDA (para correr varios a la vez).
+static const char* Salida() { const char* s = getenv("SALIDA"); return s ? s : "pc/salida"; }
+
 int main(int argc, char** argv)
 {
     const char* ruta = argc > 1 ? argv[1] : "pc/salida/prueba.sfc";
@@ -84,13 +87,14 @@ int main(int argc, char** argv)
         {
             std::vector<unsigned char> c(SNES_ANCHO * SNES_ALTO * 3);
             for (int k = 0; k < SNES_ANCHO * SNES_ALTO; k++) { c[k * 3] = pantalla[k] >> 16; c[k * 3 + 1] = pantalla[k] >> 8; c[k * 3 + 2] = pantalla[k]; }
-            char r[64]; snprintf(r, sizeof r, "pc/salida/juego_%04d.png", i + 1);
+            char r[300]; snprintf(r, sizeof r, "%s/juego_%04d.png", Salida(), i + 1);
             stbi_write_png(r, SNES_ANCHO, SNES_ALTO, 3, c.data(), SNES_ANCHO * 3);
         }
     }
     {
         // Guardar el sonido como WAV (32 kHz, estéreo, 16 bits).
-        FILE* w = fopen("pc/salida/audio.wav", "wb");
+        char rw[300]; snprintf(rw, sizeof rw, "%s/audio.wav", Salida());
+        FILE* w = fopen(rw, "wb");
         uint32_t datos = (uint32_t)wav.size() * 2, v32; uint16_t v16;
         fwrite("RIFF", 1, 4, w); v32 = 36 + datos; fwrite(&v32, 4, 1, w); fwrite("WAVEfmt ", 1, 8, w);
         v32 = 16; fwrite(&v32, 4, 1, w); v16 = 1; fwrite(&v16, 2, 1, w); v16 = 2; fwrite(&v16, 2, 1, w);
@@ -106,7 +110,8 @@ int main(int argc, char** argv)
     {
         rgb[i * 3] = pantalla[i] >> 16; rgb[i * 3 + 1] = pantalla[i] >> 8; rgb[i * 3 + 2] = pantalla[i];
     }
-    stbi_write_png("pc/salida/snes.png", SNES_ANCHO, SNES_ALTO, 3, rgb.data(), SNES_ANCHO * 3);
+    char rs[300]; snprintf(rs, sizeof rs, "%s/snes.png", Salida());
+    stbi_write_png(rs, SNES_ANCHO, SNES_ALTO, 3, rgb.data(), SNES_ANCHO * 3);
     printf("%d cuadros en %.2f s (%.0f/s). Imagen en pc/salida/snes.png\n", cuadros, s, cuadros / s);
     return 0;
 }

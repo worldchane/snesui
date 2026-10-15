@@ -216,6 +216,7 @@ void VigilarRam(uint32_t a, uint8_t v, const char* quien)
 struct Traza { uint8_t pbr; uint16_t pc; uint8_t op; uint16_t sfr; uint16_t r[16]; };
 Traza gsuTraza[4096];
 unsigned gsuTrazaN;
+unsigned gsuHistograma[1024];   // instrucciones ejecutadas por código y ALT
 void TrazaImprimir(int n)
 {
     for (int k = n; k > 0; k--)
@@ -232,6 +233,7 @@ static void Paso()
 {
     diag.instrucciones++;
 #ifdef GSU_TRAZA
+    { extern unsigned gsuHistograma[1024]; gsuHistograma[g.pipe | ((g.sfr >> 8) & 3) << 8]++; }
     { Traza& t = gsuTraza[gsuTrazaN++ & 4095]; t.pbr = g.pbr; t.pc = g.r[15] - 1; t.op = g.pipe; t.sfr = g.sfr; memcpy(t.r, g.r, sizeof t.r); }
 #endif
     uint8_t op = Pipe();
@@ -479,7 +481,7 @@ static void Paso()
         switch (alt)
         {
         case 2: Esperar(g.ramLibre); g.rambr = S() & 1; break;                                     // RAMB
-        case 3: Esperar(g.romListo); g.rombr = S() & 0x7F; g.romBuf = Rom(g.rombr, g.r[14]); break;   // ROMB
+        case 3: Esperar(g.romListo); g.rombr = S() & 0x7F; break;   // ROMB (el búfer guarda lo ya leído hasta que cambie R14)
         default: Esperar(g.romListo); g.colr = Color(g.romBuf); break;                             // GETC
         }
         Fin();

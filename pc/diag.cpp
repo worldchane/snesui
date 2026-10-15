@@ -81,6 +81,12 @@ int main(int argc, char** argv)
 #ifdef GSU_TRAZA
     extern unsigned gsuLecturasBloqueadas, gsuRomBloqueada;
     printf("lecturas de la SNES bloqueadas: RAM del chip %u, rom %u\n", gsuLecturasBloqueadas, gsuRomBloqueada);
+    if (getenv("HISTOGRAMA"))
+    {
+        extern unsigned gsuHistograma[1024];
+        for (int k = 0; k < 1024; k++)
+            if (gsuHistograma[k]) printf("op %02X alt%d: %u\n", k & 255, k >> 8, gsuHistograma[k]);
+    }
     int cuantas = getenv("TRAZA") ? atoi(getenv("TRAZA")) : 0;
     for (int k = cuantas; k > 0; k--)
     {
