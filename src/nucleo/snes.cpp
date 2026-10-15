@@ -123,13 +123,24 @@ static void Anomalia(uint32_t cual, const char* txt)
 static void RevisarAnomalias(const Muestra& m)
 {
     // El juego ya no recibe la interrupción de cada cuadro: casi siempre quedó trabado esperando algo del hardware.
-    segSinNmi = m.nmi == 0 ? segSinNmi + 1 : 0;
-    if (segSinNmi == 5) Anomalia(AN_SIN_NMI, "El juego lleva 5 segundos sin interrupciones de cuadro (NMI): parece trabado");
+    // Muchos juegos apagan la NMI mientras cargan o descomprimen; solo es raro si el juego ya andaba (10 s seguidos con
+    // NMI) y después pasa 20 s sin ninguna (cargar un nivel puede tardar más de 10).
+    static int segConNmi;
+    if (m.nmi) { segConNmi++; segSinNmi = 0; }
+    else segSinNmi++;
+    if (segSinNmi == 20 && segConNmi >= 10)
+        Anomalia(AN_SIN_NMI, "El juego lleva 20 segundos sin interrupciones de cuadro (NMI) después de andar bien: parece trabado");
+    if (segSinNmi >= 20) segConNmi = 0;
     if (cpu.parado) Anomalia(AN_PARADO, "El procesador se detuvo (instrucción STP)");
     if (gsuPresente)
     {
-        // Un dibujo del Super FX dura una fracción de segundo: si no para en 5 segundos, el programa del chip se perdió.
-        segGsuSinParar = gsuCorre && m.gsuParadas == 0 ? segGsuSinParar + 1 : 0;
+        // Un dibujo del Super FX dura una fracción de segundo: si no para en 5 segundos mientras la SNES lo espera
+        // (consultando su estado sin parar), el programa del chip se perdió. Hay juegos que lo dejan corriendo a
+        // propósito, atendiendo comandos: eso no es un problema.
+        static uint32_t consultasAntes;
+        uint32_t consultas = gsuConsultasSfr - consultasAntes;
+        consultasAntes = gsuConsultasSfr;
+        segGsuSinParar = gsuCorre && m.gsuParadas == 0 && consultas > 1000 ? segGsuSinParar + 1 : 0;
         if (segGsuSinParar == 5) Anomalia(AN_GSU_NO_TERMINA, "El Super FX lleva 5 segundos corriendo sin terminar");
         if (nHistorial == 15 && gArrAntes == 0) Anomalia(AN_GSU_NO_ARRANCA, "El juego tiene Super FX pero en 15 segundos nunca lo arrancó");
     }

@@ -13,7 +13,8 @@
 
 bool gsuPresente;
 bool irqGsu;
-bool gsuCorre;   // copia del bit G (corriendo), para que el bus lo consulte sin llamar al chip
+bool gsuCorre;
+uint32_t gsuConsultasSfr;   // lecturas de SFR desde la SNES (para saber si la SNES está esperando al chip)   // copia del bit G (corriendo), para que el bus lo consulte sin llamar al chip
 
 // Bits de SFR.
 enum { S_Z = 1 << 1, S_CY = 1 << 2, S_S = 1 << 3, S_OV = 1 << 4, S_G = 1 << 5, S_R = 1 << 6, S_ALT1 = 1 << 8,
@@ -574,7 +575,7 @@ uint8_t GsuLeer(uint16_t dir)
     if (dir >= 0x3000 && dir < 0x3020) { uint16_t r = g.r[(dir >> 1) & 15]; return (dir & 1) ? r >> 8 : r & 0xFF; }
     switch (dir)
     {
-    case 0x3030: return g.sfr & 0xFF;
+    case 0x3030: gsuConsultasSfr++; return g.sfr & 0xFF;
     case 0x3031:
     {
         uint8_t v = g.sfr >> 8;
