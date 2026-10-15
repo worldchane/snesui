@@ -1,5 +1,7 @@
 // Simulador de PC: corre la interfaz real (src/app, src/comun) con un mando programado y guarda capturas PNG.
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <vector>
 #include <chrono>
 #include <thread>
@@ -93,21 +95,37 @@ int main()
         {38.8f, B_L3 | B_R3, NULL},
         {39.0f, B_ABAJO, NULL}, {39.15f, B_ABAJO, NULL}, {39.3f, B_ABAJO, NULL}, {39.45f, B_ABAJO, NULL},
         {39.6f, B_CRUZ, NULL},
-        {41.5f, 0, "14_creditos"},
+        {40.2f, B_L1, NULL},
+        {40.4f, B_ABAJO, NULL}, {40.55f, B_ABAJO, NULL}, {40.7f, B_ABAJO, NULL},
+        {40.9f, 0, "14_config"},
+        {41.0f, B_CRUZ, NULL},
+        {41.6f, 0, "15_acerca"},
     };
-    const int N = sizeof guion / sizeof guion[0];
+    // GUION=acerca: un recorrido corto hasta Configuración → Acerca de.
+    static const Paso acerca[] = {
+        {4.6f, B_R1, NULL}, {4.8f, B_R1, NULL}, {5.0f, B_R1, NULL},
+        {5.3f, B_ABAJO, NULL}, {5.45f, B_ABAJO, NULL}, {5.6f, B_ABAJO, NULL}, {5.75f, B_ABAJO, NULL},
+        {6.2f, 0, "20_config"},
+        {6.3f, B_CRUZ, NULL},
+        {6.9f, 0, "21_acerca"},
+    };
+    const char* g = getenv("GUION");
+    bool corto = g && !strcmp(g, "acerca");
+    const Paso* pasos = corto ? acerca : guion;
+    const int N = corto ? (int)(sizeof acerca / sizeof acerca[0]) : (int)(sizeof guion / sizeof guion[0]);
+    const double FIN = corto ? 7.0 : 42.0;
     int k = 0;
-    for (int cuadro = 0; tiempoSimulado < 42; cuadro++)
+    for (int cuadro = 0; tiempoSimulado < FIN; cuadro++)
     {
         tiempoSimulado = cuadro / 60.0;
         Mando m = {};
         m.conectado = true;
         const char* captura = NULL;
-        while (k < N && guion[k].t <= tiempoSimulado + 1e-6)
+        while (k < N && pasos[k].t <= tiempoSimulado + 1e-6)
         {
-            m.pulsados |= guion[k].botones;
-            m.apretados |= guion[k].botones;
-            if (guion[k].captura) captura = guion[k].captura;
+            m.pulsados |= pasos[k].botones;
+            m.apretados |= pasos[k].botones;
+            if (pasos[k].captura) captura = pasos[k].captura;
             k++;
         }
         PantallaComenzar();

@@ -17,7 +17,8 @@
 #include "juego.h"
 
 static const char* const VERSION = "0.9";
-static const char* const AUTOR = "RudolhGamerBkn";   // el creador de SNESUI (presentación y créditos)
+static const char* const AUTOR = "RudolhGamerBkn";   // el creador de SNESUI (Configuración → Acerca de)
+static const char* const PAGINA = "github.com/worldchane/snesui";
 
 static Juego juegos[MAX_JUEGOS];
 static int nJuegos;
@@ -51,11 +52,6 @@ static bool Presentacion(float dt, const Mando& m)
     {
         float w = 1180 * crece, h = w * logoH / logoW;
         Imagen(logo, logoW, logoH, (ANCHO - w) / 2, (ALTO - h) / 2, w, h, a, true);
-        // El autor, que aparece un poco después que el logo.
-        float b = tLogo < 1.1f ? 0 : tLogo < 1.7f ? (tLogo - 1.1f) / .6f : 1;
-        char autor[64];
-        snprintf(autor, sizeof autor, "por %s", AUTOR);
-        Texto(F_SUBTITULO, autor, ANCHO / 2, (ALTO + h) / 2 + 30, C_TEXTO_2, a * b, 1);
     }
     else Texto(F_LOGO, "SNESUI", ANCHO / 2, ALTO / 2 - 70, C_TEXTO, a, 1);
     return true;
@@ -108,8 +104,8 @@ static const float X0 = MARGEN, Y0 = 258;
 // ---------- pestañas: todos, recientes y favoritos ----------
 // Los recientes (los últimos abiertos, el más nuevo primero) y los favoritos se guardan por clave (nombre de archivo) en
 // /data/snes-ps4/recientes.txt y favoritos.txt, una por línea.
-enum { V_TODOS, V_RECIENTES, V_FAVORITOS, V_CONFIG, V_CREDITOS, NUM_VISTAS };
-static const char* const VISTAS[NUM_VISTAS] = {"Todos", "Recientes", "Favoritos", "Configuración", "Créditos"};
+enum { V_TODOS, V_RECIENTES, V_FAVORITOS, V_CONFIG, NUM_VISTAS };
+static const char* const VISTAS[NUM_VISTAS] = {"Todos", "Recientes", "Favoritos", "Configuración"};
 static int vistaActual;
 static float vistaSuave;
 static int vista[MAX_JUEGOS], nVista;   // índices de 'juegos' que se muestran
@@ -180,7 +176,7 @@ static void AnotarReciente(const char* clave)
 static void ArmarVista()
 {
     nVista = 0;
-    if (vistaActual == V_CONFIG || vistaActual == V_CREDITOS) { sel = 0; return; }
+    if (vistaActual == V_CONFIG) { sel = 0; return; }
     if (vistaActual == V_RECIENTES)
     {
         for (int r = 0; r < nRecientes; r++)
@@ -292,17 +288,26 @@ void InterfazCuadro(float t, float dt, const Mando& m)
 }
 
 // ---------- pestaña de configuración (vale para todos los juegos) ----------
-enum { CF_PROPORCION, CF_FILTRO, CF_AVANCE, CF_REBOBINAR, NUM_CF };
+enum { CF_PROPORCION, CF_FILTRO, CF_AVANCE, CF_REBOBINAR, CF_ACERCA, NUM_CF };
 static int selConfig;
+static bool viendoAcerca;
+static void AcercaDe();
 static float selConfigSuave;
 
 static void Configuracion(float dt, const Mando& m)
 {
     AjustesGenerales& g = General();
+    if (viendoAcerca)
+    {
+        if (m.pulsados & (B_CIRCULO | B_CRUZ)) { viendoAcerca = false; Sonar(SON_ATRAS); }
+        AcercaDe();
+        return;
+    }
+    if (selConfig == CF_ACERCA && (m.pulsados & (B_CRUZ | B_DER))) { viendoAcerca = true; Sonar(SON_ACEPTAR); return; }
     if (m.pulsados & B_ARRIBA) { selConfig = (selConfig + NUM_CF - 1) % NUM_CF; Sonar(SON_MOVER); }
     if (m.pulsados & B_ABAJO) { selConfig = (selConfig + 1) % NUM_CF; Sonar(SON_MOVER); }
     int d = (m.pulsados & (B_DER | B_CRUZ)) ? 1 : (m.pulsados & B_IZQ) ? -1 : 0;
-    if (d)
+    if (d && selConfig != CF_ACERCA)
     {
         switch (selConfig)
         {
@@ -316,21 +321,22 @@ static void Configuracion(float dt, const Mando& m)
     }
     Suave(selConfigSuave, (float)selConfig, 18, dt);
 
-    float w = 1180, x = (ANCHO - w) / 2, y = 250, paso = 128, h = 140 + (float)NUM_CF * paso;
+    float w = 1180, x = (ANCHO - w) / 2, y = 236, paso = 112, h = 130 + (float)NUM_CF * paso;
     Sombra(x, y, w, h, 28, 40, .5f, true);
     Caja(x, y, w, h, 28, C_PANEL, .92f);
     Texto(F_SUBTITULO, "Configuración general", x + 48, y + 36, C_TEXTO);
     Texto(F_PEQUENA, "Vale para todos los juegos. Cada juego puede tener su propia proporción y filtro desde el menú de pausa (L3 + R3).",
           x + 48, y + 86, C_TEXTO_3);
-    float y0 = y + 140;
-    Caja(x + 24, y0 + selConfigSuave * paso - 16, w - 48, paso - 16, 18, C_ACENTO, .2f);
-    Borde(x + 24, y0 + selConfigSuave * paso - 16, w - 48, paso - 16, 18, 2, C_ACENTO, .7f);
-    static const char* const TITULOS[NUM_CF] = {"Proporción de la imagen", "Filtro", "Avance rápido (mantener R2)", "Rebobinar (mantener L2)"};
+    float y0 = y + 130;
+    Caja(x + 24, y0 + selConfigSuave * paso - 14, w - 48, paso - 12, 18, C_ACENTO, .2f);
+    Borde(x + 24, y0 + selConfigSuave * paso - 14, w - 48, paso - 12, 18, 2, C_ACENTO, .7f);
+    static const char* const TITULOS[NUM_CF] = {"Proporción de la imagen", "Filtro", "Avance rápido (mantener R2)", "Rebobinar (mantener L2)", "Acerca de SNESUI"};
     static const char* const AYUDAS[NUM_CF] = {
         "Cómo se ajusta la imagen a la pantalla.",
         "Suave, nítido o el aspecto de un televisor antiguo.",
         "Cuántas veces más rápido corre el juego.",
         "Guarda los últimos segundos para volver atrás. Desactivado, la consola trabaja menos.",
+        "Versión, autor y página del proyecto.",
     };
     for (int i = 0; i < NUM_CF; i++)
     {
@@ -341,18 +347,19 @@ static void Configuracion(float dt, const Mando& m)
         case CF_PROPORCION: snprintf(v, sizeof v, "« %s »", PROPORCIONES[g.proporcion]); break;
         case CF_FILTRO: snprintf(v, sizeof v, "« %s »", FILTROS[g.filtro]); break;
         case CF_AVANCE: snprintf(v, sizeof v, "« ×%d »", g.avance); break;
-        default: snprintf(v, sizeof v, "« %s »", g.rebobinar ? "Activado" : "Desactivado"); break;
+        case CF_REBOBINAR: snprintf(v, sizeof v, "« %s »", g.rebobinar ? "Activado" : "Desactivado"); break;
+        default: snprintf(v, sizeof v, "Ver  »"); break;
         }
         bool elegida = i == selConfig;
         Texto(F_CUERPO_M, TITULOS[i], x + 56, fy + 6, elegida ? C_TEXTO : C_TEXTO_2);
-        Texto(F_PEQUENA, AYUDAS[i], x + 56, fy + 50, C_TEXTO_3);
-        Texto(F_CUERPO_M, v, x + w - 56, fy + 18, elegida ? C_ACENTO : C_TEXTO_2, 1, 2);
+        Texto(F_PEQUENA, AYUDAS[i], x + 56, fy + 46, C_TEXTO_3);
+        Texto(F_CUERPO_M, v, x + w - 56, fy + 16, elegida ? C_ACENTO : C_TEXTO_2, 1, 2);
     }
     Texto(F_PEQUENA, "↑ ↓ elegir   ·   ← → cambiar   ·   L1 / R1 otras pestañas", ANCHO / 2, ALTO - 50, C_TEXTO_3, 1, 1);
 }
 
-// ---------- pestaña de créditos ----------
-static void Creditos()
+// ---------- Configuración → Acerca de SNESUI ----------
+static void AcercaDe()
 {
     float w = 1180, x = (ANCHO - w) / 2, y = 250, h = 650;
     Sombra(x, y, w, h, 28, 40, .5f, true);
@@ -371,17 +378,23 @@ static void Creditos()
     Texto(F_PEQUENA, "CREADO POR", cx, y + 318, C_TEXTO_3, 1, 1);
     Texto(F_TITULO, AUTOR, cx, y + 344, C_TEXTO, 1, 1);
     float lw = AnchoTexto(F_TITULO, AUTOR);
-    FranjaSnes(cx - lw / 2, y + 404, lw, 6, 1);
+    FranjaSnes(cx - lw / 2, y + 400, lw, 6, 1);
 
-    Texto(F_ETIQUETA, "Agradecimientos", cx, y + 446, C_TEXTO_2, 1, 1);
+    char web[96];
+    snprintf(web, sizeof web, "Descargas y novedades:  %s", PAGINA);
+    Texto(F_CUERPO_M, web, cx, y + 424, C_ACENTO, 1, 1);
+    Texto(F_ETIQUETA, "Agradecimientos", cx, y + 470, C_TEXTO_2, 1, 1);
     static const char* const GRACIAS[] = {
         "Carátulas: RetroArch (libretro-thumbnails)",
         "Comparación de exactitud: snes9x y bsnes   ·   Documentación: fullsnes",
         "Herramientas para PS4: OpenOrbis y GoldHEN",
         "Letra Inter (OFL)   ·   Imágenes PNG: stb",
     };
-    for (int i = 0; i < 4; i++) Texto(F_PEQUENA, GRACIAS[i], cx, y + 490 + i * 32, C_TEXTO_3, 1, 1);
+    for (int i = 0; i < 4; i++) Texto(F_PEQUENA, GRACIAS[i], cx, y + 512 + i * 30, C_TEXTO_3, 1, 1);
     Texto(F_PEQUENA, "SNESUI no tiene relación con Nintendo. Usa solo juegos que tengas.", cx, y + h + 26, C_TEXTO_3, 1, 1);
+    int b[1] = {BM_CIRCULO};
+    const char* tx[1] = {"Volver a la configuración"};
+    Pistas(b, tx, 1);
 }
 
 static void Biblioteca(float t, float dt, const Mando& m)
@@ -405,6 +418,7 @@ static void Biblioteca(float t, float dt, const Mando& m)
     if (cambio)
     {
         vistaActual = (vistaActual + NUM_VISTAS + cambio) % NUM_VISTAS;
+        viendoAcerca = false;
         sel = 0;
         scrollVis = 0;
         ArmarVista();
@@ -412,10 +426,9 @@ static void Biblioteca(float t, float dt, const Mando& m)
     }
     Suave(vistaSuave, (float)vistaActual, 14, dt);
     DibujarPestanas();
-    if (vistaActual == V_CONFIG || vistaActual == V_CREDITOS)
+    if (vistaActual == V_CONFIG)
     {
-        if (vistaActual == V_CONFIG) Configuracion(dt, m);
-        else Creditos();
+        Configuracion(dt, m);
         DibujarDescarga(dt);
         return;
     }
