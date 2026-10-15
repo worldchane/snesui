@@ -17,7 +17,7 @@
 #include "fondo.h"
 #include "juego.h"
 
-static const char* const VERSION = "0.9";
+static const char* const VERSION = "1.0";
 static const char* const AUTOR = "RudolphGamerBkn";   // el creador de SNESUI (Configuración → Acerca de)
 static const char* const PAGINA = "github.com/worldchane/snesui";
 
