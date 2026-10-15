@@ -17,6 +17,7 @@
 #include "juego.h"
 
 static const char* const VERSION = "0.9";
+static const char* const AUTOR = "RudolhGamerBkn";   // el creador de SNESUI (presentación y créditos)
 
 static Juego juegos[MAX_JUEGOS];
 static int nJuegos;
@@ -50,6 +51,11 @@ static bool Presentacion(float dt, const Mando& m)
     {
         float w = 1180 * crece, h = w * logoH / logoW;
         Imagen(logo, logoW, logoH, (ANCHO - w) / 2, (ALTO - h) / 2, w, h, a, true);
+        // El autor, que aparece un poco después que el logo.
+        float b = tLogo < 1.1f ? 0 : tLogo < 1.7f ? (tLogo - 1.1f) / .6f : 1;
+        char autor[64];
+        snprintf(autor, sizeof autor, "por %s", AUTOR);
+        Texto(F_SUBTITULO, autor, ANCHO / 2, (ALTO + h) / 2 + 30, C_TEXTO_2, a * b, 1);
     }
     else Texto(F_LOGO, "SNESUI", ANCHO / 2, ALTO / 2 - 70, C_TEXTO, a, 1);
     return true;
@@ -102,8 +108,8 @@ static const float X0 = MARGEN, Y0 = 258;
 // ---------- pestañas: todos, recientes y favoritos ----------
 // Los recientes (los últimos abiertos, el más nuevo primero) y los favoritos se guardan por clave (nombre de archivo) en
 // /data/snes-ps4/recientes.txt y favoritos.txt, una por línea.
-enum { V_TODOS, V_RECIENTES, V_FAVORITOS, V_CONFIG, NUM_VISTAS };
-static const char* const VISTAS[NUM_VISTAS] = {"Todos", "Recientes", "Favoritos", "Configuración"};
+enum { V_TODOS, V_RECIENTES, V_FAVORITOS, V_CONFIG, V_CREDITOS, NUM_VISTAS };
+static const char* const VISTAS[NUM_VISTAS] = {"Todos", "Recientes", "Favoritos", "Configuración", "Créditos"};
 static int vistaActual;
 static float vistaSuave;
 static int vista[MAX_JUEGOS], nVista;   // índices de 'juegos' que se muestran
@@ -174,7 +180,7 @@ static void AnotarReciente(const char* clave)
 static void ArmarVista()
 {
     nVista = 0;
-    if (vistaActual == V_CONFIG) { sel = 0; return; }
+    if (vistaActual == V_CONFIG || vistaActual == V_CREDITOS) { sel = 0; return; }
     if (vistaActual == V_RECIENTES)
     {
         for (int r = 0; r < nRecientes; r++)
@@ -345,6 +351,39 @@ static void Configuracion(float dt, const Mando& m)
     Texto(F_PEQUENA, "↑ ↓ elegir   ·   ← → cambiar   ·   L1 / R1 otras pestañas", ANCHO / 2, ALTO - 50, C_TEXTO_3, 1, 1);
 }
 
+// ---------- pestaña de créditos ----------
+static void Creditos()
+{
+    float w = 1180, x = (ANCHO - w) / 2, y = 250, h = 650;
+    Sombra(x, y, w, h, 28, 40, .5f, true);
+    Caja(x, y, w, h, 28, C_PANEL, .92f);
+    float cx = ANCHO / 2;
+    if (logo)
+    {
+        // El logo tiene fondo negro: va sobre una franja negra de lado a lado (así el negro es parte del diseño).
+        float lw = 620, lh = lw * logoH / logoW;
+        Caja(x + 20, y + 20, w - 40, lh + 8, 20, 0x000000, 1);
+        Imagen(logo, logoW, logoH, cx - lw / 2, y + 24, lw, lh, 1, true);
+    }
+    char v[64];
+    snprintf(v, sizeof v, "Emulador de Super Nintendo para PS4   ·   versión %s", VERSION);
+    Texto(F_CUERPO, v, cx, y + 270, C_TEXTO_2, 1, 1);
+    Texto(F_PEQUENA, "CREADO POR", cx, y + 318, C_TEXTO_3, 1, 1);
+    Texto(F_TITULO, AUTOR, cx, y + 344, C_TEXTO, 1, 1);
+    float lw = AnchoTexto(F_TITULO, AUTOR);
+    FranjaSnes(cx - lw / 2, y + 404, lw, 6, 1);
+
+    Texto(F_ETIQUETA, "Agradecimientos", cx, y + 446, C_TEXTO_2, 1, 1);
+    static const char* const GRACIAS[] = {
+        "Carátulas: RetroArch (libretro-thumbnails)",
+        "Comparación de exactitud: snes9x y bsnes   ·   Documentación: fullsnes",
+        "Herramientas para PS4: OpenOrbis y GoldHEN",
+        "Letra Inter (OFL)   ·   Imágenes PNG: stb",
+    };
+    for (int i = 0; i < 4; i++) Texto(F_PEQUENA, GRACIAS[i], cx, y + 490 + i * 32, C_TEXTO_3, 1, 1);
+    Texto(F_PEQUENA, "SNESUI no tiene relación con Nintendo. Usa solo juegos que tengas.", cx, y + h + 26, C_TEXTO_3, 1, 1);
+}
+
 static void Biblioteca(float t, float dt, const Mando& m)
 {
     FondoPixel(t);
@@ -373,9 +412,10 @@ static void Biblioteca(float t, float dt, const Mando& m)
     }
     Suave(vistaSuave, (float)vistaActual, 14, dt);
     DibujarPestanas();
-    if (vistaActual == V_CONFIG)
+    if (vistaActual == V_CONFIG || vistaActual == V_CREDITOS)
     {
-        Configuracion(dt, m);
+        if (vistaActual == V_CONFIG) Configuracion(dt, m);
+        else Creditos();
         DibujarDescarga(dt);
         return;
     }

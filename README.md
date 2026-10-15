@@ -131,4 +131,4 @@ globales. Están explicados en `construir.sh`, y `herramientas/revisar_elf.py` r
 
 SNESUI no tiene relación con Nintendo. Super Nintendo es marca de Nintendo. Usa solo ROMs de juegos que tengas.
 
-© rodogamerbkn. Todos los derechos reservados.
+Creado por **RudolhGamerBkn**. © RudolhGamerBkn. Todos los derechos reservados.

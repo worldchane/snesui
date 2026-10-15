@@ -171,26 +171,59 @@ void FondoPixel(float t)
         }
     }
 
-    // Nubes: grupos de círculos que cruzan despacio, con un borde superior más claro.
-    for (int k = 0; k < 4; k++)
+    // Nubes: cada una con su propia forma (varias "bolas" de distinto tamaño sobre una base plana), iluminada desde
+    // arriba por la luna (borde claro arriba, sombra abajo), con los bordes tramados para que se fundan con el cielo.
+    // Dos capas: las lejanas, chicas, tenues y lentas; las cercanas, grandes y más rápidas.
+    for (int k = 0; k < 7; k++)
     {
-        uint32_t h = Hash(k * 101u + 9);
-        float vel = 5.f + k * 3.f;
-        int ancho = FW + 120;
-        int cx = (int)fmodf((float)(h % ancho) + t * vel, (float)ancho) - 60;
-        int cy = 30 + (int)((h >> 8) % 50) + k * 6;
-        static const int BOLAS[5][3] = {{0, 0, 7}, {9, -3, 9}, {20, 0, 7}, {-9, 2, 5}, {28, 3, 5}};
-        for (auto& b : BOLAS)
-            for (int y = -b[2]; y <= b[2]; y++)
-                for (int x = -b[2]; x <= b[2]; x++)
+        bool lejana = k < 4;
+        uint32_t h = Hash(k * 7349u + 11);
+        float escala = lejana ? .6f + (h >> 24 & 3) * .08f : 1.f + (h >> 24 & 3) * .12f;
+        float vel = lejana ? 2.5f + (h >> 20 & 3) * .6f : 6.f + (h >> 20 & 3) * 1.2f;
+        int bolas = 4 + (int)(h >> 16 & 3);
+        float largo = (18 + bolas * 9) * escala;
+        float recorrido = FW + largo + 40;
+        int baseX = (int)(fmodf((float)(h % 997) * 3.1f + t * vel, recorrido) - largo - 20);
+        int baseY = (lejana ? 40 : 58) + (int)((h >> 8) % 26);
+        float alfa = lejana ? .55f : .9f;
+        // Las bolas: más grandes en el medio, más chicas en las puntas.
+        float bx[8], by[8], br[8];
+        for (int b = 0; b < bolas; b++)
+        {
+            float u = (b + .5f) / bolas;                    // 0..1 a lo largo de la nube
+            float r = (5 + 7 * sinf(u * 3.14159f) + (Hash(h + b * 13u) % 4)) * escala;
+            br[b] = r;
+            bx[b] = baseX + u * largo;
+            by[b] = baseY - r * .55f;
+        }
+        int x0 = baseX - 14, x1 = (int)(baseX + largo + 14), y0 = baseY - (int)(16 * escala) - 6, y1 = baseY;
+        for (int y = y0; y <= y1; y++)
+        {
+            if (y < 0 || y >= FH) continue;
+            for (int x = x0; x <= x1; x++)
+            {
+                if (x < 0 || x >= FW) continue;
+                // Cuánto adentro está el píxel (0 = borde, 1 = centro de una bola) y en qué parte de su bola.
+                float mejor = -1, alto = 0;
+                for (int b = 0; b < bolas; b++)
                 {
-                    if (x * x + y * y > b[2] * b[2]) continue;
-                    int X = cx + b[0] + x, Y = cy + b[1] + y;
-                    if (X < 0 || X >= FW || Y < 0 || Y >= FH) continue;
-                    if (y > 3) continue;   // la base de la nube es plana
-                    bool borde = y < -b[2] + 2;
-                    Punto(X, Y, borde ? 0x4B2A7A : 0x2E1856);
+                    float dx = (x - bx[b]) / br[b], dy = (y - by[b]) / br[b];
+                    float f = 1 - sqrtf(dx * dx + dy * dy);
+                    if (f > mejor) { mejor = f; alto = dy; }
                 }
+                if (mejor <= 0) continue;
+                // Borde tramado: cerca del contorno solo algunos píxeles (se funde con el cielo).
+                if (mejor < .18f && mejor * 90 < BAYER[y & 3][x & 3]) continue;
+                uint32_t c;
+                if (y >= baseY - 1) c = lejana ? 0x2B1A52 : 0x34205F;                 // base en sombra
+                else if (alto < -.45f) c = lejana ? 0x6E58A8 : 0xA48BE0;              // luz de arriba
+                else if (alto < -.05f) c = lejana ? 0x4E3B85 : 0x7860B8;              // tono medio
+                else c = lejana ? 0x3A2A6A : 0x523C8A;                                 // sombra de abajo
+                // Entre tono y tono, una línea tramada para que el cambio no sea un escalón.
+                if (alto > -.5f && alto < -.4f && (BAYER[y & 3][x & 3] & 1)) c = Mezcla(c, lejana ? 0x4E3B85 : 0x7860B8, .5f);
+                px[y * FW + x] = Mezcla(px[y * FW + x], c, alfa);
+            }
+        }
     }
 
     // Montañas lejanas, colinas y pinos: cada capa se desplaza a otra velocidad (profundidad).
