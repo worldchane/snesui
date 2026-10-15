@@ -24,6 +24,8 @@ definición, carátulas automáticas, guardado de partidas y filtros de imagen.
   - La batería del cartucho se guarda sola en `.srm`, compatible con snes9x y bsnes.
   - Hay 4 ranuras de estado rápido por juego, cada una con miniatura.
 - **Carátulas automáticas.** Se bajan desde la base de RetroArch, aunque el nombre del archivo no sea exacto.
+- **Configuración general y por juego.** La pestaña Configuración vale para todos los juegos; desde el menú de pausa
+  cada juego puede tener su propia proporción y filtro.
 - **Imagen.**
   - Proporción: 4:3, 8:7, píxel exacto o 16:9.
   - Filtros: suave, nítido, nítido suavizado, líneas de TV y CRT.
@@ -59,7 +61,7 @@ Hay dos versiones del PKG:
 | △ | Buscar juegos en el USB |
 | □ | Bajar las carátulas que falten |
 | OPTIONS | Marcar o quitar de favoritos (★) |
-| L1 / R1 | Cambiar de pestaña: Todos, Recientes, Favoritos |
+| L1 / R1 | Cambiar de pestaña: Todos, Recientes, Favoritos, Configuración |
 
 | Jugando | Botón de la SNES |
 |---|---|
@@ -80,7 +82,8 @@ Todo queda en `/data/snes-ps4/` en la consola:
 
 - `guardados/`: las partidas (`.srm`) y los estados rápidos (`.st0` a `.st3`);
 - `caratulas/`: las carátulas bajadas;
-- `ajustes.txt`: la proporción y el filtro elegidos.
+- `ajustes.txt`: la configuración general (proporción, filtro, avance rápido, rebobinar);
+- `guardados/<juego>.cfg`: la proporción y el filtro propios de un juego, si se cambiaron desde su menú de pausa.
 
 ## Estado actual
 

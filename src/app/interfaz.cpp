@@ -11,11 +11,12 @@
 #include "../comun/lienzo.h"
 #include "../comun/texto.h"
 #include "biblioteca.h"
+#include "ajustes.h"
 #include "caratula.h"
 #include "fondo.h"
 #include "juego.h"
 
-static const char* const VERSION = "0.8";
+static const char* const VERSION = "0.9";
 
 static Juego juegos[MAX_JUEGOS];
 static int nJuegos;
@@ -101,8 +102,8 @@ static const float X0 = MARGEN, Y0 = 258;
 // ---------- pestañas: todos, recientes y favoritos ----------
 // Los recientes (los últimos abiertos, el más nuevo primero) y los favoritos se guardan por clave (nombre de archivo) en
 // /data/snes-ps4/recientes.txt y favoritos.txt, una por línea.
-enum { V_TODOS, V_RECIENTES, V_FAVORITOS, NUM_VISTAS };
-static const char* const VISTAS[NUM_VISTAS] = {"Todos", "Recientes", "Favoritos"};
+enum { V_TODOS, V_RECIENTES, V_FAVORITOS, V_CONFIG, NUM_VISTAS };
+static const char* const VISTAS[NUM_VISTAS] = {"Todos", "Recientes", "Favoritos", "Configuración"};
 static int vistaActual;
 static float vistaSuave;
 static int vista[MAX_JUEGOS], nVista;   // índices de 'juegos' que se muestran
@@ -173,6 +174,7 @@ static void AnotarReciente(const char* clave)
 static void ArmarVista()
 {
     nVista = 0;
+    if (vistaActual == V_CONFIG) { sel = 0; return; }
     if (vistaActual == V_RECIENTES)
     {
         for (int r = 0; r < nRecientes; r++)
@@ -191,6 +193,7 @@ void InterfazIniciar()
     nJuegos = BuscarJuegos(juegos, MAX_JUEGOS);
     nRecientes = LeerLista("recientes.txt", recientes, MAX_RECIENTES);
     nFavoritos = LeerLista("favoritos.txt", favoritos, MAX_FAVORITOS);
+    AjustesLeer();
     ArmarVista();
 }
 
@@ -282,6 +285,66 @@ void InterfazCuadro(float t, float dt, const Mando& m)
     if (entrada < .995f) Caja(0, 0, ANCHO, ALTO, 0, 0x000000, 1 - entrada);
 }
 
+// ---------- pestaña de configuración (vale para todos los juegos) ----------
+enum { CF_PROPORCION, CF_FILTRO, CF_AVANCE, CF_REBOBINAR, NUM_CF };
+static int selConfig;
+static float selConfigSuave;
+
+static void Configuracion(float dt, const Mando& m)
+{
+    AjustesGenerales& g = General();
+    if (m.pulsados & B_ARRIBA) { selConfig = (selConfig + NUM_CF - 1) % NUM_CF; Sonar(SON_MOVER); }
+    if (m.pulsados & B_ABAJO) { selConfig = (selConfig + 1) % NUM_CF; Sonar(SON_MOVER); }
+    int d = (m.pulsados & (B_DER | B_CRUZ)) ? 1 : (m.pulsados & B_IZQ) ? -1 : 0;
+    if (d)
+    {
+        switch (selConfig)
+        {
+        case CF_PROPORCION: g.proporcion = (g.proporcion + NUM_PROPORCIONES + d) % NUM_PROPORCIONES; break;
+        case CF_FILTRO: g.filtro = (g.filtro + NUM_FILTROS + d) % NUM_FILTROS; break;
+        case CF_AVANCE: g.avance = 2 + (g.avance - 2 + 3 + d) % 3; break;
+        case CF_REBOBINAR: g.rebobinar = !g.rebobinar; break;
+        }
+        AjustesGuardar();
+        Sonar(SON_MOVER);
+    }
+    Suave(selConfigSuave, (float)selConfig, 18, dt);
+
+    float w = 1180, x = (ANCHO - w) / 2, y = 250, paso = 128, h = 140 + (float)NUM_CF * paso;
+    Sombra(x, y, w, h, 28, 40, .5f, true);
+    Caja(x, y, w, h, 28, C_PANEL, .92f);
+    Texto(F_SUBTITULO, "Configuración general", x + 48, y + 36, C_TEXTO);
+    Texto(F_PEQUENA, "Vale para todos los juegos. Cada juego puede tener su propia proporción y filtro desde el menú de pausa (L3 + R3).",
+          x + 48, y + 86, C_TEXTO_3);
+    float y0 = y + 140;
+    Caja(x + 24, y0 + selConfigSuave * paso - 16, w - 48, paso - 16, 18, C_ACENTO, .2f);
+    Borde(x + 24, y0 + selConfigSuave * paso - 16, w - 48, paso - 16, 18, 2, C_ACENTO, .7f);
+    static const char* const TITULOS[NUM_CF] = {"Proporción de la imagen", "Filtro", "Avance rápido (mantener R2)", "Rebobinar (mantener L2)"};
+    static const char* const AYUDAS[NUM_CF] = {
+        "Cómo se ajusta la imagen a la pantalla.",
+        "Suave, nítido o el aspecto de un televisor antiguo.",
+        "Cuántas veces más rápido corre el juego.",
+        "Guarda los últimos segundos para volver atrás. Desactivado, la consola trabaja menos.",
+    };
+    for (int i = 0; i < NUM_CF; i++)
+    {
+        float fy = y0 + i * paso;
+        char v[64];
+        switch (i)
+        {
+        case CF_PROPORCION: snprintf(v, sizeof v, "« %s »", PROPORCIONES[g.proporcion]); break;
+        case CF_FILTRO: snprintf(v, sizeof v, "« %s »", FILTROS[g.filtro]); break;
+        case CF_AVANCE: snprintf(v, sizeof v, "« ×%d »", g.avance); break;
+        default: snprintf(v, sizeof v, "« %s »", g.rebobinar ? "Activado" : "Desactivado"); break;
+        }
+        bool elegida = i == selConfig;
+        Texto(F_CUERPO_M, TITULOS[i], x + 56, fy + 6, elegida ? C_TEXTO : C_TEXTO_2);
+        Texto(F_PEQUENA, AYUDAS[i], x + 56, fy + 50, C_TEXTO_3);
+        Texto(F_CUERPO_M, v, x + w - 56, fy + 18, elegida ? C_ACENTO : C_TEXTO_2, 1, 2);
+    }
+    Texto(F_PEQUENA, "↑ ↓ elegir   ·   ← → cambiar   ·   L1 / R1 otras pestañas", ANCHO / 2, ALTO - 50, C_TEXTO_3, 1, 1);
+}
+
 static void Biblioteca(float t, float dt, const Mando& m)
 {
     FondoPixel(t);
@@ -310,6 +373,12 @@ static void Biblioteca(float t, float dt, const Mando& m)
     }
     Suave(vistaSuave, (float)vistaActual, 14, dt);
     DibujarPestanas();
+    if (vistaActual == V_CONFIG)
+    {
+        Configuracion(dt, m);
+        DibujarDescarga(dt);
+        return;
+    }
 
     if ((m.pulsados & B_CRUZ) && nVista > 0)
     {

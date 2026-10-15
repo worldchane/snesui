@@ -18,6 +18,7 @@
 #include "../comun/lienzo.h"
 #include "../comun/texto.h"
 #include "../nucleo/snes.h"
+#include "ajustes.h"
 #include "rebobinar.h"
 
 static bool abierto;
@@ -206,38 +207,40 @@ static uint16_t ABotonesSnes(uint32_t a)
 // La historia de rebobinado se reinicia cuando el juego salta a otro momento (abrir, cargar estado, reiniciar).
 static void NuevaHistoria()
 {
-    hayHistoria = RebobinarIniciar();
+    hayHistoria = General().rebobinar && RebobinarIniciar();
     cuadrosHistoria = 0;
 }
 
 // ---------- imagen: proporción y filtros ----------
-enum { PR_4_3, PR_8_7, PR_ENTERO, PR_16_9, NUM_PROPORCIONES };
-static const char* const PROPORCIONES[NUM_PROPORCIONES] = {"4:3 (como la TV)", "8:7 (píxeles cuadrados)", "Píxel exacto", "16:9 (estirada)"};
-enum { FI_SUAVE, FI_NITIDO, FI_NITIDO_SUAVE, FI_LINEAS, FI_CRT, NUM_FILTROS };
-static const char* const FILTROS[NUM_FILTROS] = {"Suave", "Nítido", "Nítido suavizado", "Líneas de TV", "CRT"};
+// La proporción y el filtro que se usan: los propios del juego si los tiene, si no los generales (ver ajustes.h).
+// Los del juego se guardan en <rom>.cfg junto a sus partidas (-1 = usar el general).
 static int proporcion = PR_4_3, filtro = FI_SUAVE;
-static bool ajustesLeidos;
+static int propJuego = -1, filtroJuego = -1;
 
-static void LeerAjustes()
+static void AplicarAjustes()
 {
-    char ruta[160], txt[128] = "";
-    snprintf(ruta, sizeof ruta, "%s/ajustes.txt", CARPETA_DATOS);
-    if (LeerTexto(ruta, txt, sizeof txt) <= 0) return;
-    int p = 0, f = 0;
-    if (sscanf(txt, "proporcion=%d filtro=%d", &p, &f) == 2)
-    {
-        if (p >= 0 && p < NUM_PROPORCIONES) proporcion = p;
-        if (f >= 0 && f < NUM_FILTROS) filtro = f;
-    }
+    proporcion = propJuego >= 0 ? propJuego : General().proporcion;
+    filtro = filtroJuego >= 0 ? filtroJuego : General().filtro;
 }
 
-static void GuardarAjustes()
+static void LeerAjustesJuego()
 {
-    char ruta[160], txt[64];
-    CrearCarpetas(CARPETA_DATOS);
-    snprintf(ruta, sizeof ruta, "%s/ajustes.txt", CARPETA_DATOS);
-    snprintf(txt, sizeof txt, "proporcion=%d filtro=%d\n", proporcion, filtro);
+    propJuego = filtroJuego = -1;
+    char ruta[300], txt[96] = "";
+    snprintf(ruta, sizeof ruta, "%s.cfg", base);
+    if (LeerTexto(ruta, txt, sizeof txt) > 0) sscanf(txt, "proporcion=%d filtro=%d", &propJuego, &filtroJuego);
+    if (propJuego >= NUM_PROPORCIONES) propJuego = -1;
+    if (filtroJuego >= NUM_FILTROS) filtroJuego = -1;
+    AplicarAjustes();
+}
+
+static void GuardarAjustesJuego()
+{
+    char ruta[300], txt[64];
+    snprintf(ruta, sizeof ruta, "%s.cfg", base);
+    snprintf(txt, sizeof txt, "proporcion=%d filtro=%d\n", propJuego, filtroJuego);
     EscribirTexto(ruta, txt);
+    AplicarAjustes();
 }
 
 // El rectángulo de la imagen en la pantalla según la proporción.
@@ -344,8 +347,9 @@ static void DibujarImagen()
 }
 
 // ---------- menú de pausa ----------
-enum { OP_CONTINUAR, OP_GUARDAR, OP_CARGAR, OP_PROPORCION, OP_FILTRO, OP_REINICIAR, OP_SALIR, NUM_OPCIONES };
-static const char* const OPCIONES[NUM_OPCIONES] = {"Continuar", "Guardar estado", "Cargar estado", "Proporción", "Filtro", "Reiniciar", "Volver a la biblioteca"};
+enum { OP_CONTINUAR, OP_GUARDAR, OP_CARGAR, OP_PROPORCION, OP_FILTRO, OP_GENERAL, OP_REINICIAR, OP_SALIR, NUM_OPCIONES };
+static const char* const OPCIONES[NUM_OPCIONES] = {"Continuar", "Guardar estado", "Cargar estado", "Proporción", "Filtro",
+                                                   "Usar la configuración general", "Reiniciar", "Volver a la biblioteca"};
 static bool menu;
 static float visMenu, selSuave, transparencia;
 static int sel, ranura;
@@ -442,15 +446,23 @@ static void MenuEntrada(const Mando& m)
     // ← → cambia el valor de la opción elegida: la ranura, la proporción o el filtro.
     int d = (m.pulsados & B_DER) ? 1 : (m.pulsados & B_IZQ) ? -1 : 0;
     if (d && (sel == OP_GUARDAR || sel == OP_CARGAR)) { ranura = (ranura + RANURAS + d) % RANURAS; Sonar(SON_MOVER); }
-    if (d && sel == OP_PROPORCION) { proporcion = (proporcion + NUM_PROPORCIONES + d) % NUM_PROPORCIONES; GuardarAjustes(); Sonar(SON_MOVER); }
-    if (d && sel == OP_FILTRO) { filtro = (filtro + NUM_FILTROS + d) % NUM_FILTROS; GuardarAjustes(); Sonar(SON_MOVER); }
+    // Proporción y filtro cambiados acá valen solo para este juego.
+    if (d && sel == OP_PROPORCION) { propJuego = (proporcion + NUM_PROPORCIONES + d) % NUM_PROPORCIONES; GuardarAjustesJuego(); Sonar(SON_MOVER); }
+    if (d && sel == OP_FILTRO) { filtroJuego = (filtro + NUM_FILTROS + d) % NUM_FILTROS; GuardarAjustesJuego(); Sonar(SON_MOVER); }
     if (m.pulsados & (B_CIRCULO | B_OPTIONS)) { menu = false; Sonar(SON_ATRAS); return; }
     if (!(m.pulsados & B_CRUZ)) return;
     switch (sel)
     {
     case OP_CONTINUAR: menu = false; Sonar(SON_ACEPTAR); break;
-    case OP_PROPORCION: proporcion = (proporcion + 1) % NUM_PROPORCIONES; GuardarAjustes(); Sonar(SON_MOVER); break;
-    case OP_FILTRO: filtro = (filtro + 1) % NUM_FILTROS; GuardarAjustes(); Sonar(SON_MOVER); break;
+    case OP_PROPORCION: propJuego = (proporcion + 1) % NUM_PROPORCIONES; GuardarAjustesJuego(); Sonar(SON_MOVER); break;
+    case OP_FILTRO: filtroJuego = (filtro + 1) % NUM_FILTROS; GuardarAjustesJuego(); Sonar(SON_MOVER); break;
+    case OP_GENERAL:
+        if (propJuego < 0 && filtroJuego < 0) { Sonar(SON_ERROR); break; }
+        propJuego = filtroJuego = -1;
+        GuardarAjustesJuego();
+        Avisar("Este juego usa ahora la configuración general", C_BIEN);
+        Sonar(SON_ACEPTAR);
+        break;
     case OP_GUARDAR: GuardarEstado(ranura); Sonar(SON_ACEPTAR); menu = false; break;
     case OP_CARGAR: if (CargarEstado(ranura)) { Sonar(SON_ACEPTAR); menu = false; } else Sonar(SON_ERROR); break;
     case OP_REINICIAR: SnesReiniciar(); AudioJuegoVaciar(); NuevaHistoria(); Avisar("Juego reiniciado", C_TEXTO); Sonar(SON_ACEPTAR); menu = false; break;
@@ -462,7 +474,7 @@ static void MenuDibujar(float a)
 {
     if (a <= .01f) return;
     // Mientras se elige proporción o filtro, el juego se ve casi sin oscurecer a la derecha (vista previa en vivo).
-    bool vistaPrevia = sel == OP_PROPORCION || sel == OP_FILTRO;
+    bool vistaPrevia = sel == OP_PROPORCION || sel == OP_FILTRO || sel == OP_GENERAL;
     Suave(transparencia, vistaPrevia ? 1 : 0, 12, 1 / 60.f);
     float fondo = .78f - .62f * transparencia;
     Velo(0, 0, ANCHO, ALTO, 0, 0x0A0614, fondo * a, fondo * a);
@@ -482,10 +494,19 @@ static void MenuDibujar(float a)
         else snprintf(t, sizeof t, "%s", OPCIONES[i]);
         if (i == OP_PROPORCION || i == OP_FILTRO)
         {
+            // El valor que usa el juego, y debajo de dónde sale: la configuración general o la propia del juego.
             Texto(F_SUBTITULO, OPCIONES[i], x, y0 + i * paso, i == sel ? C_TEXTO : C_TEXTO_2, a);
             char v[64];
             snprintf(v, sizeof v, "« %s »", i == OP_PROPORCION ? PROPORCIONES[proporcion] : FILTROS[filtro]);
-            Texto(F_CUERPO_M, v, x + 580, y0 + i * paso + 4, i == sel ? C_ACENTO : C_TEXTO_3, a, 2);
+            Texto(F_CUERPO_M, v, x + 580, y0 + i * paso - 6, i == sel ? C_ACENTO : C_TEXTO_3, a, 2);
+            bool propio = i == OP_PROPORCION ? propJuego >= 0 : filtroJuego >= 0;
+            Texto(F_PEQUENA, propio ? "Este juego" : "General", x + 580, y0 + i * paso + 24, propio ? C_SNES_B : C_TEXTO_3, a, 2);
+            continue;
+        }
+        if (i == OP_GENERAL)
+        {
+            bool hay = propJuego >= 0 || filtroJuego >= 0;   // solo tiene efecto si el juego tiene configuración propia
+            Texto(F_SUBTITULO, OPCIONES[i], x, y0 + i * paso, hay ? (i == sel ? C_TEXTO : C_TEXTO_2) : C_TEXTO_3, hay ? a : a * .6f);
             continue;
         }
         Texto(F_SUBTITULO, t, x, y0 + i * paso, i == sel ? C_TEXTO : C_TEXTO_2, a);
@@ -522,7 +543,7 @@ static void MenuDibujar(float a)
     int b[2] = {BM_CRUZ, BM_CIRCULO};
     const char* tx[2] = {"Aceptar", "Volver al juego"};
     Pistas(b, tx, 2, a);
-    Texto(F_PEQUENA, "← → cambia la ranura, la proporción o el filtro", MARGEN, ALTO - 44, C_TEXTO_3, a);
+    Texto(F_PEQUENA, "← → cambia la ranura, la proporción o el filtro (la proporción y el filtro, solo para este juego)", MARGEN, ALTO - 44, C_TEXTO_3, a);
 }
 
 // ---------- pantalla ----------
@@ -530,7 +551,7 @@ bool JuegoAbrir(const char* ruta, const char* nom)
 {
     snprintf(nombre, sizeof nombre, "%s", nom);
     error[0] = 0;
-    if (!ajustesLeidos) { LeerAjustes(); ajustesLeidos = true; }
+
     procesadoDe = -1;
     if (!hiloCreado) hiloCreado = Lanzar(HiloEmulacion, NULL, "emulacion");
     EsperarHilo();
@@ -540,6 +561,7 @@ bool JuegoAbrir(const char* ruta, const char* nom)
     bool ok = SnesCargar(ruta, error);
     CerrarAccesoCompleto();
     ArmarBase(ruta);
+    LeerAjustesJuego();
     if (ok)
     {
         CargarSram();
@@ -612,7 +634,7 @@ void JuegoCuadro(float t, float dt, const Mando& m)
     {
         botones.store(ABotonesSnes(m.apretados), std::memory_order_relaxed);
         botones2.store(ABotonesSnes(a2), std::memory_order_relaxed);
-        velocidad.store((m.apretados & B_R2) ? 4 : 1, std::memory_order_relaxed);
+        velocidad.store((m.apretados & B_R2) ? General().avance : 1, std::memory_order_relaxed);
         rebobinando.store((m.apretados & B_L2) != 0, std::memory_order_relaxed);
         if (hechos.load(std::memory_order_acquire) == pedidos.load(std::memory_order_acquire))
             pedidos.fetch_add(1, std::memory_order_release);

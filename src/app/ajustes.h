@@ -1,0 +1,18 @@
+// Configuración general (para todos los juegos), en /data/snes-ps4/ajustes.txt. Cada juego puede tener su propia
+// proporción y filtro desde el menú de pausa; si no, usa estos.
+#pragma once
+
+enum { PR_4_3, PR_8_7, PR_ENTERO, PR_16_9, NUM_PROPORCIONES };
+enum { FI_SUAVE, FI_NITIDO, FI_NITIDO_SUAVE, FI_LINEAS, FI_CRT, NUM_FILTROS };
+extern const char* const PROPORCIONES[NUM_PROPORCIONES];
+extern const char* const FILTROS[NUM_FILTROS];
+
+struct AjustesGenerales
+{
+    int proporcion, filtro;
+    int avance;      // velocidad del avance rápido: 2, 3 o 4
+    int rebobinar;   // 1 = guardar historia para rebobinar con L2
+};
+AjustesGenerales& General();
+void AjustesLeer();
+void AjustesGuardar();

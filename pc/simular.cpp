@@ -69,18 +69,30 @@ int main()
         {28.60f, 0, "8_guardado"},
         {29.0f, B_L3 | B_R3, NULL},
         {29.2f, B_ABAJO, NULL}, {29.35f, B_ABAJO, NULL}, {29.5f, B_ABAJO, NULL},
-        {29.65f, B_ABAJO, NULL}, {29.8f, B_ABAJO, NULL}, {29.95f, B_ABAJO, NULL},
-        {30.2f, B_CRUZ, NULL},
+        {29.65f, B_ABAJO, NULL}, {29.8f, B_ABAJO, NULL}, {29.95f, B_ABAJO, NULL}, {30.1f, B_ABAJO, NULL},
+        {30.3f, B_CRUZ, NULL},
         {31.5f, B_OPTIONS, NULL},
         {32.0f, 0, "9_favorito"},
         {32.2f, B_R1, NULL},
         {32.8f, 0, "10_recientes"},
         {33.0f, B_R1, NULL},
         {33.6f, 0, "11_favoritos"},
+        {34.0f, B_R1, NULL},
+        {34.3f, B_ABAJO, NULL},
+        {34.5f, B_DER, NULL},
+        {35.0f, 0, "12_config"},
+        {35.2f, B_R1, NULL},
+        {35.3f, B_DER, NULL},
+        {35.4f, B_DER, NULL},
+        {35.6f, B_CRUZ, NULL},
+        {37.0f, B_L3 | B_R3, NULL},
+        {37.2f, B_ABAJO, NULL}, {37.35f, B_ABAJO, NULL}, {37.5f, B_ABAJO, NULL},
+        {37.7f, B_DER, NULL},
+        {38.3f, 0, "13_menu_juego"},
     };
     const int N = sizeof guion / sizeof guion[0];
     int k = 0;
-    for (int cuadro = 0; tiempoSimulado < 34; cuadro++)
+    for (int cuadro = 0; tiempoSimulado < 39; cuadro++)
     {
         tiempoSimulado = cuadro / 60.0;
         Mando m = {};
