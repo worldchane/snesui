@@ -124,6 +124,9 @@ static inline bool EscribirSuperFx(uint8_t banco, uint16_t off, uint8_t v)
         if (off >= 0x6000 && off < 0x8000)
         {
             GsuCorrerHasta(ciclosMaestros);
+#ifdef GSU_TRAZA
+            { void VigilarRam(uint32_t, uint8_t, const char*); VigilarRam(off - 0x6000, v, GsuTieneRam() ? "SNES(bloq)" : "SNES"); }
+#endif
             if (!GsuTieneRam()) { sram[off - 0x6000] = v; sramCambiada = true; }   // con la RAM en uso por el chip, se ignora
             return true;
         }
@@ -132,6 +135,9 @@ static inline bool EscribirSuperFx(uint8_t banco, uint16_t off, uint8_t v)
     if (b == 0x70 || b == 0x71)
     {
         GsuCorrerHasta(ciclosMaestros);
+#ifdef GSU_TRAZA
+        { void VigilarRam(uint32_t, uint8_t, const char*); VigilarRam(((uint32_t)(b & 1) << 16) | off, v, GsuTieneRam() ? "SNES(bloq)" : "SNES"); }
+#endif
         if (!GsuTieneRam()) { sram[((uint32_t)(b & 1) << 16) | off] = v; sramCambiada = true; }
         return true;
     }

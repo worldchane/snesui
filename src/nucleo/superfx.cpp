@@ -61,7 +61,13 @@ static inline uint8_t LeerMem(uint8_t banco, uint16_t dir)
 }
 
 static inline uint8_t Ram8(uint16_t dir) { g.ciclos += CostoMemoria(); return Ram(DirRam(dir)); }
-static inline void Ram8(uint16_t dir, uint8_t v) { g.ciclos += CostoMemoria(); Ram(DirRam(dir)) = v; }
+#ifdef GSU_TRAZA
+void VigilarRam(uint32_t a, uint8_t v, const char* quien);
+#define VIGILAR(a, v, q) VigilarRam(a, v, q)
+#else
+#define VIGILAR(a, v, q)
+#endif
+static inline void Ram8(uint16_t dir, uint8_t v) { g.ciclos += CostoMemoria(); VIGILAR(DirRam(dir), v, "GSU"); Ram(DirRam(dir)) = v; }
 // Palabras: el byte alto está en la dirección con el bit 0 invertido (así lo hace el chip).
 static inline uint16_t RamW(uint16_t dir) { g.ultimaRam = dir; return Ram8(dir) | Ram8(dir ^ 1) << 8; }
 static inline void RamW(uint16_t dir, uint16_t v) { g.ultimaRam = dir; Ram8(dir, (uint8_t)v); Ram8(dir ^ 1, v >> 8); }
@@ -142,7 +148,7 @@ static void Plot()
     if (!(g.por & 1))
     {
         if (bpp == 8 && !(g.por & 8)) transparente = c == 0;
-        else transparente = (c & (bpp == 2 ? 3 : 0x0F)) == 0;
+        else transparente = (c & 0x0F) == 0;   // en 2 bits también mira el nibble entero (así lo hace el chip)
     }
     if (!transparente)
     {
@@ -152,6 +158,7 @@ static void Plot()
         for (int i = 0; i < bpp; i++)
         {
             uint8_t& b = Ram(base + ((i >> 1) << 4) + (i & 1));
+            VIGILAR(base + ((i >> 1) << 4) + (i & 1), 0, "PLOT");
             if (c & (1 << i)) b |= bit;
             else b &= ~bit;
         }
@@ -181,9 +188,29 @@ static uint8_t Color(uint8_t v)
 }
 
 // ---------- una instrucción ----------
+#ifdef GSU_TRAZA
+#include <stdio.h>
+#include <stdlib.h>
+extern uint64_t ciclosMaestros;
+void VigilarRam(uint32_t a, uint8_t v, const char* quien)
+{
+    static int lo = -2, hi;
+    if (lo == -2) { lo = -1; if (getenv("VIGILAR")) sscanf(getenv("VIGILAR"), "%x,%x", &lo, &hi); }
+    if ((int)a >= lo && (int)a <= hi)
+        printf("  %s escribe RAM %05X = %02X  (R15=%04X ciclo %llu)\n", quien, a, v, g.r[15], (unsigned long long)g.ciclos);
+}
+// Solo en las herramientas de PC: las últimas instrucciones (dirección, código y registros) para depurar.
+struct Traza { uint8_t pbr; uint16_t pc; uint8_t op; uint16_t sfr; uint16_t r[16]; };
+Traza gsuTraza[4096];
+unsigned gsuTrazaN;
+#endif
+
 static void Paso()
 {
     diag.instrucciones++;
+#ifdef GSU_TRAZA
+    { Traza& t = gsuTraza[gsuTrazaN++ & 4095]; t.pbr = g.pbr; t.pc = g.r[15] - 1; t.op = g.pipe; t.sfr = g.sfr; memcpy(t.r, g.r, sizeof t.r); }
+#endif
     uint8_t op = Pipe();
     int alt = (g.sfr >> 8) & 3;
     int n = op & 15;
@@ -197,6 +224,10 @@ static void Paso()
             gsuCorre = false;
             diag.paradas++;
             if (!(g.cfgr & 0x80)) { g.sfr |= S_IRQ; irqGsu = true; }
+            // El byte ya leído detrás de STOP se descarta (queda un NOP en el cauce) y R15 sigue de largo: al reanudar
+            // con G=1 desde SFR, el programa sigue dos bytes después del STOP. Varios juegos ponen "STOP STOP".
+            g.pipe = 0x01;
+            PonerR(15, g.r[15] + 1);
             Fin();
             return;
         case 0x01: Fin(); return;   // NOP
@@ -226,7 +257,8 @@ static void Paso()
             default: salta = ov; break;
             }
             if (salta) PonerR(15, g.r[15] + e);
-            Fin();
+            // Los saltos no borran los prefijos: "WITH R0 / BRA / TO R7" hace un MOVE en el hueco del salto (los
+            // juegos lo usan mucho para ordenar polígonos).
             return;
         }
         }
@@ -383,7 +415,7 @@ static void Paso()
     case 0xA:   // IBT Rn,#pp / LMS Rn,(yy) / SMS (yy),Rn
     {
         uint8_t p = Pipe();
-        if (alt == 1) PonerR(n, RamW((uint16_t)p << 1));
+        if (alt & 1) PonerR(n, RamW((uint16_t)p << 1));   // ALT1 o ALT3: LMS
         else if (alt == 2) RamW((uint16_t)p << 1, g.r[n]);
         else PonerR(n, (uint16_t)(int8_t)p);
         Fin();
@@ -445,7 +477,7 @@ static void Paso()
     {
         uint16_t v = Pipe();
         v |= Pipe() << 8;
-        if (alt == 1) PonerR(n, RamW(v));
+        if (alt & 1) PonerR(n, RamW(v));   // ALT1 o ALT3: LM
         else if (alt == 2) RamW(v, g.r[n]);
         else PonerR(n, v);
         Fin();
@@ -481,7 +513,7 @@ void GsuCorrerHasta(uint64_t hasta)
 
 uint8_t GsuLeer(uint16_t dir)
 {
-    if (dir >= 0x3100 && dir < 0x3300) return g.cache[dir - 0x3100];
+    if (dir >= 0x3100 && dir < 0x3300) return g.cache[(dir - 0x3100 + g.cbr) & 511];
     if (dir >= 0x3000 && dir < 0x3020) { uint16_t r = g.r[(dir >> 1) & 15]; return (dir & 1) ? r >> 8 : r & 0xFF; }
     switch (dir)
     {
@@ -506,9 +538,13 @@ uint8_t GsuLeer(uint16_t dir)
 
 void GsuEscribir(uint16_t dir, uint8_t v)
 {
+#ifdef GSU_TRAZA
+    static int log_ = getenv("ESCRITURAS") ? 1 : 0;
+    if (log_ && dir < 0x3100) printf("  SNES escribe %04X = %02X  (G=%d R15=%04X ciclo %llu)\n", dir, v, (g.sfr & S_G) ? 1 : 0, g.r[15], (unsigned long long)ciclosMaestros);
+#endif
     if (dir >= 0x3100 && dir < 0x3300)
     {
-        int i = dir - 0x3100;
+        int i = (dir - 0x3100 + g.cbr) & 511;
         g.cache[i] = v;
         if ((i & 15) == 15) g.valida[i >> 4] = true;
         return;
