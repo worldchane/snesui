@@ -13,6 +13,8 @@ static ProgresoCopia progreso;
 static std::atomic<bool> enCurso{false};
 static char (*rutas)[512];
 static int nRutas;
+static char destino[256];
+static uint64_t reserva;
 
 ProgresoCopia ProgresoDeCopia() { return progreso; }
 bool CopiaEnCurso() { return enCurso.load(std::memory_order_acquire); }
@@ -33,6 +35,26 @@ void TextoTamano(uint64_t bytes, char* out, int max)
         snprintf(out, max, "%.1f GB", mb / 1024.0);
         for (char* p = out; *p; p++) if (*p == '.') *p = ',';
     }
+}
+
+bool CarpetaUsb(char* out, int max)
+{
+    // El primer USB que se pueda abrir. Los juegos copiados van a su carpeta SNES (la búsqueda la recorre igual).
+    static const char* const USB[] = {"/mnt/usb0", "/mnt/usb1", "/mnt/usb2", "/mnt/usb3"};
+    AbrirAccesoCompleto("snes");
+    bool hay = false;
+    for (const char* u : USB)
+    {
+        uint64_t libres = 0;
+        if (ListarCarpeta(u, [](const char*, bool, void*) {}, NULL) >= 0 && EspacioLibre(u, &libres))
+        {
+            snprintf(out, max, "%s/SNES", u);
+            hay = true;
+            break;
+        }
+    }
+    CerrarAccesoCompleto();
+    return hay;
 }
 
 bool BorrarDeConsola(const char* ruta)
@@ -73,18 +95,19 @@ static void* HiloCopia(void*)
 {
     static const int BUF = 1024 * 1024;
     uint8_t* buf = (uint8_t*)malloc(BUF);
-    CrearCarpetas(CARPETA_JUEGOS_CONSOLA);
-    AbrirAccesoCompleto("snes");   // para leer el USB
+    AbrirAccesoCompleto("snes");   // para leer y escribir el USB
+    CrearCarpetas(destino);
 
     // Tamaños, y cuáles ya están copiados (mismo nombre y tamaño en la consola).
     uint64_t* tam = (uint64_t*)calloc(nRutas ? nRutas : 1, sizeof(uint64_t));
     bool* hacer = (bool*)calloc(nRutas ? nRutas : 1, sizeof(bool));
     uint64_t libres = 0;
-    bool medido = buf && tam && hacer && EspacioLibre(CARPETA_JUEGOS_CONSOLA, &libres);
+    bool medido = buf && tam && hacer && EspacioLibre(destino, &libres);
     if (!medido)
     {
         snprintf(progreso.detalle, sizeof progreso.detalle,
-                 "No se pudo medir el espacio libre de la consola. Por seguridad, no se copió nada.");
+                 progreso.alUsb ? "No se pudo medir el espacio libre del USB. Por seguridad, no se copió nada."
+                                : "No se pudo medir el espacio libre de la consola. Por seguridad, no se copió nada.");
         progreso.fallo = true;
     }
     else
@@ -93,12 +116,12 @@ static void* HiloCopia(void*)
         uint64_t usado = 0;
         for (int i = 0; i < nRutas; i++)
         {
-            char destino[600];
-            snprintf(destino, sizeof destino, "%s/%s", CARPETA_JUEGOS_CONSOLA, NombreArchivo(rutas[i]));
+            char dst[600];
+            snprintf(dst, sizeof dst, "%s/%s", destino, NombreArchivo(rutas[i]));
             uint64_t t = 0, td = 0;
             if (!ExisteArchivo(rutas[i], &t)) { progreso.errores++; continue; }
-            if (ExisteArchivo(destino, &td) && td == t) { progreso.yaEstaban++; continue; }
-            if (usado + t + RESERVA_SISTEMA > libres) { progreso.sinEspacio++; continue; }
+            if (ExisteArchivo(dst, &td) && td == t) { progreso.yaEstaban++; continue; }
+            if (usado + t + reserva > libres) { progreso.sinEspacio++; continue; }
             usado += t;
             tam[i] = t;
             hacer[i] = true;
@@ -107,21 +130,24 @@ static void* HiloCopia(void*)
         if (!usado && progreso.sinEspacio)
         {
             char l[32];
-            TextoTamano(libres > RESERVA_SISTEMA ? libres - RESERVA_SISTEMA : 0, l, sizeof l);
-            snprintf(progreso.detalle, sizeof progreso.detalle,
-                     "No hay espacio suficiente en la consola (quedan %s disponibles, sin contar 1 GB que se deja para el sistema).", l);
+            TextoTamano(libres > reserva ? libres - reserva : 0, l, sizeof l);
+            if (progreso.alUsb)
+                snprintf(progreso.detalle, sizeof progreso.detalle, "No hay espacio suficiente en el USB (quedan %s disponibles).", l);
+            else
+                snprintf(progreso.detalle, sizeof progreso.detalle,
+                         "No hay espacio suficiente en la consola (quedan %s disponibles, sin contar 1 GB que se deja para el sistema).", l);
             progreso.fallo = true;
         }
         for (int i = 0; i < nRutas; i++)
         {
             if (!hacer[i]) { continue; }
             snprintf(progreso.actual, sizeof progreso.actual, "%s", NombreArchivo(rutas[i]));
-            char destino[600];
-            snprintf(destino, sizeof destino, "%s/%s", CARPETA_JUEGOS_CONSOLA, NombreArchivo(rutas[i]));
+            char dst[600];
+            snprintf(dst, sizeof dst, "%s/%s", destino, NombreArchivo(rutas[i]));
             uint64_t antes = progreso.bytesHechos, final = 0;
-            bool ok = CopiarArchivo(rutas[i], destino, buf, BUF);
+            bool ok = CopiarArchivo(rutas[i], dst, buf, BUF);
             // Verificación: la copia tiene que tener exactamente el tamaño del original.
-            if (ok && (!ExisteArchivo(destino, &final) || final != tam[i])) { ok = false; BorrarArchivo(destino); }
+            if (ok && (!ExisteArchivo(dst, &final) || final != tam[i])) { ok = false; BorrarArchivo(dst); }
             if (ok) progreso.copiados++;
             else
             {
@@ -142,7 +168,7 @@ static void* HiloCopia(void*)
     return NULL;
 }
 
-bool EmpezarCopia(const char* const* lista, int n)
+bool EmpezarCopia(const char* const* lista, int n, const char* carpeta, uint64_t res)
 {
     if (enCurso.load(std::memory_order_acquire) || n <= 0) return false;
     free(rutas);
@@ -151,6 +177,9 @@ bool EmpezarCopia(const char* const* lista, int n)
     nRutas = n;
     for (int i = 0; i < n; i++) snprintf(rutas[i], sizeof rutas[i], "%s", lista[i]);
     memset(&progreso, 0, sizeof progreso);
+    snprintf(destino, sizeof destino, "%s", carpeta);
+    reserva = res;
+    progreso.alUsb = !strncmp(carpeta, "/mnt/usb", 8);
     progreso.total = n;
     progreso.activa = true;
     enCurso.store(true, std::memory_order_release);

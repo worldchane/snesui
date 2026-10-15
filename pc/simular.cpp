@@ -143,28 +143,26 @@ int main()
         {5.0f, 0, "50_usb"},
         {5.2f, B_OPTIONS, NULL},
         {5.7f, 0, "51_menu_juego"},
-        {5.9f, B_ABAJO, NULL}, {6.1f, B_CRUZ, NULL},
+        {6.1f, B_CRUZ, NULL},                                   // copiar solo este juego a la consola
         {6.3f, 0, "52_copiando"},
         {8.5f, 0, "53_copiado"},
-        {8.7f, B_OPTIONS, NULL}, {9.0f, B_ABAJO, NULL}, {9.2f, B_CRUZ, NULL},
-        {9.7f, 0, "54_confirmar_borrar"},
+        {8.7f, B_OPTIONS, NULL},
+        {9.1f, 0, "54_menu_consola"},
+        {9.3f, B_CRUZ, NULL},                                   // borrar de la consola
+        {9.7f, 0, "55_confirmar_borrar"},
         {9.9f, B_ARRIBA, NULL}, {10.1f, B_CRUZ, NULL},
-        {11.8f, 0, "55_borrado"},
-        {12.0f, B_L1, NULL},
-        {12.3f, B_ABAJO, NULL}, {12.45f, B_ABAJO, NULL}, {12.6f, B_ABAJO, NULL}, {12.75f, B_ABAJO, NULL}, {12.9f, B_ABAJO, NULL},
-        {13.3f, 0, "56_config"},
-        {13.4f, B_CRUZ, NULL},
-        {14.0f, 0, "57_copiar_todos"},
-        {14.2f, B_CIRCULO, NULL},
-        {14.5f, B_R1, NULL},
-        {14.9f, B_OPTIONS, NULL},
-        {15.4f, 0, "58_menu_con_todos"},
+        {11.8f, 0, "56_borrado"},
+        {12.0f, B_IZQ, NULL}, {12.2f, B_IZQ, NULL},             // el juego que está solo en la consola
+        {12.5f, B_OPTIONS, NULL},
+        {13.0f, 0, "57_menu_solo_consola"},
+        {13.2f, B_CRUZ, NULL},                                  // copiar este juego al USB
+        {15.0f, 0, "58_copiado_usb"},
     };
     const char* g = getenv("GUION");
     bool corto = g && !strcmp(g, "acerca"), larga = g && !strcmp(g, "lista"), muchos = g && !strcmp(g, "mil"), copia = g && !strcmp(g, "copiar");
     const Paso* pasos = corto ? acerca : larga ? lista : muchos ? mil : copia ? copiar : guion;
     const int N = corto ? (int)(sizeof acerca / sizeof acerca[0]) : larga ? (int)(sizeof lista / sizeof lista[0]) : muchos ? (int)(sizeof mil / sizeof mil[0]) : copia ? (int)(sizeof copiar / sizeof copiar[0]) : (int)(sizeof guion / sizeof guion[0]);
-    const double FIN = corto ? 7.0 : larga ? 9.0 : muchos ? 7.5 : copia ? 15.6 : 42.0;
+    const double FIN = corto ? 7.0 : larga ? 9.0 : muchos ? 7.5 : copia ? 15.2 : 42.0;
     double peor = 0;
     int k = 0;
     for (int cuadro = 0; tiempoSimulado < FIN; cuadro++)

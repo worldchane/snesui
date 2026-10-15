@@ -1,10 +1,12 @@
-// Copiar juegos del USB a la consola (/data/snes-ps4/juegos), en un hilo aparte. Antes de copiar se mide el espacio
-// libre real de la consola y se deja siempre una reserva para el sistema: se copian solo los que entran. Cada copia se
-// verifica (mismo tamaño que el original) y si algo falla se borra la copia incompleta.
+// Copiar juegos entre el USB y la consola (/data/snes-ps4/juegos), en las dos direcciones, en un hilo aparte. Antes de
+// copiar se mide el espacio libre real del destino y se deja siempre una reserva (1 GB en la consola para el sistema;
+// un poco en el USB): se copian solo los que entran. Cada copia se verifica (mismo tamaño que el original) y si algo
+// falla se borra la copia incompleta.
 #pragma once
 #include <stdint.h>
 
-static const uint64_t RESERVA_SISTEMA = 1024ull * 1024 * 1024;   // 1 GB que siempre queda libre
+static const uint64_t RESERVA_SISTEMA = 1024ull * 1024 * 1024;   // 1 GB que siempre queda libre en la consola
+static const uint64_t RESERVA_USB = 16ull * 1024 * 1024;          // y 16 MB en el USB
 
 struct ProgresoCopia
 {
@@ -16,12 +18,16 @@ struct ProgresoCopia
     int sinEspacio;     // no entraron
     int errores;        // fallaron al copiar
     uint64_t bytesHechos, bytesTotal;
+    bool alUsb;         // la dirección: de la consola al USB (si no, del USB a la consola)
     char actual[96];    // el que se está copiando
     char detalle[200];  // el motivo si falló
 };
 
-// Empieza a copiar estos juegos (rutas en el USB). false si ya hay una copia en curso.
-bool EmpezarCopia(const char* const* rutas, int n);
+// Empieza a copiar estos juegos a la carpeta 'destino' (CARPETA_JUEGOS_CONSOLA, o una carpeta del USB), dejando libre
+// 'reserva' bytes. false si ya hay una copia en curso.
+bool EmpezarCopia(const char* const* rutas, int n, const char* destino, uint64_t reserva);
+// Busca un USB conectado y devuelve la carpeta donde copiar juegos (por ejemplo /mnt/usb0/SNES). false si no hay.
+bool CarpetaUsb(char* out, int max);
 ProgresoCopia ProgresoDeCopia();
 bool CopiaEnCurso();
 
