@@ -46,5 +46,12 @@ bool SnesSramCambiada();
 uint32_t SnesEstadoTam();
 uint32_t SnesGuardarEstado(uint8_t* buf, uint32_t max);   // bytes escritos, 0 si no entró
 bool SnesCargarEstado(const uint8_t* buf, uint32_t n);    // false si el estado es de otro juego o está dañado
+
+// Informe de diagnóstico (texto): la rom, el estado del procesador, la imagen y el Super FX, y un historial de los
+// últimos 30 segundos. Devuelve los bytes escritos.
+int SnesDiagnostico(char* out, int max);
+// Problemas que el núcleo detecta solo (juego trabado, Super FX perdido...). Devuelve true una vez por cada uno, con la
+// explicación en 'txt'. Llamar desde el mismo hilo que SnesCuadro.
+bool SnesAnomalia(char* txt, int max);
 // Revisa la rom sin cargarla del todo (para la biblioteca).
 void SnesAnalizar(const char* ruta, InfoRom& info);

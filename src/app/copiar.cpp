@@ -1,4 +1,5 @@
 // Ver copiar.h.
+#include "registro.h"
 #include "copiar.h"
 
 #include <atomic>
@@ -155,11 +156,16 @@ static void* HiloCopia(void*)
                 progreso.errores++;
                 progreso.bytesHechos = antes + tam[i];   // para que la barra siga avanzando
                 snprintf(progreso.detalle, sizeof progreso.detalle, "No se pudo copiar %s.", NombreArchivo(rutas[i]));
+                Registrar("ERROR: no se pudo copiar %s a %s (copiado %llu de %llu bytes)", rutas[i], destino,
+                          (unsigned long long)final, (unsigned long long)tam[i]);
             }
             progreso.hechos++;
         }
     }
     CerrarAccesoCompleto();
+    Registrar("Copia a %s: %d copiados, %d ya estaban, %d sin espacio, %d con error, %llu MB libres antes%s%s", destino,
+              progreso.copiados, progreso.yaEstaban, progreso.sinEspacio, progreso.errores, (unsigned long long)(libres >> 20),
+              progreso.fallo ? ". Falló: " : "", progreso.fallo ? progreso.detalle : "");
     free(buf);
     free(tam);
     free(hacer);
@@ -190,11 +196,16 @@ static void* HiloBorrado(void*)
         uint64_t t = 0;
         ExisteArchivo(rutas[i], &t);
         if (EsRomBorrable(rutas[i]) && BorrarArchivo(rutas[i])) { progreso.copiados++; progreso.bytesHechos += t; }
-        else progreso.errores++;
+        else
+        {
+            progreso.errores++;
+            Registrar("ERROR: no se pudo borrar %s%s", rutas[i], EsRomBorrable(rutas[i]) ? "" : " (fuera de las carpetas permitidas)");
+        }
         progreso.hechos++;
     }
     CerrarAccesoCompleto();
     if (progreso.errores) snprintf(progreso.detalle, sizeof progreso.detalle, "%d juegos no se pudieron borrar.", progreso.errores);
+    Registrar("Borrado: %d borrados, %d con error", progreso.copiados, progreso.errores);
     progreso.activa = false;
     progreso.terminada = true;
     enCurso.store(false, std::memory_order_release);

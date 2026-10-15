@@ -191,11 +191,23 @@ int main()
         {10.7f, B_ARRIBA, NULL}, {10.9f, B_CRUZ, NULL},
         {12.4f, 0, "74_borrados_usb"},
     };
+    // GUION=diag: abrir un juego, jugar 12 s (la foto de los 10 s), guardar el informe desde la pausa y salir.
+    static const Paso diag[] = {
+        {4.5f, B_CRUZ, NULL},
+        {16.5f, B_L3 | B_R3, NULL},
+        {16.7f, B_ABAJO, NULL}, {16.85f, B_ABAJO, NULL}, {17.0f, B_ABAJO, NULL},
+        {17.15f, B_ABAJO, NULL}, {17.3f, B_ABAJO, NULL}, {17.45f, B_ABAJO, NULL},
+        {17.7f, 0, "80_menu_informe"},
+        {17.8f, B_CRUZ, NULL},
+        {18.2f, 0, "81_informe_guardado"},
+        {18.5f, B_ABAJO, NULL}, {18.65f, B_ABAJO, NULL}, {18.8f, B_CRUZ, NULL},
+        {19.5f, 0, "82_biblioteca"},
+    };
     const char* g = getenv("GUION");
-    bool corto = g && !strcmp(g, "acerca"), larga = g && !strcmp(g, "lista"), muchos = g && !strcmp(g, "mil"), copia = g && !strcmp(g, "copiar"), alUsb = g && !strcmp(g, "alusb"), borra = g && !strcmp(g, "borrar");
-    const Paso* pasos = corto ? acerca : larga ? lista : muchos ? mil : copia ? copiar : alUsb ? alusb : borra ? borrar : guion;
-    const int N = corto ? (int)(sizeof acerca / sizeof acerca[0]) : larga ? (int)(sizeof lista / sizeof lista[0]) : muchos ? (int)(sizeof mil / sizeof mil[0]) : copia ? (int)(sizeof copiar / sizeof copiar[0]) : alUsb ? (int)(sizeof alusb / sizeof alusb[0]) : borra ? (int)(sizeof borrar / sizeof borrar[0]) : (int)(sizeof guion / sizeof guion[0]);
-    const double FIN = corto ? 7.0 : larga ? 9.0 : muchos ? 7.5 : copia ? 15.2 : alUsb ? 9.7 : borra ? 12.6 : 42.0;
+    bool corto = g && !strcmp(g, "acerca"), larga = g && !strcmp(g, "lista"), muchos = g && !strcmp(g, "mil"), copia = g && !strcmp(g, "copiar"), alUsb = g && !strcmp(g, "alusb"), borra = g && !strcmp(g, "borrar"), dg = g && !strcmp(g, "diag");
+    const Paso* pasos = corto ? acerca : larga ? lista : muchos ? mil : copia ? copiar : alUsb ? alusb : borra ? borrar : dg ? diag : guion;
+    const int N = corto ? (int)(sizeof acerca / sizeof acerca[0]) : larga ? (int)(sizeof lista / sizeof lista[0]) : muchos ? (int)(sizeof mil / sizeof mil[0]) : copia ? (int)(sizeof copiar / sizeof copiar[0]) : alUsb ? (int)(sizeof alusb / sizeof alusb[0]) : borra ? (int)(sizeof borrar / sizeof borrar[0]) : dg ? (int)(sizeof diag / sizeof diag[0]) : (int)(sizeof guion / sizeof guion[0]);
+    const double FIN = corto ? 7.0 : larga ? 9.0 : muchos ? 7.5 : copia ? 15.2 : alUsb ? 9.7 : borra ? 12.6 : dg ? 19.7 : 42.0;
     double peor = 0;
     int k = 0;
     for (int cuadro = 0; tiempoSimulado < FIN; cuadro++)

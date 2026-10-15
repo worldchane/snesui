@@ -211,8 +211,12 @@ void CpuReiniciar()
     cpu.pc = BusLeer(0xFFFC) | BusLeer(0xFFFD) << 8;
 }
 
+uint32_t diagNmi, diagIrq;
+
 void CpuInterrupcion(bool nmi)
 {
+    if (nmi) diagNmi++;
+    else diagIrq++;
     cpu.esperando = false;
     io(); io();
     INTERRUP(nmi ? (cpu.e ? 0xFFFA : 0xFFEA) : (cpu.e ? 0xFFFE : 0xFFEE));

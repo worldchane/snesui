@@ -104,4 +104,7 @@ uint8_t GsuLeer(uint16_t dir);
 void GsuEscribir(uint16_t dir, uint8_t v);
 void GsuEstado(Serial& s);
 bool GsuTieneRom();
+void GsuContadores(uint64_t* arranques, uint64_t* paradas, uint64_t* instrucciones, uint64_t* ocupado);
+int GsuDiagnostico(char* out, int max);
+extern uint32_t diagNmi, diagIrq;   // interrupciones atendidas por el procesador (cpu.cpp)
 bool GsuTieneRam();   // el juego escribió en la SRAM (hay que guardarla en el archivo)   // botones de cada jugador (ver SnesMando)

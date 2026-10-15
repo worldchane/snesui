@@ -49,9 +49,12 @@ void SnesDescargar()
     cargado = false;
 }
 
+static void DiagReiniciar();
+
 void SnesReiniciar()
 {
     ciclosMaestros = 0;
+    DiagReiniciar();
     BusReiniciar();
     GsuReiniciar();
     PpuReiniciar();
@@ -88,9 +91,98 @@ void SnesContadores(int* h, int* v)
     *v = lineaActual;
 }
 
+// ---------- diagnóstico ----------
+// Un historial de los últimos 30 segundos (una muestra cada 60 cuadros), para ver qué hizo el juego antes del fallo.
+struct Muestra
+{
+    uint32_t nmi, irq, gsuArranques, gsuParadas, gsuVblank;
+    uint64_t gsuInstrucciones;
+    uint32_t gsuOcupado;   // porcentaje del tiempo con el Super FX trabajando
+    uint8_t inidisp;
+};
+static const int HISTORIAL = 30;
+static Muestra historial[HISTORIAL];
+static int nHistorial, posHistorial;
+static uint32_t cuadros, cuadrosSegundo, gsuVblankSegundo;
+static uint32_t nmiAntes, irqAntes;
+static uint64_t gArrAntes, gParAntes, gInsAntes, gOcuAntes, ciclosAntes;
+
+// Anomalías que se detectan solas (cada una se avisa una vez por partida): ver SnesAnomalia.
+enum { AN_SIN_NMI = 1, AN_PARADO = 2, AN_GSU_NO_TERMINA = 4, AN_GSU_NO_ARRANCA = 8 };
+static uint32_t anomaliasVistas;
+static int segSinNmi, segGsuSinParar;
+static char anomalia[200];
+
+static void Anomalia(uint32_t cual, const char* txt)
+{
+    if (anomaliasVistas & cual) return;
+    anomaliasVistas |= cual;
+    if (!anomalia[0]) snprintf(anomalia, sizeof anomalia, "%s", txt);
+}
+
+static void RevisarAnomalias(const Muestra& m)
+{
+    // El juego ya no recibe la interrupción de cada cuadro: casi siempre quedó trabado esperando algo del hardware.
+    segSinNmi = m.nmi == 0 ? segSinNmi + 1 : 0;
+    if (segSinNmi == 5) Anomalia(AN_SIN_NMI, "El juego lleva 5 segundos sin interrupciones de cuadro (NMI): parece trabado");
+    if (cpu.parado) Anomalia(AN_PARADO, "El procesador se detuvo (instrucción STP)");
+    if (gsuPresente)
+    {
+        // Un dibujo del Super FX dura una fracción de segundo: si no para en 5 segundos, el programa del chip se perdió.
+        segGsuSinParar = gsuCorre && m.gsuParadas == 0 ? segGsuSinParar + 1 : 0;
+        if (segGsuSinParar == 5) Anomalia(AN_GSU_NO_TERMINA, "El Super FX lleva 5 segundos corriendo sin terminar");
+        if (nHistorial == 15 && gArrAntes == 0) Anomalia(AN_GSU_NO_ARRANCA, "El juego tiene Super FX pero en 15 segundos nunca lo arrancó");
+    }
+}
+
+bool SnesAnomalia(char* txt, int max)
+{
+    if (!anomalia[0]) return false;
+    snprintf(txt, max, "%s", anomalia);
+    anomalia[0] = 0;
+    return true;
+}
+
+static void DiagReiniciar()
+{
+    nHistorial = posHistorial = 0;
+    cuadros = cuadrosSegundo = gsuVblankSegundo = 0;
+    nmiAntes = diagNmi; irqAntes = diagIrq;
+    gArrAntes = gParAntes = gInsAntes = gOcuAntes = ciclosAntes = 0;
+    anomaliasVistas = 0;
+    segSinNmi = segGsuSinParar = 0;
+    anomalia[0] = 0;
+}
+
+static void AnotarSegundo()
+{
+    uint64_t a = 0, p = 0, i = 0, o = 0;
+    if (gsuPresente) GsuContadores(&a, &p, &i, &o);
+    Muestra& m = historial[posHistorial];
+    m.nmi = diagNmi - nmiAntes;
+    m.irq = diagIrq - irqAntes;
+    m.gsuArranques = (uint32_t)(a - gArrAntes);
+    m.gsuParadas = (uint32_t)(p - gParAntes);
+    m.gsuInstrucciones = i - gInsAntes;
+    uint64_t total = ciclosMaestros - ciclosAntes;
+    m.gsuOcupado = total ? (uint32_t)((o - gOcuAntes) * 100 / total) : 0;
+    m.gsuVblank = gsuVblankSegundo;
+    extern uint8_t PpuInidisp();
+    m.inidisp = PpuInidisp();
+    posHistorial = (posHistorial + 1) % HISTORIAL;
+    if (nHistorial < HISTORIAL) nHistorial++;
+    nmiAntes = diagNmi; irqAntes = diagIrq;
+    gArrAntes = a; gParAntes = p; gInsAntes = i; gOcuAntes = o;
+    ciclosAntes = ciclosMaestros;
+    gsuVblankSegundo = 0;
+    RevisarAnomalias(m);
+}
+
 int SnesCuadro(uint32_t* pantalla, int16_t* audio, int maxAudio)
 {
     if (!cargado) return 0;
+    if (++cuadrosSegundo >= 60) { cuadrosSegundo = 0; AnotarSegundo(); }
+    cuadros++;
     int lineasTotales = info.pal ? 312 : 262;
     uint64_t base = ciclosMaestros;
     inicioCuadro = base;
@@ -113,6 +205,7 @@ int SnesCuadro(uint32_t* pantalla, int16_t* audio, int maxAudio)
         }
         if (y == lineaVblank)
         {
+            if (gsuCorre) gsuVblankSegundo++;   // el Super FX todavía estaba dibujando al terminar la imagen
             PpuVblank();
             BusLeerMandos();
             BusMarcarNmi();
@@ -219,6 +312,39 @@ bool SnesCargarEstado(const uint8_t* buf, uint32_t n)
     Serial s = {(uint8_t*)buf, 0, n, true, true};
     Estado(s);
     return s.ok;
+}
+
+// Informe de diagnóstico en texto: la rom, el estado de cada parte y el historial de los últimos segundos.
+int SnesDiagnostico(char* o, int m)
+{
+    int n = 0;
+#define mas(...) do { if (n < m - 1) { int k_ = snprintf(o + n, m - n, __VA_ARGS__); n += k_ > 0 ? k_ : 0; if (n > m - 1) n = m - 1; } } while (0)
+    const uint8_t* h = romDatos ? romDatos + (romHiRom ? 0xFFC0 : 0x7FC0) : NULL;
+    mas("Juego (cabecera): \"%s\"   %s   %d KB   %s\n", info.titulo, info.mapeo, info.tamKB, info.pal ? "PAL" : "NTSC");
+    if (h && romTam > (uint32_t)(romHiRom ? 0xFFE0 : 0x7FE0))
+        mas("  mapa=%02X tipo=%02X rom=%02X ram=%02X país=%02X versión=%02X suma=%02X%02X  cabecera extendida=%s ram exp=%02X\n",
+            h[0x15], h[0x16], h[0x17], h[0x18], h[0x19], h[0x1B], h[0x1F], h[0x1E], h[0x1A] == 0x33 ? "sí" : "no", h[-3]);
+    mas("  tamaño real %u bytes, SRAM con batería %u bytes, Super FX: %s\n", romTam, sramTam, gsuPresente ? "sí" : "no");
+    mas("Cuadros emulados: %u\n", cuadros);
+    mas("CPU: PC=%02X:%04X A=%04X X=%04X Y=%04X S=%04X D=%04X DB=%02X P=%02X E=%d %s%s\n", cpu.pbr, cpu.pc, cpu.a, cpu.x,
+        cpu.y, cpu.s, cpu.d, cpu.dbr, cpu.p, cpu.e, cpu.esperando ? "(esperando WAI) " : "", cpu.parado ? "(parado STP)" : "");
+    mas("  interrupciones: NMI=%u IRQ=%u\n", diagNmi, diagIrq);
+    char t[400];
+    extern void PpuVolcado(char*, int);
+    PpuVolcado(t, sizeof t);
+    extern uint8_t PpuInidisp();
+    mas("PPU: INIDISP=%02X %s\n", PpuInidisp(), t);
+    if (gsuPresente) { n += GsuDiagnostico(o + n, m - n); }
+    mas("\nÚltimos %d segundos (el más reciente al final):\n", nHistorial);
+    mas("  seg   NMI   IRQ   INIDISP   SFX arranques  paradas  instrucciones  ocupado  corriendo-en-vblank\n");
+    for (int k = 0; k < nHistorial; k++)
+    {
+        const Muestra& s = historial[(posHistorial - nHistorial + k + HISTORIAL) % HISTORIAL];
+        mas("  %3d  %4u  %4u     %02X        %5u      %5u    %11llu     %3u%%   %u\n", k - nHistorial + 1, s.nmi, s.irq,
+            s.inidisp, s.gsuArranques, s.gsuParadas, (unsigned long long)s.gsuInstrucciones, s.gsuOcupado, s.gsuVblank);
+    }
+    return n;
+#undef mas
 }
 
 // Depuración.

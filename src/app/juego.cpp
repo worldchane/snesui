@@ -20,6 +20,7 @@
 #include "../nucleo/snes.h"
 #include "ajustes.h"
 #include "rebobinar.h"
+#include "registro.h"
 
 static bool abierto;
 static float vis;
@@ -90,6 +91,104 @@ static bool GuardarSram()
     char r[300];
     snprintf(r, sizeof r, "%s.srm", base);
     return EscribirArchivo(r, SnesSramDatos(), SnesSramTam());
+}
+
+// ---------- diagnóstico automático ----------
+// El hilo de emulación vigila el juego: cada segundo revisa si la imagen quedó de un solo color, si va lento y si el
+// núcleo detectó algo raro; cada 10 s deja una foto del estado (por si el programa se cuelga). Cuando hay un problema
+// arma un informe completo (texto, imagen y estado) y el hilo principal lo escribe en el USB.
+static const int INFORME_MAX = 24 * 1024;
+static char fotoTexto[INFORME_MAX], informeTexto[INFORME_MAX], informeMotivo[200];
+static uint32_t informeImagen[SNES_ANCHO * SNES_ALTO];
+static uint8_t* informeEstado;
+static uint32_t informeEstadoN;
+static std::atomic<bool> fotoLista{false}, informeListo{false};
+static int informesAuto;                    // informes automáticos en esta partida (a lo más 3)
+static int cuadrosDiag, segNegro;
+static bool negroAvisado;
+static double tiempoSuma, tiempoMax, tiempoMaxTotal, tiempoSumaTotal, ultimoLento = -999;
+static uint32_t cuadrosMedidos, cuadrosTotal, segundosLentos;
+static double inicioPartida;
+
+static void ArmarInforme(const char* motivo, const uint32_t* imagen)
+{
+    snprintf(informeMotivo, sizeof informeMotivo, "%s", motivo);
+    SnesDiagnostico(informeTexto, sizeof informeTexto);
+    memcpy(informeImagen, imagen, sizeof informeImagen);
+    if (!informeEstado) informeEstado = (uint8_t*)malloc(SnesEstadoTam());
+    informeEstadoN = informeEstado ? SnesGuardarEstado(informeEstado, SnesEstadoTam()) : 0;
+}
+
+// Después de cada cuadro normal (hilo de emulación). 'ms' es lo que tardó en emularse.
+static void Vigilar(const uint32_t* imagen, double ms)
+{
+    tiempoSuma += ms;
+    tiempoSumaTotal += ms;
+    if (ms > tiempoMax) tiempoMax = ms;
+    if (ms > tiempoMaxTotal) tiempoMaxTotal = ms;
+    cuadrosMedidos++;
+    cuadrosTotal++;
+
+    char motivo[200];
+    bool problema = SnesAnomalia(motivo, sizeof motivo);
+
+    if (++cuadrosDiag % 60 == 0)
+    {
+        // Imagen de un solo color durante 10 s seguidos (la pantalla negra con sonido, por ejemplo).
+        bool plana = true;
+        for (int i = 1; i < SNES_ANCHO * SNES_ALTO && plana; i++) plana = imagen[i] == imagen[0];
+        segNegro = plana ? segNegro + 1 : 0;
+        if (segNegro == 10 && !negroAvisado && !problema)
+        {
+            negroAvisado = true;
+            snprintf(motivo, sizeof motivo, "La imagen lleva 10 segundos de un solo color (%06X): pantalla negra o vacía",
+                     imagen[0]);
+            problema = true;
+        }
+        // Velocidad: más de 16,6 ms por cuadro en promedio = el juego va más lento que la consola real.
+        double prom = tiempoSuma / cuadrosMedidos;
+        if (prom > 16.6)
+        {
+            segundosLentos++;
+            if (Segundos() - ultimoLento > 60)
+            {
+                ultimoLento = Segundos();
+                Registrar("Lento: %.1f ms por cuadro en promedio (máximo %.1f ms); la consola real usa 16,6 ms", prom, tiempoMax);
+            }
+        }
+        tiempoSuma = tiempoMax = 0;
+        cuadrosMedidos = 0;
+        // Foto del estado cada 10 s.
+        if (cuadrosDiag % 600 == 0 && !fotoLista.load(std::memory_order_acquire))
+        {
+            SnesDiagnostico(fotoTexto, sizeof fotoTexto);
+            fotoLista.store(true, std::memory_order_release);
+        }
+    }
+
+    if (!problema) return;
+    Registrar("PROBLEMA DETECTADO: %s", motivo);
+    if (informesAuto < 3 && !informeListo.load(std::memory_order_acquire))
+    {
+        informesAuto++;
+        ArmarInforme(motivo, imagen);
+        informeListo.store(true, std::memory_order_release);
+    }
+}
+
+// Hilo principal: escribe lo que dejó el hilo de emulación.
+static void DiagnosticoPendiente()
+{
+    if (fotoLista.load(std::memory_order_acquire))
+    {
+        RegistroFoto(fotoTexto);
+        fotoLista.store(false, std::memory_order_release);
+    }
+    if (informeListo.load(std::memory_order_acquire))
+    {
+        RegistroInforme(informeMotivo, informeTexto, informeImagen, informeEstado, informeEstadoN, NULL, 0);
+        informeListo.store(false, std::memory_order_release);
+    }
 }
 
 // Si escribir en /data falla dentro del encierro del sistema, se reintenta con el acceso completo de GoldHEN (solo desde
@@ -164,8 +263,9 @@ static void* HiloEmulacion(void*)
             double t0 = Segundos();
             for (int k = 0; k < vel; k++)
             {
+                double tc = Segundos();
                 int n = SnesCuadro(marcos[escribir], audio, sizeof audio / 4);
-                if (vel == 1) AudioJuego(audio, n);
+                if (vel == 1) { AudioJuego(audio, n); Vigilar(marcos[escribir], (Segundos() - tc) * 1000); }
                 // Batería: se escribe 1,5 s después del último cambio (los juegos guardan varios bytes seguidos).
                 if (SnesSramCambiada()) contadorSram = 90;
                 else if (contadorSram > 0 && --contadorSram == 0) GuardarSram();
@@ -347,9 +447,10 @@ static void DibujarImagen()
 }
 
 // ---------- menú de pausa ----------
-enum { OP_CONTINUAR, OP_GUARDAR, OP_CARGAR, OP_PROPORCION, OP_FILTRO, OP_GENERAL, OP_REINICIAR, OP_SALIR, NUM_OPCIONES };
+enum { OP_CONTINUAR, OP_GUARDAR, OP_CARGAR, OP_PROPORCION, OP_FILTRO, OP_GENERAL, OP_INFORME, OP_REINICIAR, OP_SALIR, NUM_OPCIONES };
 static const char* const OPCIONES[NUM_OPCIONES] = {"Continuar", "Guardar estado", "Cargar estado", "Proporción", "Filtro",
-                                                   "Usar la configuración general", "Reiniciar", "Volver a la biblioteca"};
+                                                   "Usar la configuración general", "Guardar informe de diagnóstico",
+                                                   "Reiniciar", "Volver a la biblioteca"};
 static bool menu;
 static float visMenu, selSuave, transparencia;
 static int sel, ranura;
@@ -376,7 +477,7 @@ static void GuardarEstado(int r)
     uint32_t tam = SnesEstadoTam();
     uint8_t* d = (uint8_t*)malloc(tam);
     uint32_t n = d ? SnesGuardarEstado(d, tam) : 0;
-    if (!n) { free(d); Avisar("No se pudo armar el estado (sin memoria)", C_MAL); return; }
+    if (!n) { free(d); Avisar("No se pudo armar el estado (sin memoria)", C_MAL); Registrar("ERROR: sin memoria para el estado (%u bytes)", tam); return; }
     char ruta[300];
     snprintf(ruta, sizeof ruta, "%s.st%d", base, r);
     EscrituraEstado e = {ruta, d, n};
@@ -406,8 +507,8 @@ static void GuardarEstado(int r)
         snprintf(t, sizeof t, "Estado guardado en la ranura %d", r + 1);
         Avisar(t, C_BIEN);
     }
-    else if (!carpetaLista) Avisar("No se pudo crear la carpeta /data/snes-ps4/guardados", C_MAL);
-    else Avisar("No se pudo escribir el archivo del estado en /data", C_MAL);
+    else if (!carpetaLista) { Avisar("No se pudo crear la carpeta /data/snes-ps4/guardados", C_MAL); Registrar("ERROR: no se pudo crear la carpeta de guardados"); }
+    else { Avisar("No se pudo escribir el archivo del estado en /data", C_MAL); Registrar("ERROR: no se pudo escribir %s", ruta); }
 }
 
 static bool CargarEstado(int r)
@@ -417,9 +518,10 @@ static bool CargarEstado(int r)
     uint32_t n = 0;
     uint8_t* d = LeerArchivo(ruta, &n);
     if (!d) { Avisar("La ranura está vacía", C_AVISO); return false; }
+    Registrar("Estado cargado de la ranura %d", r + 1);
     bool ok = SnesCargarEstado(d, n);
     free(d);
-    if (!ok) { Avisar("El estado es de otra versión o está dañado", C_MAL); return false; }
+    if (!ok) { Avisar("El estado es de otra versión o está dañado", C_MAL); Registrar("ERROR: el estado %s no se pudo cargar (%u bytes)", ruta, n); return false; }
     AudioJuegoVaciar();
     NuevaHistoria();
     char t[64];
@@ -433,8 +535,13 @@ static void Salir()
     abierto = false;
     menu = false;
     EsperarHilo();
-    ConAccesoSiHaceFalta([](void*) { return GuardarSram(); }, NULL);
+    if (!ConAccesoSiHaceFalta([](void*) { return GuardarSram(); }, NULL)) Registrar("ERROR: no se pudo guardar la partida (batería) al salir");
     contadorSram = 0;
+    DiagnosticoPendiente();
+    if (cuadrosTotal)
+        Registrar("Juego cerrado: %.0f s jugados, %u cuadros, %.2f ms por cuadro en promedio (máximo %.1f), %u segundos lentos",
+                  Segundos() - inicioPartida, cuadrosTotal, tiempoSumaTotal / cuadrosTotal, tiempoMaxTotal, segundosLentos);
+    RegistroFinJuego();
     SnesDescargar();
     Sonar(SON_ATRAS);
 }
@@ -465,7 +572,25 @@ static void MenuEntrada(const Mando& m)
         break;
     case OP_GUARDAR: GuardarEstado(ranura); Sonar(SON_ACEPTAR); menu = false; break;
     case OP_CARGAR: if (CargarEstado(ranura)) { Sonar(SON_ACEPTAR); menu = false; } else Sonar(SON_ERROR); break;
-    case OP_REINICIAR: SnesReiniciar(); AudioJuegoVaciar(); NuevaHistoria(); Avisar("Juego reiniciado", C_TEXTO); Sonar(SON_ACEPTAR); menu = false; break;
+    case OP_INFORME:
+    {
+        // El hilo está en pausa: el informe se arma acá mismo.
+        int l = listo.load(std::memory_order_acquire);
+        ArmarInforme("Pedido desde el menú de pausa", marcos[l >= 0 ? l : 0]);
+        char donde[220];
+        bool ok = RegistroInforme(informeMotivo, informeTexto, marcos[l >= 0 ? l : 0], informeEstado, informeEstadoN, donde, sizeof donde);
+        if (ok)
+        {
+            char t[96];
+            const char* n = strstr(donde, "/informe-");
+            snprintf(t, sizeof t, "Informe guardado: %s", n ? n + 1 : donde);
+            Avisar(t, C_BIEN);
+            Sonar(SON_ACEPTAR);
+        }
+        else { Avisar("No se pudo guardar el informe", C_MAL); Sonar(SON_ERROR); }
+        break;
+    }
+    case OP_REINICIAR: Registrar("Juego reiniciado desde el menú"); SnesReiniciar(); AudioJuegoVaciar(); NuevaHistoria(); Avisar("Juego reiniciado", C_TEXTO); Sonar(SON_ACEPTAR); menu = false; break;
     case OP_SALIR: Salir(); break;
     }
 }
@@ -562,6 +687,26 @@ bool JuegoAbrir(const char* ruta, const char* nom)
     CerrarAccesoCompleto();
     ArmarBase(ruta);
     LeerAjustesJuego();
+    // Diagnóstico: todo en cero para esta partida, y al registro qué se abrió.
+    informesAuto = cuadrosDiag = segNegro = 0;
+    negroAvisado = false;
+    tiempoSuma = tiempoMax = tiempoMaxTotal = tiempoSumaTotal = 0;
+    cuadrosMedidos = cuadrosTotal = segundosLentos = 0;
+    inicioPartida = Segundos();
+    fotoLista = false;
+    informeListo = false;
+    if (ok)
+    {
+        // Las primeras líneas del informe: la cabecera de la rom y sus chips.
+        static char cab[1024];
+        SnesDiagnostico(cab, sizeof cab);
+        char* fin = strstr(cab, "Cuadros emulados");
+        if (fin) *fin = 0;
+        int l = (int)strlen(cab);
+        while (l > 0 && cab[l - 1] == '\n') cab[--l] = 0;
+        Registrar("Juego abierto: %s\n%s", ruta, cab);
+    }
+    else Registrar("ERROR al abrir %s: %s", ruta, error);
     if (ok)
     {
         CargarSram();
@@ -616,6 +761,7 @@ void JuegoCuadro(float t, float dt, const Mando& m)
         mostrarAyuda = false;
         Sonar(SON_SECCION);
     }
+    if (abierto) DiagnosticoPendiente();
     Suave(vis, abierto ? 1 : 0, 12, dt);
     Suave(visMenu, menu ? 1 : 0, 14, dt);
     Suave(selSuave, (float)sel, 18, dt);

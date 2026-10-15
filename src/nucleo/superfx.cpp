@@ -36,6 +36,9 @@ static struct
 } g;
 
 static uint32_t ramMascara = 0xFFFF;
+
+// Diagnóstico: cuántas veces arrancó y paró, cuántas instrucciones corrió y cuánto tiempo estuvo ocupado.
+static struct { uint64_t arranques, paradas, instrucciones, ocupado; uint16_t r15Inicio; uint8_t pbrInicio; } diag;
 static uint8_t version = 1;
 
 // ---------- memoria ----------
@@ -180,6 +183,7 @@ static uint8_t Color(uint8_t v)
 // ---------- una instrucción ----------
 static void Paso()
 {
+    diag.instrucciones++;
     uint8_t op = Pipe();
     int alt = (g.sfr >> 8) & 3;
     int n = op & 15;
@@ -191,6 +195,7 @@ static void Paso()
         case 0x00:   // STOP
             g.sfr &= ~S_G;
             gsuCorre = false;
+            diag.paradas++;
             if (!(g.cfgr & 0x80)) { g.sfr |= S_IRQ; irqGsu = true; }
             Fin();
             return;
@@ -457,6 +462,9 @@ static void Arrancar()
     if (g.ciclos < ciclosMaestros) g.ciclos = ciclosMaestros;
     g.sfr |= S_G;
     gsuCorre = true;
+    diag.arranques++;
+    diag.r15Inicio = g.r[15];
+    diag.pbrInicio = g.pbr;
     g.r15Escrito = false;
     g.pipe = LeerPrograma(g.r[15]);
 }
@@ -465,7 +473,9 @@ void GsuCorrerHasta(uint64_t hasta)
 {
     if (!gsuPresente) return;
     if (!(g.sfr & S_G)) { if (g.ciclos < hasta) g.ciclos = hasta; return; }
+    uint64_t antes = g.ciclos;
     while ((g.sfr & S_G) && g.ciclos < hasta) Paso();
+    diag.ocupado += g.ciclos - antes;
     if (!(g.sfr & S_G) && g.ciclos < hasta) g.ciclos = hasta;
 }
 
@@ -540,6 +550,7 @@ bool GsuTieneRam() { return (g.sfr & S_G) && (g.scmr & 0x08); }
 void GsuReiniciar()
 {
     memset(&g, 0, sizeof g);
+    memset(&diag, 0, sizeof diag);
     irqGsu = false;
     gsuCorre = false;
 }
@@ -556,6 +567,34 @@ void GsuConfigurar(bool presente, uint32_t ramTam, bool gsu2)
 }
 
 uint64_t GsuCiclos() { return g.ciclos; }
+
+void GsuContadores(uint64_t* arranques, uint64_t* paradas, uint64_t* instrucciones, uint64_t* ocupado)
+{
+    *arranques = diag.arranques;
+    *paradas = diag.paradas;
+    *instrucciones = diag.instrucciones;
+    *ocupado = diag.ocupado;
+}
+
+#include <stdio.h>
+int GsuDiagnostico(char* o, int m)
+{
+    int n = snprintf(o, m,
+        "Super FX: versión %d, RAM %u KB, %s\n"
+        "  R0-R7:  %04X %04X %04X %04X %04X %04X %04X %04X\n"
+        "  R8-R15: %04X %04X %04X %04X %04X %04X %04X %04X\n"
+        "  SFR=%04X (G=%d IRQ=%d ALT=%d)  PBR=%02X ROMBR=%02X RAMBR=%02X CBR=%04X\n"
+        "  SCMR=%02X SCBR=%02X POR=%02X COLR=%02X CFGR=%02X CLSR=%02X\n"
+        "  arranques=%llu paradas=%llu instrucciones=%llu  último arranque en %02X:%04X\n",
+        version, (ramMascara + 1) / 1024, (g.sfr & S_G) ? "CORRIENDO" : "detenido",
+        g.r[0], g.r[1], g.r[2], g.r[3], g.r[4], g.r[5], g.r[6], g.r[7],
+        g.r[8], g.r[9], g.r[10], g.r[11], g.r[12], g.r[13], g.r[14], g.r[15],
+        g.sfr, (g.sfr & S_G) ? 1 : 0, (g.sfr & S_IRQ) ? 1 : 0, (g.sfr >> 8) & 3, g.pbr, g.rombr, g.rambr, g.cbr,
+        g.scmr, g.scbr, g.por, g.colr, g.cfgr, g.clsr,
+        (unsigned long long)diag.arranques, (unsigned long long)diag.paradas, (unsigned long long)diag.instrucciones,
+        diag.pbrInicio, diag.r15Inicio);
+    return n < m ? n : m - 1;
+}
 
 void GsuEstado(Serial& s)
 {

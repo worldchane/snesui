@@ -15,6 +15,7 @@
 #include "caratula.h"
 #include "copiar.h"
 #include "fondo.h"
+#include "registro.h"
 #include "juego.h"
 
 static const char* const VERSION = "1.0";
@@ -215,6 +216,7 @@ static void ArmarVista()
 
 void InterfazIniciar()
 {
+    RegistroIniciar(VERSION);
     logo = CargarImagen(RUTA_ASSETS "/logo.png", &logoW, &logoH);
     BibliotecaIniciar();   // la lista guardada al instante; la búsqueda en el USB sigue en segundo plano
     juegos = BibliotecaJuegos(&nJuegos);
@@ -374,6 +376,7 @@ static void DibujarPestanas()
 
 void InterfazCuadro(float t, float dt, const Mando& m)
 {
+    RegistroCuadro();
     // Si hay un juego abierto, solo la pantalla de juego (sin gastar en el fondo ni en la biblioteca, que no se ven).
     if (JuegoActivo()) { JuegoCuadro(t, dt, m); return; }
     if (Presentacion(dt, m)) { entrada = 0; return; }
