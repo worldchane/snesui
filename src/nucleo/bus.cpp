@@ -34,6 +34,7 @@ static uint8_t wrio = 0xFF;          // $4201: puerto de E/S (el bit 7 al bajar 
 static uint8_t hdmaen;               // $420C: canales con HDMA
 static int mandoOcupado;             // líneas que faltan para terminar la lectura automática del mando
 bool memselRapido;                   // $420D: la rom de los bancos 0x80-0xFF se lee a 6 ciclos (FastROM)
+bool irqReprogramada;               // se escribió $4200 o HTIME/VTIME: el cuadro recalcula la IRQ por tiempo
 bool irqLinea, nmiPendiente;         // pedidos de interrupción que el procesador atiende entre instrucciones
 
 // DMA: 8 canales.
@@ -258,6 +259,15 @@ void BusEscribir(uint32_t dir, uint8_t v)
         case 0x2182: wmaddM = v; return;
         case 0x2183: wmaddH = v & 1; return;
         case 0x4016: cerrojoMando = v & 1; if (cerrojoMando) { serieMando[0] = registroMando[0]; serieMando[1] = registroMando[1]; } return;
+        default: break;
+        }
+        if (off == 0x4200 || (off >= 0x4207 && off <= 0x420A)) irqReprogramada = true;
+#ifdef GSU_TRAZA
+        if (off == 0x4200 || (off >= 0x4207 && off <= 0x420A))
+        { extern int depurCuadro; static int l_ = getenv("IRQREG") ? 1 : 0; if (l_ && depurCuadro) { void SnesContadores(int*, int*); int h_, li; SnesContadores(&h_, &li); printf("  irq %04X=%02X linea %d h %d\n", off, v, li, h_); } }
+#endif
+        switch (off)
+        {
         case 0x4200:
             // Encender la NMI en pleno vblank (con la bandera todavía puesta) la dispara enseguida.
             if (!nmiHabilitado && (v & 0x80) && (rdnmi & 0x80)) nmiPendiente = true;

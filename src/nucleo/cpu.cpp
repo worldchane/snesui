@@ -236,6 +236,7 @@ void CpuCorrerHasta(uint64_t hasta)
         else if ((irqLinea || irqGsu) && !(cpu.p & F_I)) CpuInterrupcion(false);
         else if ((irqLinea || irqGsu) && cpu.esperando) cpu.esperando = false;
         if (cpu.parado || cpu.esperando) { ciclosMaestros = hasta; return; }
+        if (irqReprogramada) return;   // el juego cambió la IRQ por tiempo: el cuadro recalcula cuándo salta
 #ifdef GSU_TRAZA
         {
             // Herramientas de PC: las últimas instrucciones del procesador; CPUBRK=1 las imprime al primer BRK.

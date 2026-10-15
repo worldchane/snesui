@@ -27,6 +27,16 @@ void BusFinVblank();
 void BusMandoLinea();
 
 static InfoRom info;
+
+// Punto de la línea y (en ciclos desde su comienzo) en que salta la IRQ por tiempo, o -1.
+static int PuntoIrq(int y)
+{
+    int modo = BusIrqModo();
+    if (modo == 1 && BusHtime() <= 339) return BusHtime() * 4 + 14;
+    if (modo == 2 && BusVtime() == y) return 10;
+    if (modo == 3 && BusVtime() == y && BusHtime() <= 339) return BusHtime() * 4 + 14;
+    return -1;
+}
 static bool cargado;
 
 // Tiempos de la consola: 1 línea = 1364 ciclos maestros; 262 líneas en NTSC (312 en PAL). La parte visible son 224
@@ -231,34 +241,40 @@ int SnesCuadro(uint32_t* pantalla, int16_t* audio, int maxAudio)
         int primera = PpuSobrebarrido() ? 8 : 1;
         if (y >= primera && y < primera + SNES_ALTO && pantalla) PpuLinea(y - 1, pantalla + (y - primera) * SNES_ANCHO);
 
-        // Interrupción por tiempo (H/V IRQ).
-        int modo = BusIrqModo(), puntoIrq = -1;
-        if (modo == 1 && BusHtime() <= 339) puntoIrq = BusHtime() * 4 + 14;
-        else if (modo == 2 && BusVtime() == y) puntoIrq = 10;
-        else if (modo == 3 && BusVtime() == y && BusHtime() <= 339) puntoIrq = BusHtime() * 4 + 14;
+        // Interrupción por tiempo (H/V IRQ): el punto se recalcula si el juego cambia $4200 o HTIME/VTIME a mitad de
+        // línea (hay juegos que encienden la IRQ horizontal y esperan que salte en esa misma línea).
         const int HBLANK = 1096, REFRESCO = 538;
-        if (puntoIrq >= 0 && puntoIrq < REFRESCO)
-        {
-            CpuCorrerHasta(inicioLinea + puntoIrq);
-            BusDispararIrq();
-        }
+        int ultimoPunto = -1;   // punto donde ya saltó en esta línea (si se reprograma más adelante, puede saltar otra vez)
+        bool reprogramadaEnLinea = false;   // si no se tocó, salta aunque la instrucción anterior se haya pasado unos ciclos
+        auto Correr = [&](uint64_t hasta) {
+            while (ciclosMaestros < hasta)
+            {
+                int p = PuntoIrq(y);
+                uint64_t t = inicioLinea + (uint64_t)p;
+                irqReprogramada = false;
+                if (p > ultimoPunto && (t >= ciclosMaestros || !reprogramadaEnLinea) && t <= hasta)
+                {
+                    CpuCorrerHasta(t);
+                    if (irqReprogramada) reprogramadaEnLinea = true;
+                    if (irqReprogramada && ciclosMaestros < t) continue;   // cambió antes de llegar: se recalcula
+                    BusDispararIrq();
+                    ultimoPunto = p;
+#ifdef GSU_TRAZA
+                    { extern int depurCuadro; static int l_ = getenv("IRQREG") ? 1 : 0; if (l_ && depurCuadro) printf("  >> IRQ disparada linea %d punto %d (modo %d)\n", y, p, BusIrqModo()); }
+#endif
+                    continue;
+                }
+                CpuCorrerHasta(hasta);
+                if (irqReprogramada) reprogramadaEnLinea = true;
+            }
+        };
+        Correr(inicioLinea + REFRESCO);
         // Refresco de la RAM: el procesador queda detenido 40 ciclos en cada línea.
-        CpuCorrerHasta(inicioLinea + REFRESCO);
         BusCiclo(40);
-        if (puntoIrq >= REFRESCO && puntoIrq < HBLANK)
-        {
-            CpuCorrerHasta(inicioLinea + puntoIrq);
-            BusDispararIrq();
-        }
-        CpuCorrerHasta(inicioLinea + HBLANK);
+        Correr(inicioLinea + HBLANK);
         BusHvbjoy((enVblank ? 0x80 : 0) | 0x40);
         if (y < lineaVblank) HdmaLinea();
-        if (puntoIrq >= HBLANK)
-        {
-            CpuCorrerHasta(inicioLinea + puntoIrq);
-            BusDispararIrq();
-        }
-        CpuCorrerHasta(inicioLinea + CICLOS_LINEA);
+        Correr(inicioLinea + CICLOS_LINEA);
         GsuCorrerHasta(inicioLinea + CICLOS_LINEA);   // el Super FX corre en paralelo: se lo pone al día cada línea
     }
     return ApuCuadro(audio, maxAudio, info.pal);
