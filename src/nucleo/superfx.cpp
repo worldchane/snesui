@@ -204,12 +204,28 @@ void VigilarRam(uint32_t a, uint8_t v, const char* quien)
     static int lo = -2, hi;
     if (lo == -2) { lo = 1; hi = 0; if (getenv("VIGILAR")) sscanf(getenv("VIGILAR"), "%x,%x", &lo, &hi); }
     if ((int)a >= lo && (int)a <= hi)
+    {
         printf("  %s escribe RAM %05X = %02X  (R15=%04X ciclo %llu)\n", quien, a, v, g.r[15], (unsigned long long)g.ciclos);
+        // VIGILAR_VALOR=xx: la primera vez que el chip escribe ese valor ahí, imprime sus últimas 60 instrucciones.
+        static int valor = getenv("VIGILAR_VALOR") ? (int)strtol(getenv("VIGILAR_VALOR"), NULL, 16) : -1;
+        void TrazaImprimir(int n);
+        if (v == valor && quien[0] == 'G') { valor = -1; TrazaImprimir(getenv("VIGILAR_N") ? atoi(getenv("VIGILAR_N")) : 60); }
+    }
 }
 // Solo en las herramientas de PC: las últimas instrucciones (dirección, código y registros) para depurar.
 struct Traza { uint8_t pbr; uint16_t pc; uint8_t op; uint16_t sfr; uint16_t r[16]; };
 Traza gsuTraza[4096];
 unsigned gsuTrazaN;
+void TrazaImprimir(int n)
+{
+    for (int k = n; k > 0; k--)
+    {
+        const Traza& x = gsuTraza[(gsuTrazaN - k) & 4095];
+        printf("    %02X:%04X %02X sfr=%04X", x.pbr, x.pc, x.op, x.sfr);
+        for (int j = 0; j < 16; j++) printf(" %04X", x.r[j]);
+        printf("\n");
+    }
+}
 #endif
 
 static void Paso()
@@ -499,6 +515,26 @@ static void Paso()
 // ---------- con la SNES ----------
 extern uint64_t ciclosMaestros;
 
+// La rom y la RAM del cartucho se comparten: SCMR dice si son del chip (RON, RAN). Si la instrucción siguiente necesita
+// una que la SNES tiene, el chip se detiene hasta que se la devuelva (como en la consola y en bsnes). Algunos juegos lo
+// usan para sincronizarse: quitan la RAM, escriben un comando y se la devuelven.
+static inline bool Permitido(uint8_t banco) { return (banco & 0x60) == 0x60 ? (g.scmr & 0x08) : (g.scmr & 0x10); }
+
+static bool BusLibre()
+{
+    // El byte siguiente del programa: desde la caché no usa el bus.
+    uint16_t pc = g.r15Escrito ? g.r[15] : (uint16_t)(g.r[15] + 1);
+    uint16_t off = pc - g.cbr;
+    if (!(off < 512 && g.valida[off >> 4]) && !Permitido(g.pbr)) return false;
+    uint8_t op = g.pipe;
+    int alt = (g.sfr >> 8) & 3, h = op >> 4, n = op & 15;
+    bool ram = (h == 3 && n < 12) || (h == 4 && n <= 12) || op == 0x90 || ((h == 0xA || h == 0xF) && alt);
+    if (ram && !(g.scmr & 0x08)) return false;
+    bool rom = op == 0xEF || (op == 0xDF && alt != 2);
+    if (rom && !Permitido(g.rombr)) return false;
+    return true;
+}
+
 static void Arrancar()
 {
     if (g.ciclos < ciclosMaestros) g.ciclos = ciclosMaestros;
@@ -520,7 +556,12 @@ void GsuCorrerHasta(uint64_t hasta)
     static int instantaneo = getenv("GSU_INSTANTANEO") ? 1 : 0;   // prueba: el chip termina sin gastar tiempo
     if (instantaneo) { while (g.sfr & S_G) Paso(); g.ciclos = hasta; }
 #endif
-    while ((g.sfr & S_G) && g.ciclos < hasta) Paso();
+    while ((g.sfr & S_G) && g.ciclos < hasta)
+    {
+        // Sin la memoria que necesita (la SNES se la quitó con SCMR), el chip espera; la SNES la devuelve más tarde.
+        if (!BusLibre()) { g.ciclos = hasta; break; }
+        Paso();
+    }
     diag.ocupado += g.ciclos - antes;
     if (!(g.sfr & S_G) && g.ciclos < hasta) g.ciclos = hasta;
 }

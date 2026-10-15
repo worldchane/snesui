@@ -2,6 +2,10 @@
 // Bits de ancho: con M=1 el acumulador es de 8 bits y con M=0 de 16; con X=1 los índices son de 8 y con X=0 de 16.
 // En modo emulación (E=1, al encender) M y X quedan forzados a 8 bits, como el 6502.
 #include "interno.h"
+#ifdef GSU_TRAZA
+#include <stdio.h>
+#include <stdlib.h>
+#endif
 
 Cpu cpu;
 
@@ -232,6 +236,26 @@ void CpuCorrerHasta(uint64_t hasta)
         else if ((irqLinea || irqGsu) && !(cpu.p & F_I)) CpuInterrupcion(false);
         else if ((irqLinea || irqGsu) && cpu.esperando) cpu.esperando = false;
         if (cpu.parado || cpu.esperando) { ciclosMaestros = hasta; return; }
+#ifdef GSU_TRAZA
+        {
+            // Herramientas de PC: las últimas instrucciones del procesador; CPUBRK=1 las imprime al primer BRK.
+            struct T { uint8_t pbr; uint16_t pc, a, x, y, s; uint8_t p, op; };
+            static T anillo[256];
+            static unsigned n;
+            static int brk = getenv("CPUBRK") ? 1 : 0;
+            uint8_t opv = BusLeer((uint32_t)cpu.pbr << 16 | cpu.pc);
+            anillo[n++ & 255] = {cpu.pbr, cpu.pc, cpu.a, cpu.x, cpu.y, cpu.s, cpu.p, opv};
+            if (brk == 1 && opv == 0x00)
+            {
+                brk = 2;
+                for (unsigned k = n - 256; k != n; k++)
+                {
+                    const T& t = anillo[k & 255];
+                    printf("  %02X:%04X op=%02X A=%04X X=%04X Y=%04X S=%04X P=%02X\n", t.pbr, t.pc, t.op, t.a, t.x, t.y, t.s, t.p);
+                }
+            }
+        }
+#endif
         uint8_t op = fetch8();
         switch (op)
         {
