@@ -126,7 +126,7 @@ void FondoPixel(float t)
     }
 
     // Luna con halo tramado y cráteres.
-    const int lx = 244, ly = 21, lr = 12;
+    const int lx = 200, ly = 19, lr = 12;   // entre las pestañas y el contador, sin tapar textos
     for (int y = ly - lr - 8; y <= ly + lr + 8; y++)
         for (int x = lx - lr - 8; x <= lx + lr + 8; x++)
         {

@@ -6,6 +6,7 @@
 #include <chrono>
 #include <thread>
 
+#include "../src/app/biblioteca.h"
 #include "../src/app/interfaz.h"
 #include "../src/comun/lienzo.h"
 #include "../src/comun/pantalla.h"
@@ -39,6 +40,8 @@ static const uint32_t STICK_DER = 0x80000000u;   // en el guion: el stick derech
 int main()
 {
     IniciarTrabajadores(4);
+    auto inicioReal = std::chrono::steady_clock::now();
+    bool avisado = false;
     PantallaIniciar();
     if (!CargarFuentes()) { printf("faltan las fuentes\n"); return 1; }
     InterfazIniciar();
@@ -122,11 +125,23 @@ int main()
         {7.6f, B_R2, NULL}, {7.9f, B_R2, NULL}, {8.2f, B_R2, NULL},
         {8.9f, 0, "34_lista_abajo"},
     };
+    // GUION=mil: medir la búsqueda con muchos juegos (primera vez y con el índice) y buscar por nombre.
+    static const Paso mil[] = {
+        {0.5f, 0, "40_mil_inicio"},
+        {4.5f, 0, "41_mil_lista"},
+        {4.6f, B_TACTIL, NULL},
+        {5.0f, B_DER, NULL}, {5.15f, B_DER, NULL}, {5.3f, B_ABAJO, NULL},   // la M (fila 2, columna 3)
+        {5.45f, B_CRUZ, NULL},
+        {5.6f, B_ARRIBA, NULL}, {5.8f, B_CRUZ, NULL},                        // la A
+        {6.4f, 0, "42_mil_teclado"},
+        {6.5f, B_CIRCULO, NULL},
+        {7.2f, 0, "43_mil_filtrado"},
+    };
     const char* g = getenv("GUION");
-    bool corto = g && !strcmp(g, "acerca"), larga = g && !strcmp(g, "lista");
-    const Paso* pasos = corto ? acerca : larga ? lista : guion;
-    const int N = corto ? (int)(sizeof acerca / sizeof acerca[0]) : larga ? (int)(sizeof lista / sizeof lista[0]) : (int)(sizeof guion / sizeof guion[0]);
-    const double FIN = corto ? 7.0 : larga ? 9.0 : 42.0;
+    bool corto = g && !strcmp(g, "acerca"), larga = g && !strcmp(g, "lista"), muchos = g && !strcmp(g, "mil");
+    const Paso* pasos = corto ? acerca : larga ? lista : muchos ? mil : guion;
+    const int N = corto ? (int)(sizeof acerca / sizeof acerca[0]) : larga ? (int)(sizeof lista / sizeof lista[0]) : muchos ? (int)(sizeof mil / sizeof mil[0]) : (int)(sizeof guion / sizeof guion[0]);
+    const double FIN = corto ? 7.0 : larga ? 9.0 : muchos ? 7.5 : 42.0;
     double peor = 0;
     int k = 0;
     for (int cuadro = 0; tiempoSimulado < FIN; cuadro++)
@@ -142,6 +157,13 @@ int main()
             if (pasos[k].botones & STICK_DER) m.rx = 1;
             if (pasos[k].captura) captura = pasos[k].captura;
             k++;
+        }
+        int hallados = 0;
+        if (!avisado && cuadro > 2 && !BibliotecaBuscando(&hallados))
+        {
+            avisado = true;
+            double seg = std::chrono::duration<double>(std::chrono::steady_clock::now() - inicioReal).count();
+            printf("búsqueda terminada a los %.2f s reales, %d juegos\n", seg, hallados);
         }
         auto t0 = std::chrono::steady_clock::now();
         PantallaComenzar();

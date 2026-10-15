@@ -183,7 +183,7 @@ Caratula ObtenerCaratula(const char* nombre)
 // simple (sin cifrado: la consola no necesita módulos extra) con HTTP/1.0, así la respuesta llega entera y sin trozos.
 static const char* const SERVIDOR = "thumbnails.libretro.com";
 static const char* const SISTEMA = "Nintendo - Super Nintendo Entertainment System";
-static const int MAX_DESCARGAS = 600;
+static const int MAX_DESCARGAS = 10000;
 static char claves[MAX_DESCARGAS][96];
 static int nClaves;
 static ProgresoDescarga progreso;

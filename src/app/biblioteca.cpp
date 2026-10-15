@@ -1,7 +1,8 @@
-// Ver biblioteca.h. Recorre los USB y /data buscando roms de SNES (.smc/.sfc), lee el nombre interno de cada una y
-// arma su carátula. Igual que en el proyecto de PS2 (misma búsqueda recursiva y mismo acceso con GoldHEN).
+// Ver biblioteca.h. Recorre los USB y /data buscando roms de SNES (.smc/.sfc/.fig/.swc) en todas sus carpetas, lee la
+// cabecera de cada una (solo las nuevas o cambiadas) y guarda la lista en un índice.
 #include "biblioteca.h"
 
+#include <atomic>
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -75,7 +76,68 @@ static void NombreLimpio(const char* archivo, char* out, int max)
     out[n] = 0;
 }
 
-struct Busq { Juego* lista; int max, n, prof, vistas; int* prog; char carpeta[1024]; };
+// ---------- las dos listas ----------
+// 'activa' es la que muestra la interfaz (solo se lee); 'nueva' la arma el hilo de búsqueda. Al terminar se cambian
+// (en el hilo principal, con BibliotecaNueva): la vieja queda para la búsqueda siguiente.
+struct Lista { Juego* j; int n, cap; };
+static Lista activa, nueva;
+static std::atomic<bool> buscando{false}, hayNueva{false};
+static std::atomic<int> encontrados{0};
+static bool iniciada;
+
+static bool Crecer(Lista& l)
+{
+    if (l.n < l.cap) return true;
+    if (l.cap >= MAX_JUEGOS) return false;
+    int cap = l.cap ? l.cap * 2 : 256;
+    if (cap > MAX_JUEGOS) cap = MAX_JUEGOS;
+    Juego* j = (Juego*)realloc(l.j, (size_t)cap * sizeof(Juego));
+    if (!j) return false;
+    l.j = j;
+    l.cap = cap;
+    return true;
+}
+
+// Índice por ruta de la lista activa (tabla hash): para reusar lo ya analizado sin volver a leer la rom.
+static int* tabla;
+static int tablaTam;
+static uint32_t HashRuta(const char* s) { uint32_t h = 2166136261u; for (; *s; s++) h = (h ^ (unsigned char)*s) * 16777619u; return h; }
+static void ArmarTabla()
+{
+    int t = 1;
+    while (t < activa.n * 2 + 16) t <<= 1;
+    if (t != tablaTam) { free(tabla); tabla = (int*)malloc(sizeof(int) * t); tablaTam = tabla ? t : 0; }
+    if (!tabla) return;
+    for (int i = 0; i < tablaTam; i++) tabla[i] = -1;
+    for (int i = 0; i < activa.n; i++)
+    {
+        uint32_t k = HashRuta(activa.j[i].ruta) & (tablaTam - 1);
+        while (tabla[k] >= 0) k = (k + 1) & (tablaTam - 1);
+        tabla[k] = i;
+    }
+}
+static const Juego* BuscarAnterior(const char* ruta)
+{
+    if (!tabla) return NULL;
+    for (uint32_t k = HashRuta(ruta) & (tablaTam - 1); tabla[k] >= 0; k = (k + 1) & (tablaTam - 1))
+        if (!strcmp(activa.j[tabla[k]].ruta, ruta)) return &activa.j[tabla[k]];
+    return NULL;
+}
+
+// Completa lo que se calcula del nombre (clave, iniciales, colores).
+static void Completar(Juego& j)
+{
+    const char* barra = strrchr(j.ruta, '/');
+    snprintf(j.archivo, sizeof j.archivo, "%s", barra ? barra + 1 : j.ruta);
+    snprintf(j.clave, sizeof j.clave, "%s", j.archivo);
+    char* ext = strrchr(j.clave, '.');
+    if (ext) *ext = 0;
+    Iniciales(j);
+    ColoresE(j);
+}
+
+// ---------- recorrido del USB ----------
+struct Busq { int prof, vistas; char carpeta[1024]; };
 
 static bool Saltar(const char* n) { return n[0] == '.' || n[0] == '$' || !strcasecmp(n, "System Volume Information"); }
 
@@ -89,51 +151,160 @@ static void AlEncontrar(const char* nombre, bool carpeta, void* u)
         if (l + strlen(nombre) + 2 >= sizeof b.carpeta) return;
         snprintf(b.carpeta + l, sizeof b.carpeta - l, "/%s", nombre);
         b.prof++; b.vistas++;
-        if (b.prog) *b.prog = b.vistas;
         ListarCarpeta(b.carpeta, AlEncontrar, u);
         b.prof--; b.carpeta[l] = 0;
         return;
     }
-    if (b.n >= b.max || !EsRom(nombre)) return;
-    Juego& j = b.lista[b.n];
+    if (!EsRom(nombre) || !Crecer(nueva)) return;
+    Juego& j = nueva.j[nueva.n];
     memset(&j, 0, sizeof j);
     snprintf(j.ruta, sizeof j.ruta, "%s/%s", b.carpeta, nombre);
-    for (int i = 0; i < b.n; i++) if (!strcasecmp(b.lista[i].ruta, j.ruta)) return;
-    snprintf(j.archivo, sizeof j.archivo, "%s", nombre);
-    InfoRom info;
-    SnesAnalizar(j.ruta, info);
-    // El nombre del archivo es más legible que el interno (que viene en mayúsculas y cortado a 21 letras).
-    NombreLimpio(nombre, j.nombre, sizeof j.nombre);
-    if (!j.nombre[0] && info.valida) snprintf(j.nombre, sizeof j.nombre, "%s", info.titulo);
-    snprintf(j.clave, sizeof j.clave, "%s", nombre);
-    char* ext = strrchr(j.clave, '.');
-    if (ext) *ext = 0;
-    snprintf(j.mapeo, sizeof j.mapeo, "%s", info.mapeo);
-    j.tamKB = info.tamKB; j.pal = info.pal; j.tieneRam = info.tieneRam; j.valida = info.valida;
-    Iniciales(j);
-    ColoresE(j);
-    b.n++;
+    uint64_t bytes = 0;
+    if (!ExisteArchivo(j.ruta, &bytes)) return;
+    // Si ya estaba en el índice con el mismo tamaño, se reusa sin leer la rom.
+    const Juego* antes = BuscarAnterior(j.ruta);
+    if (antes && antes->bytes == bytes) j = *antes;
+    else
+    {
+        InfoRom info;
+        SnesAnalizar(j.ruta, info);
+        // El nombre del archivo es más legible que el interno (que viene en mayúsculas y cortado a 21 letras).
+        NombreLimpio(nombre, j.nombre, sizeof j.nombre);
+        if (!j.nombre[0] && info.valida) snprintf(j.nombre, sizeof j.nombre, "%s", info.titulo);
+        snprintf(j.mapeo, sizeof j.mapeo, "%s", info.mapeo);
+        j.bytes = bytes;
+        j.tamKB = info.tamKB; j.pal = info.pal; j.tieneRam = info.tieneRam; j.valida = info.valida;
+        Completar(j);
+    }
+    nueva.n++;
+    encontrados.store(nueva.n, std::memory_order_relaxed);
 }
 
 static int PorNombre(const void* a, const void* b) { return strcasecmp(((const Juego*)a)->nombre, ((const Juego*)b)->nombre); }
 
-int BuscarJuegos(Juego* lista, int max, int* progreso)
+// ---------- índice guardado ----------
+// Una línea por juego, separada por tabuladores: bytes, válida, PAL, SRAM, KB, mapeo, nombre, ruta.
+static const char* const CABECERA = "SNESUI-BIBLIOTECA 1";
+
+static void RutaIndice(char* r, int max) { snprintf(r, max, "%s/biblioteca.txt", CARPETA_DATOS); }
+
+static void GuardarIndice(const Lista& l)
 {
+    size_t cap = (size_t)l.n * 700 + 64;
+    char* txt = (char*)malloc(cap);
+    if (!txt) return;
+    size_t k = (size_t)snprintf(txt, cap, "%s\n", CABECERA);
+    for (int i = 0; i < l.n; i++)
+    {
+        const Juego& j = l.j[i];
+        k += (size_t)snprintf(txt + k, cap - k, "%llu\t%d\t%d\t%d\t%d\t%s\t%s\t%s\n", (unsigned long long)j.bytes, j.valida,
+                              j.pal, j.tieneRam, j.tamKB, j.mapeo, j.nombre, j.ruta);
+    }
+    char r[160];
+    RutaIndice(r, sizeof r);
+    FILE* f = AbrirArchivo(r, "wb");
+    if (f) { fwrite(txt, 1, k, f); fclose(f); }
+    free(txt);
+}
+
+static void LeerIndice()
+{
+    char r[160];
+    RutaIndice(r, sizeof r);
+    uint64_t tam = 0;
+    if (!ExisteArchivo(r, &tam) || tam == 0 || tam > 32u * 1024 * 1024) return;
+    char* txt = (char*)malloc((size_t)tam + 1);
+    if (!txt) return;
+    if (LeerTexto(r, txt, (int)tam + 1) <= 0 || strncmp(txt, CABECERA, strlen(CABECERA))) { free(txt); return; }
+    char* p = strchr(txt, '\n');
+    while (p && *++p)
+    {
+        char* fin = strchr(p, '\n');
+        if (fin) *fin = 0;
+        // Partir la línea en sus 8 campos.
+        char* c[8];
+        int n = 0;
+        c[n++] = p;
+        for (char* q = p; *q && n < 8; q++) if (*q == '\t') { *q = 0; c[n++] = q + 1; }
+        if (n == 8 && Crecer(activa))
+        {
+            Juego& j = activa.j[activa.n];
+            memset(&j, 0, sizeof j);
+            j.bytes = strtoull(c[0], NULL, 10);
+            j.valida = atoi(c[1]); j.pal = atoi(c[2]); j.tieneRam = atoi(c[3]); j.tamKB = atoi(c[4]);
+            snprintf(j.mapeo, sizeof j.mapeo, "%s", c[5]);
+            snprintf(j.nombre, sizeof j.nombre, "%s", c[6]);
+            snprintf(j.ruta, sizeof j.ruta, "%s", c[7]);
+            Completar(j);
+            activa.n++;
+        }
+        if (!fin) break;
+        p = fin;
+    }
+    free(txt);
+}
+
+// ---------- búsqueda en segundo plano ----------
+static void* HiloBusqueda(void*)
+{
+    nueva.n = 0;
+    encontrados.store(0, std::memory_order_relaxed);
+    ArmarTabla();
     static Busq b;
     memset(&b, 0, sizeof b);
-    b.lista = lista; b.max = max; b.prog = progreso;
-    // Igual que en el proyecto de PS2: para ver el USB hay que salir del encierro del sistema con GoldHEN.
+    // Para ver el USB hay que salir del encierro del sistema con GoldHEN.
     AbrirAccesoCompleto("snes");
+    bool algo = false;
     for (const char* c : RAICES)
     {
         snprintf(b.carpeta, sizeof b.carpeta, "%s", c);
-        ListarCarpeta(c, AlEncontrar, &b);
+        if (ListarCarpeta(c, AlEncontrar, &b) >= 0) algo = true;
     }
     CerrarAccesoCompleto();
-#ifdef SIN_LISTADO
-    return -1;
-#else
-    qsort(lista, b.n, sizeof(Juego), PorNombre);
-    return b.n;
-#endif
+    if (nueva.n > 1) qsort(nueva.j, nueva.n, sizeof(Juego), PorNombre);
+    // Si no se pudo abrir ninguna carpeta (sin acceso, o la variante sin listado), se conserva la lista anterior.
+    if (algo)
+    {
+        GuardarIndice(nueva);
+        hayNueva.store(true, std::memory_order_release);
+    }
+    buscando.store(false, std::memory_order_release);
+    return NULL;
+}
+
+void BibliotecaBuscar()
+{
+    if (buscando.load(std::memory_order_acquire) || hayNueva.load(std::memory_order_acquire)) return;
+    buscando.store(true, std::memory_order_release);
+    if (!Lanzar(HiloBusqueda, NULL, "biblioteca")) buscando.store(false, std::memory_order_release);
+}
+
+void BibliotecaIniciar()
+{
+    if (iniciada) return;
+    iniciada = true;
+    LeerIndice();
+    BibliotecaBuscar();
+}
+
+bool BibliotecaBuscando(int* n)
+{
+    if (n) *n = encontrados.load(std::memory_order_relaxed);
+    return buscando.load(std::memory_order_acquire);
+}
+
+bool BibliotecaNueva()
+{
+    if (!hayNueva.load(std::memory_order_acquire)) return false;
+    Lista vieja = activa;
+    activa = nueva;
+    nueva = vieja;
+    hayNueva.store(false, std::memory_order_release);
+    return true;
+}
+
+const Juego* BibliotecaJuegos(int* n)
+{
+    *n = activa.n;
+    return activa.j;
 }

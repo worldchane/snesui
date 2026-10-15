@@ -20,7 +20,7 @@ static const char* const VERSION = "0.9";
 static const char* const AUTOR = "RudolphGamerBkn";   // el creador de SNESUI (Configuración → Acerca de)
 static const char* const PAGINA = "github.com/worldchane/snesui";
 
-static Juego juegos[MAX_JUEGOS];
+static const Juego* juegos;   // la lista de la biblioteca (ver biblioteca.h; cambia cuando termina una búsqueda)
 static int nJuegos;
 static int sel;
 static float scrollVis, foco[MAX_JUEGOS];
@@ -173,6 +173,28 @@ static void AnotarReciente(const char* clave)
     GuardarLista("recientes.txt", recientes, nRecientes);
 }
 
+// Búsqueda por nombre: el texto escrito con el teclado en pantalla. Coincide si aparece en cualquier parte del nombre,
+// sin distinguir mayúsculas.
+static char busqueda[32];
+static bool Coincide(const char* nombre)
+{
+    if (!busqueda[0]) return true;
+    for (const char* p = nombre; *p; p++)
+    {
+        const char *a = p, *b = busqueda;
+        while (*a && *b)
+        {
+            char x = *a, y = *b;
+            if (x >= 'a' && x <= 'z') x -= 32;
+            if (y >= 'a' && y <= 'z') y -= 32;
+            if (x != y) break;
+            a++, b++;
+        }
+        if (!*b) return true;
+    }
+    return false;
+}
+
 static void ArmarVista()
 {
     nVista = 0;
@@ -181,18 +203,19 @@ static void ArmarVista()
     {
         for (int r = 0; r < nRecientes; r++)
             for (int i = 0; i < nJuegos; i++)
-                if (!strcmp(juegos[i].clave, recientes[r])) { vista[nVista++] = i; break; }
+                if (!strcmp(juegos[i].clave, recientes[r])) { if (Coincide(juegos[i].nombre)) vista[nVista++] = i; break; }
     }
     else
         for (int i = 0; i < nJuegos; i++)
-            if (vistaActual == V_TODOS || EsFavorito(juegos[i].clave)) vista[nVista++] = i;
+            if ((vistaActual == V_TODOS || EsFavorito(juegos[i].clave)) && Coincide(juegos[i].nombre)) vista[nVista++] = i;
     if (sel >= nVista) sel = nVista > 0 ? nVista - 1 : 0;
 }
 
 void InterfazIniciar()
 {
     logo = CargarImagen(RUTA_ASSETS "/logo.png", &logoW, &logoH);
-    nJuegos = BuscarJuegos(juegos, MAX_JUEGOS);
+    BibliotecaIniciar();   // la lista guardada al instante; la búsqueda en el USB sigue en segundo plano
+    juegos = BibliotecaJuegos(&nJuegos);
     nRecientes = LeerLista("recientes.txt", recientes, MAX_RECIENTES);
     nFavoritos = LeerLista("favoritos.txt", favoritos, MAX_FAVORITOS);
     AjustesLeer();
@@ -284,6 +307,26 @@ static void Tarjeta(const Juego& j, float x, float y, float f)
 }
 
 static void Biblioteca(float t, float dt, const Mando& m);
+
+// La búsqueda activa, a la derecha de las pestañas; o la pista de cómo buscar.
+static void DibujarBusqueda()
+{
+    // Alineada a la derecha, en la fila de las pestañas.
+    float derecha = ANCHO - MARGEN, y = 160;
+    if (busqueda[0])
+    {
+        // "Buscando: «texto»" y el botón ○ dibujado (la letra no trae los símbolos de los botones).
+        char t[80];
+        snprintf(t, sizeof t, "Buscando: «%s»", busqueda);
+        float tw = AnchoTexto(F_CUERPO_M, t), qw = Pista(BM_CIRCULO, "quitar", 0, 0, 1, true);
+        float w = tw + qw + 72;
+        Caja(derecha - w, y, w, 48, 24, 0x0A0614, .75f);
+        Borde(derecha - w, y, w, 48, 24, 2, C_SNES_B, .8f);
+        Texto(F_CUERPO_M, t, derecha - w + 20, y + 10, C_TEXTO, 1);
+        Pista(BM_CIRCULO, "quitar", derecha - qw - 20, y + 24);
+    }
+    else if (vistaActual != V_CONFIG) Texto(F_PEQUENA, "Panel táctil: buscar por nombre", derecha, y + 14, C_TEXTO_3, 1, 2);
+}
 
 // Las pestañas bajo la cabecera, con L1 y R1 a los costados y una pastilla que se desliza a la elegida.
 static void DibujarPestanas()
@@ -418,9 +461,107 @@ static void AcercaDe()
     Pistas(b, tx, 1);
 }
 
+// Cuando termina una búsqueda, la lista nueva reemplaza a la anterior y la selección se queda en el mismo juego.
+static void TomarListaNueva()
+{
+    if (!BibliotecaNueva()) return;
+    char elegido[96] = "";
+    if (nVista > 0 && sel < nVista) snprintf(elegido, sizeof elegido, "%s", juegos[vista[sel]].clave);
+    juegos = BibliotecaJuegos(&nJuegos);
+    ArmarVista();
+    for (int i = 0; i < nVista; i++)
+        if (!strcmp(juegos[vista[i]].clave, elegido)) { sel = i; break; }
+}
+
+// ---------- teclado en pantalla (búsqueda por nombre) ----------
+static bool teclado;
+static float tecladoVis;
+static int tecla;   // fila * 10 + columna; la última fila son las acciones
+static const int FILAS_TECLADO = 5, COLS_TECLADO = 10;
+static const char* const TECLAS[4] = {"ABCDEFGHIJ", "KLMNOPQRST", "UVWXYZ0123", "456789-'&!"};
+enum { AC_ESPACIO, AC_BORRAR, AC_LISTO };
+static int Accion(int col) { return col < 4 ? AC_ESPACIO : col < 7 ? AC_BORRAR : AC_LISTO; }
+
+static void Escribir(char c)
+{
+    size_t n = strlen(busqueda);
+    if (c == '\b') { if (n) busqueda[n - 1] = 0; }
+    else if (n + 1 < sizeof busqueda && !(c == ' ' && (n == 0 || busqueda[n - 1] == ' '))) { busqueda[n] = c; busqueda[n + 1] = 0; }
+    sel = 0;
+    scrollVis = 0;
+    ArmarVista();
+}
+
+static void TecladoEntrada(const Mando& m)
+{
+    int f = tecla / COLS_TECLADO, c = tecla % COLS_TECLADO;
+    if (m.pulsados & B_IZQ) c = (c + COLS_TECLADO - 1) % COLS_TECLADO;
+    if (m.pulsados & B_DER) c = (c + 1) % COLS_TECLADO;
+    if (m.pulsados & B_ARRIBA) f = (f + FILAS_TECLADO - 1) % FILAS_TECLADO;
+    if (m.pulsados & B_ABAJO) f = (f + 1) % FILAS_TECLADO;
+    if (f * COLS_TECLADO + c != tecla) { tecla = f * COLS_TECLADO + c; Sonar(SON_MOVER); }
+    if (m.pulsados & B_CUADRADO) { Escribir('\b'); Sonar(SON_ATRAS); }
+    if (m.pulsados & (B_CIRCULO | B_TACTIL | B_OPTIONS)) { teclado = false; Sonar(SON_ATRAS); return; }
+    if (!(m.pulsados & B_CRUZ)) return;
+    if (f < 4) { Escribir(TECLAS[f][c]); Sonar(SON_ACEPTAR); return; }
+    switch (Accion(c))
+    {
+    case AC_ESPACIO: Escribir(' '); Sonar(SON_ACEPTAR); break;
+    case AC_BORRAR: Escribir('\b'); Sonar(SON_ATRAS); break;
+    default: teclado = false; Sonar(SON_ACEPTAR); break;
+    }
+}
+
+static void TecladoDibujar(float a)
+{
+    if (a <= .01f) return;
+    float kw = 96, kh = 66, sep = 10;
+    float w = COLS_TECLADO * (kw + sep) - sep + 64, h = 150 + FILAS_TECLADO * (kh + sep);
+    float x = (ANCHO - w) / 2, y = ALTO - h - 100 + (1 - a) * 60;
+    Sombra(x, y, w, h, 28, 40, .6f * a);
+    Caja(x, y, w, h, 28, 0x150D2C, .97f * a);
+    Borde(x, y, w, h, 28, 2, C_ACENTO, .5f * a);
+    // Lo escrito, con un cursor que parpadea, y cuántos juegos coinciden.
+    Caja(x + 32, y + 28, w - 64, 70, 16, 0x000000, .45f * a);
+    char t[64];
+    snprintf(t, sizeof t, "%s%s", busqueda, ((int)(Segundos() * 2) & 1) ? "" : "|");
+    Texto(F_SUBTITULO, busqueda[0] || ((int)(Segundos() * 2) & 1) == 0 ? t : "Escribe el nombre del juego", x + 56, y + 44,
+          busqueda[0] ? C_TEXTO : C_TEXTO_3, a);
+    char cuenta[48];
+    snprintf(cuenta, sizeof cuenta, nVista == 1 ? "%d juego" : "%d juegos", nVista);
+    Texto(F_CUERPO_M, cuenta, x + w - 56, y + 50, nVista ? C_ACENTO : C_MAL, a, 2);
+    float ky = y + 124;
+    for (int f = 0; f < FILAS_TECLADO; f++)
+        for (int c = 0; c < COLS_TECLADO; c++)
+        {
+            float kx = x + 32 + c * (kw + sep), yy = ky + f * (kh + sep);
+            bool elegida = tecla == f * COLS_TECLADO + c;
+            if (f < 4)
+            {
+                Caja(kx, yy, kw, kh, 12, elegida ? C_ACENTO : 0xFFFFFF, (elegida ? .9f : .07f) * a);
+                char l[2] = {TECLAS[f][c], 0};
+                Texto(F_SUBTITULO, l, kx + kw / 2, yy + 14, C_TEXTO, a, 1);
+            }
+            else if (c == 0 || c == 4 || c == 7)
+            {
+                // Las acciones ocupan varias columnas: Espacio (4), Borrar (3), Listo (3).
+                int ancho = c == 0 ? 4 : 3;
+                bool sel2 = tecla / COLS_TECLADO == 4 && Accion(tecla % COLS_TECLADO) == Accion(c);
+                float aw = ancho * (kw + sep) - sep;
+                Caja(kx, yy, aw, kh, 12, sel2 ? C_ACENTO : 0xFFFFFF, (sel2 ? .9f : .1f) * a);
+                static const char* const NOMBRES[3] = {"Espacio", "Borrar", "Listo"};
+                Texto(F_CUERPO_M, NOMBRES[Accion(c)], kx + aw / 2, yy + 18, C_TEXTO, a, 1);
+            }
+        }
+    int b[3] = {BM_CRUZ, BM_CUADRADO, BM_CIRCULO};
+    const char* tx[3] = {"Escribir", "Borrar", "Cerrar"};
+    Pistas(b, tx, 3, a);
+}
+
 static void Biblioteca(float t, float dt, const Mando& m)
 {
     FondoPixel(t);
+    TomarListaNueva();
 
     // Cabecera: logo con una franja de los cuatro colores de la SNES.
     Texto(F_TITULO, "SNESUI", MARGEN, 58, C_TEXTO);
@@ -430,12 +571,20 @@ static void Biblioteca(float t, float dt, const Mando& m)
     snprintf(v, sizeof v, "versión %s", VERSION);
     Texto(F_PEQUENA, v, ANCHO - MARGEN, 70, C_TEXTO_3, 1, 2);
     char cont[48];
-    snprintf(cont, sizeof cont, nJuegos == 1 ? "%d juego" : "%d juegos", nJuegos > 0 ? nJuegos : 0);
+    int halladas = 0;
+    if (BibliotecaBuscando(&halladas)) snprintf(cont, sizeof cont, "Buscando juegos…  %d", halladas);
+    else snprintf(cont, sizeof cont, nJuegos == 1 ? "%d juego" : "%d juegos", nJuegos > 0 ? nJuegos : 0);
     Texto(F_CUERPO, cont, ANCHO - MARGEN, 100, C_TEXTO_2, 1, 2);
 
 
+    // El teclado en pantalla se lleva los botones mientras está abierto.
+    Suave(tecladoVis, teclado ? 1 : 0, 14, dt);
+    static const Mando nada = {};
+    const Mando& mb = teclado ? nada : m;
+    if (teclado) TecladoEntrada(m);
+
     // Pestañas: L1 / R1.
-    int cambio = (m.pulsados & B_R1) ? 1 : (m.pulsados & B_L1) ? -1 : 0;
+    int cambio = (mb.pulsados & B_R1) ? 1 : (mb.pulsados & B_L1) ? -1 : 0;
     if (cambio)
     {
         vistaActual = (vistaActual + NUM_VISTAS + cambio) % NUM_VISTAS;
@@ -449,12 +598,12 @@ static void Biblioteca(float t, float dt, const Mando& m)
     DibujarPestanas();
     if (vistaActual == V_CONFIG)
     {
-        Configuracion(dt, m);
+        Configuracion(dt, mb);
         DibujarDescarga(dt);
         return;
     }
 
-    if ((m.pulsados & B_CRUZ) && nVista > 0)
+    if ((mb.pulsados & B_CRUZ) && nVista > 0)
     {
         const Juego& j = juegos[vista[sel]];
         Sonar(SON_ACEPTAR);
@@ -462,14 +611,17 @@ static void Biblioteca(float t, float dt, const Mando& m)
         JuegoAbrir(j.ruta, j.nombre);
         if (vistaActual == V_RECIENTES) { ArmarVista(); sel = 0; }
     }
-    if ((m.pulsados & B_OPTIONS) && nVista > 0)
+    if ((mb.pulsados & B_OPTIONS) && nVista > 0)
     {
         CambiarFavorito(juegos[vista[sel]].clave);
         Sonar(SON_ACEPTAR);
         if (vistaActual == V_FAVORITOS) ArmarVista();
     }
-    if (m.pulsados & B_TRIANGULO) { Sonar(SON_ACEPTAR); nJuegos = BuscarJuegos(juegos, MAX_JUEGOS); ArmarVista(); }
-    if ((m.pulsados & B_CUADRADO) && nJuegos > 0)
+    if (mb.pulsados & B_TRIANGULO) { Sonar(BibliotecaBuscando(NULL) ? SON_ERROR : SON_ACEPTAR); BibliotecaBuscar(); }
+    // Panel táctil: buscar por nombre. ○ quita la búsqueda.
+    if ((mb.pulsados & B_TACTIL) && nJuegos > 0) { teclado = true; Sonar(SON_SECCION); }
+    if ((mb.pulsados & B_CIRCULO) && busqueda[0]) { busqueda[0] = 0; sel = 0; scrollVis = 0; ArmarVista(); Sonar(SON_ATRAS); }
+    if ((mb.pulsados & B_CUADRADO) && nJuegos > 0)
     {
         static const char* lista[MAX_JUEGOS];
         for (int i = 0; i < nJuegos; i++) lista[i] = juegos[i].clave;
@@ -477,17 +629,17 @@ static void Biblioteca(float t, float dt, const Mando& m)
         tResultado = 0;
     }
     int antes = sel;
-    if (m.pulsados & B_IZQ) sel--;
-    if (m.pulsados & B_DER) sel++;
-    if (m.pulsados & B_ARRIBA) sel -= COLS;
-    if (m.pulsados & B_ABAJO) sel += COLS;
+    if (mb.pulsados & B_IZQ) sel--;
+    if (mb.pulsados & B_DER) sel++;
+    if (mb.pulsados & B_ARRIBA) sel -= COLS;
+    if (mb.pulsados & B_ABAJO) sel += COLS;
     // L2 / R2: una página (las filas que entran en pantalla) hacia arriba o abajo.
-    if (m.pulsados & B_L2) sel -= COLS * FILAS_PAGINA;
-    if (m.pulsados & B_R2) sel += COLS * FILAS_PAGINA;
+    if (mb.pulsados & B_L2) sel -= COLS * FILAS_PAGINA;
+    if (mb.pulsados & B_R2) sel += COLS * FILAS_PAGINA;
     if (sel < 0) sel = 0;
     if (sel >= nVista) sel = nVista > 0 ? nVista - 1 : 0;
     // Stick derecho a los costados: al primer juego de la letra siguiente o anterior (se repite si se mantiene).
-    int dirLetra = m.rx > .6f ? 1 : m.rx < -.6f ? -1 : 0;
+    int dirLetra = mb.rx > .6f ? 1 : mb.rx < -.6f ? -1 : 0;
     if (!dirLetra) esperaLetra = 0;
     else if ((esperaLetra -= dt) <= 0 && nVista > 0)
     {
@@ -512,6 +664,18 @@ static void Biblioteca(float t, float dt, const Mando& m)
     }
     if (sel != antes) Sonar(SON_MOVER);
 
+    if (nJuegos <= 0 && BibliotecaBuscando(NULL))
+    {
+        float w = 900, h = 220, x = (ANCHO - w) / 2, y = 400;
+        Caja(x, y, w, h, 30, C_PANEL, .85f);
+        int n = 0;
+        BibliotecaBuscando(&n);
+        char t[64];
+        snprintf(t, sizeof t, "Buscando juegos en el USB…  %d", n);
+        Texto(F_SUBTITULO, t, x + w / 2, y + 70, C_TEXTO, 1, 1);
+        Texto(F_CUERPO, "La primera vez tarda un poco. Después la biblioteca aparece al instante.", x + w / 2, y + 140, C_TEXTO_2, 1, 1);
+        return;
+    }
     if (nJuegos <= 0)
     {
         float w = 1000, h = 420, x = (ANCHO - w) / 2, y = 330;
@@ -530,11 +694,14 @@ static void Biblioteca(float t, float dt, const Mando& m)
     {
         float w = 900, h = 260, x = (ANCHO - w) / 2, y = 380;
         Caja(x, y, w, h, 30, C_PANEL, .85f);
-        const char* t = vistaActual == V_RECIENTES ? "Todavía no jugaste nada" : "Todavía no hay favoritos";
-        const char* d = vistaActual == V_RECIENTES ? "Los juegos que abras van a aparecer acá, el último primero."
-                                                   : "Pulsa OPTIONS sobre un juego para marcarlo con una estrella.";
+        const char* t = busqueda[0] ? "Ningún juego coincide" : vistaActual == V_RECIENTES ? "Todavía no jugaste nada" : "Todavía no hay favoritos";
+        const char* d = busqueda[0] ? "Prueba con otra palabra (panel táctil) o pulsa círculo para ver todos."
+                        : vistaActual == V_RECIENTES ? "Los juegos que abras van a aparecer acá, el último primero."
+                                                     : "Pulsa OPTIONS sobre un juego para marcarlo con una estrella.";
         Texto(F_SUBTITULO, t, x + w / 2, y + 80, C_TEXTO, 1, 1);
         Texto(F_CUERPO, d, x + w / 2, y + 150, C_TEXTO_2, 1, 1);
+        DibujarBusqueda();
+        TecladoDibujar(tecladoVis);
         DibujarDescarga(dt);
         return;
     }
@@ -598,6 +765,8 @@ static void Biblioteca(float t, float dt, const Mando& m)
     Texto(F_PEQUENA, buf, MARGEN + pw, ALTO - 38, C_TEXTO_2);
     int b[4] = {BM_CRUZ, BM_OPTIONS, BM_TRIANGULO, BM_CUADRADO};
     const char* tx[4] = {"Jugar", EsFavorito(j.clave) ? "Quitar favorito" : "Favorito", "Buscar juegos", "Bajar carátulas"};
-    Pistas(b, tx, 4);
+    if (tecladoVis < .5f) Pistas(b, tx, 4, 1 - tecladoVis * 2);   // con el teclado abierto, sus pistas reemplazan a estas
+    DibujarBusqueda();
+    TecladoDibujar(tecladoVis);
     DibujarDescarga(dt);
 }

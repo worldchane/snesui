@@ -103,15 +103,17 @@ bool RomCargar(const char* ruta, InfoRom& info)
 
 void SnesAnalizar(const char* ruta, InfoRom& info)
 {
-    // Solo la cabecera: se leen los primeros 256 KB (alcanzan para 0x7FC0 y 0xFFC0), sin cargar toda la rom.
+    // Solo la cabecera: los primeros 64 KB (alcanzan para 0x7FC0 y 0xFFC0) más los 512 bytes que agregan algunas
+    // copiadoras al principio. No hace falta leer más (con miles de roms en el USB, esto es lo que más tarda).
     memset(&info, 0, sizeof info);
     uint64_t tam64 = 0;
     if (!ExisteArchivo(ruta, &tam64) || tam64 < 0x8000) { snprintf(info.error, sizeof info.error, "rom muy chica"); return; }
-    static uint8_t cab[256 * 1024];
+    static uint8_t cab[0x10000 + 512 + 1];
     int n = LeerTexto(ruta, (char*)cab, sizeof cab);
     if (n < 0x8000) { snprintf(info.error, sizeof info.error, "no se pudo leer"); return; }
     uint32_t tam = (uint32_t)n;
-    if ((tam & 0x3FF) == 512) { memmove(cab, cab + 512, tam - 512); tam -= 512; }
+    // La cabecera de copiadora se reconoce por el tamaño del archivo entero (no por lo leído, que está recortado).
+    if ((tam64 & 0x3FF) == 512) { memmove(cab, cab + 512, tam - 512); tam -= 512; }
     int pLo = Puntaje(cab, tam, 0x7FC0), pHi = Puntaje(cab, tam, 0xFFC0);
     if (pLo < 0 && pHi < 0) { snprintf(info.error, sizeof info.error, "no parece una rom de SNES"); return; }
     LeerCabecera(cab, tam, pHi > pLo ? 0xFFC0 : 0x7FC0, info);

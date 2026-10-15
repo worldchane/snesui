@@ -33,6 +33,8 @@ definición, carátulas automáticas, guardado de partidas y filtros de imagen.
 - **Dos jugadores.** Con un segundo mando.
 - **Interfaz.** Biblioteca con fondo pixel art animado, pestañas de recientes y favoritos, y búsqueda de juegos en
   todo el USB, incluidas las subcarpetas.
+- **Bibliotecas grandes.** Hasta 10.000 juegos: la lista aparece al instante (se guarda un índice), el USB se revisa
+  en segundo plano analizando solo las ROMs nuevas, y se puede buscar por nombre.
 
 ![Menú de pausa](docs/imagen-menu.png)
 
@@ -64,6 +66,7 @@ Hay dos versiones del PKG:
 | L1 / R1 | Cambiar de pestaña: Todos, Recientes, Favoritos, Configuración |
 | L2 / R2 | Subir o bajar una página |
 | Stick derecho ← → | Saltar a la letra anterior o siguiente |
+| Panel táctil | Buscar por nombre (teclado en pantalla); ○ quita la búsqueda |
 
 | Jugando | Botón de la SNES |
 |---|---|
@@ -84,6 +87,7 @@ Todo queda en `/data/snes-ps4/` en la consola:
 
 - `guardados/`: las partidas (`.srm`) y los estados rápidos (`.st0` a `.st3`);
 - `caratulas/`: las carátulas bajadas;
+- `biblioteca.txt`: el índice de la biblioteca (para que aparezca al instante; se actualiza solo);
 - `ajustes.txt`: la configuración general (proporción, filtro, avance rápido, rebobinar);
 - `guardados/<juego>.cfg`: la proporción y el filtro propios de un juego, si se cambiaron desde su menú de pausa.
 

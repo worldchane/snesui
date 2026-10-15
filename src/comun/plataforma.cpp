@@ -533,7 +533,7 @@ static bool afuera;
 static char rutaAcceso[96];
 const char* AccesoDetalle() { return accesoDetalle; }
 
-int AbrirAccesoCompleto(const char* quien, bool insistir)
+static int AbrirAccesoInterno(const char* quien, bool insistir)
 {
     // Antes de probar se anota "probando" y apenas funciona, "ok". Si quedó "probando", eso cerró el programa: al volver
     // a abrirlo no se repite solo (sí si el usuario insiste).
@@ -558,11 +558,37 @@ int AbrirAccesoCompleto(const char* quien, bool insistir)
     return afuera ? 1 : 0;
 }
 
+// Varios hilos pueden pedir el acceso a la vez (la búsqueda de juegos en segundo plano y abrir un juego): se cuenta
+// cuántos lo están usando y se vuelve al encierro recién cuando lo suelta el último.
+static std::atomic_flag candado = ATOMIC_FLAG_INIT;
+static int usuariosAcceso;
+static void Tomar() { while (candado.test_and_set(std::memory_order_acquire)) sceKernelUsleep(200); }
+static void Soltar() { candado.clear(std::memory_order_release); }
+
+int AbrirAccesoCompleto(const char* quien, bool insistir)
+{
+    Tomar();
+    int r;
+    if (afuera) { usuariosAcceso++; r = 1; }
+    else
+    {
+        r = AbrirAccesoInterno(quien, insistir);
+        usuariosAcceso = afuera ? 1 : 0;
+    }
+    Soltar();
+    return r;
+}
+
 void CerrarAccesoCompleto()
 {
-    if (!afuera) return;
-    LlamadaSistema(500, 3, (long)respaldo);   // orden 3: UNJAILBREAK, vuelve a como estaba
-    afuera = false;
+    Tomar();
+    if (afuera && --usuariosAcceso <= 0)
+    {
+        LlamadaSistema(500, 3, (long)respaldo);   // orden 3: UNJAILBREAK, vuelve a como estaba
+        afuera = false;
+        usuariosAcceso = 0;
+    }
+    Soltar();
 }
 
 int ErrorListado() { return errorListado; }
