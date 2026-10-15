@@ -35,7 +35,8 @@ definición, carátulas automáticas, guardado de partidas y filtros de imagen.
   todo el USB, incluidas las subcarpetas.
 - **Juegos en el USB o en la consola.** Cada juego muestra dónde está con un ícono (USB o disco duro). Se pueden
   copiar a la consola uno por uno (OPTIONS), todos juntos o automáticamente al aparecer en el USB (Configuración), y
-  también de la consola al USB (uno o todos, como copia de seguridad). Antes de copiar se mide el espacio
+  también de la consola al USB (uno o todos, como copia de seguridad). También se pueden borrar todos los juegos de
+  la consola o del USB, siempre con una confirmación que avisa cuáles se perderían. Antes de copiar se mide el espacio
   libre y siempre se deja 1 GB para el sistema; cada copia se verifica.
 - **Bibliotecas grandes.** Hasta 10.000 juegos: la lista aparece al instante (se guarda un índice), el USB se revisa
   en segundo plano analizando solo las ROMs nuevas, y se puede buscar por nombre.
@@ -66,7 +67,7 @@ Hay dos versiones del PKG:
 | ✕ | Jugar |
 | △ | Buscar juegos en el USB |
 | □ | Bajar las carátulas que falten |
-| OPTIONS | Opciones del juego: copiar solo ese juego a la consola o al USB, borrar de la consola, favorito, copiar todos |
+| OPTIONS | Opciones del juego: copiar solo ese juego a la consola o al USB, borrar de la consola, favorito, y copiar o borrar todos los juegos |
 | L1 / R1 | Cambiar de pestaña: Todos, Recientes, Favoritos, Configuración |
 | L2 / R2 | Subir o bajar una página |
 | Stick derecho ← → | Saltar a la letra anterior o siguiente |

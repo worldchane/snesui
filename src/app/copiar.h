@@ -19,6 +19,7 @@ struct ProgresoCopia
     int errores;        // fallaron al copiar
     uint64_t bytesHechos, bytesTotal;
     bool alUsb;         // la dirección: de la consola al USB (si no, del USB a la consola)
+    bool borrando;      // es un borrado (no una copia): 'copiados' cuenta los borrados
     char actual[96];    // el que se está copiando
     char detalle[200];  // el motivo si falló
 };
@@ -29,6 +30,9 @@ bool EmpezarCopia(const char* const* rutas, int n, const char* destino, uint64_t
 // Busca un USB conectado y devuelve la carpeta donde copiar juegos (por ejemplo /mnt/usb0/SNES). false si no hay.
 // También devuelve el espacio libre del USB, si se pide.
 bool CarpetaUsb(char* out, int max, uint64_t* libres = 0);
+// Borra estos juegos (de la consola o del USB) en segundo plano. Solo borra roms de SNES (.sfc/.smc/.fig/.swc) dentro
+// de /data/snes-ps4/juegos o de un USB; nunca otros archivos ni carpetas. false si ya hay una copia o un borrado en curso.
+bool EmpezarBorrado(const char* const* rutas, int n);
 ProgresoCopia ProgresoDeCopia();
 bool CopiaEnCurso();
 

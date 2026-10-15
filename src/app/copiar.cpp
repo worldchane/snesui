@@ -169,6 +169,61 @@ static void* HiloCopia(void*)
     return NULL;
 }
 
+// ---------- borrar varios ----------
+static bool EsRomBorrable(const char* r)
+{
+    size_t n = strlen(CARPETA_JUEGOS_CONSOLA);
+    bool lugar = (!strncmp(r, CARPETA_JUEGOS_CONSOLA, n) && r[n] == '/') || !strncmp(r, "/mnt/usb", 8);
+    const char* e = strrchr(r, '.');
+    if (!lugar || !e || strstr(r, "/../")) return false;
+    char ext[8] = "";
+    for (int i = 0; i < 7 && e[1 + i]; i++) ext[i] = (char)(e[1 + i] | 0x20), ext[i + 1] = 0;
+    return !strcmp(ext, "sfc") || !strcmp(ext, "smc") || !strcmp(ext, "fig") || !strcmp(ext, "swc");
+}
+
+static void* HiloBorrado(void*)
+{
+    AbrirAccesoCompleto("snes");   // para el USB
+    for (int i = 0; i < nRutas; i++)
+    {
+        snprintf(progreso.actual, sizeof progreso.actual, "%s", NombreArchivo(rutas[i]));
+        uint64_t t = 0;
+        ExisteArchivo(rutas[i], &t);
+        if (EsRomBorrable(rutas[i]) && BorrarArchivo(rutas[i])) { progreso.copiados++; progreso.bytesHechos += t; }
+        else progreso.errores++;
+        progreso.hechos++;
+    }
+    CerrarAccesoCompleto();
+    if (progreso.errores) snprintf(progreso.detalle, sizeof progreso.detalle, "%d juegos no se pudieron borrar.", progreso.errores);
+    progreso.activa = false;
+    progreso.terminada = true;
+    enCurso.store(false, std::memory_order_release);
+    return NULL;
+}
+
+static bool Preparar(const char* const* lista, int n)
+{
+    free(rutas);
+    rutas = (char(*)[512])malloc(sizeof(*rutas) * n);
+    if (!rutas) return false;
+    nRutas = n;
+    for (int i = 0; i < n; i++) snprintf(rutas[i], sizeof rutas[i], "%s", lista[i]);
+    memset(&progreso, 0, sizeof progreso);
+    progreso.total = n;
+    progreso.activa = true;
+    return true;
+}
+
+bool EmpezarBorrado(const char* const* lista, int n)
+{
+    if (enCurso.load(std::memory_order_acquire) || n <= 0 || !Preparar(lista, n)) return false;
+    progreso.borrando = true;
+    progreso.alUsb = !strncmp(lista[0], "/mnt/usb", 8);
+    enCurso.store(true, std::memory_order_release);
+    if (!Lanzar(HiloBorrado, NULL, "borrar")) { enCurso.store(false, std::memory_order_release); progreso.activa = false; return false; }
+    return true;
+}
+
 bool EmpezarCopia(const char* const* lista, int n, const char* carpeta, uint64_t res)
 {
     if (enCurso.load(std::memory_order_acquire) || n <= 0) return false;

@@ -171,11 +171,31 @@ int main()
         {9.0f, B_ARRIBA, NULL},
         {9.5f, 0, "63_config"},
     };
+    // GUION=borrar: la ventana de copiar o borrar todos, borrar todos los de la consola y todos los del USB.
+    static const Paso borrar[] = {
+        {4.5f, B_OPTIONS, NULL},
+        {4.8f, B_ABAJO, NULL}, {4.95f, B_ABAJO, NULL}, {5.1f, B_ABAJO, NULL},
+        {5.3f, B_CRUZ, NULL},
+        {5.8f, 0, "70_administrar"},
+        {6.0f, B_ABAJO, NULL}, {6.15f, B_ABAJO, NULL},
+        {6.3f, B_CRUZ, NULL},
+        {6.8f, 0, "71_seguro_consola"},
+        {7.0f, B_ARRIBA, NULL}, {7.2f, B_CRUZ, NULL},
+        {8.6f, 0, "72_borrados_consola"},
+        {8.8f, B_OPTIONS, NULL},
+        {9.0f, B_ABAJO, NULL}, {9.15f, B_ABAJO, NULL},
+        {9.3f, B_CRUZ, NULL},
+        {9.5f, B_ABAJO, NULL}, {9.65f, B_ABAJO, NULL}, {9.8f, B_ABAJO, NULL},
+        {9.95f, B_CRUZ, NULL},
+        {10.5f, 0, "73_seguro_usb"},
+        {10.7f, B_ARRIBA, NULL}, {10.9f, B_CRUZ, NULL},
+        {12.4f, 0, "74_borrados_usb"},
+    };
     const char* g = getenv("GUION");
-    bool corto = g && !strcmp(g, "acerca"), larga = g && !strcmp(g, "lista"), muchos = g && !strcmp(g, "mil"), copia = g && !strcmp(g, "copiar"), alUsb = g && !strcmp(g, "alusb");
-    const Paso* pasos = corto ? acerca : larga ? lista : muchos ? mil : copia ? copiar : alUsb ? alusb : guion;
-    const int N = corto ? (int)(sizeof acerca / sizeof acerca[0]) : larga ? (int)(sizeof lista / sizeof lista[0]) : muchos ? (int)(sizeof mil / sizeof mil[0]) : copia ? (int)(sizeof copiar / sizeof copiar[0]) : alUsb ? (int)(sizeof alusb / sizeof alusb[0]) : (int)(sizeof guion / sizeof guion[0]);
-    const double FIN = corto ? 7.0 : larga ? 9.0 : muchos ? 7.5 : copia ? 15.2 : alUsb ? 9.7 : 42.0;
+    bool corto = g && !strcmp(g, "acerca"), larga = g && !strcmp(g, "lista"), muchos = g && !strcmp(g, "mil"), copia = g && !strcmp(g, "copiar"), alUsb = g && !strcmp(g, "alusb"), borra = g && !strcmp(g, "borrar");
+    const Paso* pasos = corto ? acerca : larga ? lista : muchos ? mil : copia ? copiar : alUsb ? alusb : borra ? borrar : guion;
+    const int N = corto ? (int)(sizeof acerca / sizeof acerca[0]) : larga ? (int)(sizeof lista / sizeof lista[0]) : muchos ? (int)(sizeof mil / sizeof mil[0]) : copia ? (int)(sizeof copiar / sizeof copiar[0]) : alUsb ? (int)(sizeof alusb / sizeof alusb[0]) : borra ? (int)(sizeof borrar / sizeof borrar[0]) : (int)(sizeof guion / sizeof guion[0]);
+    const double FIN = corto ? 7.0 : larga ? 9.0 : muchos ? 7.5 : copia ? 15.2 : alUsb ? 9.7 : borra ? 12.6 : 42.0;
     double peor = 0;
     int k = 0;
     for (int cuadro = 0; tiempoSimulado < FIN; cuadro++)
