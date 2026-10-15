@@ -35,7 +35,7 @@ definición, carátulas automáticas, guardado de partidas y filtros de imagen.
   todo el USB, incluidas las subcarpetas.
 - **Juegos en el USB o en la consola.** Cada juego muestra dónde está con un ícono (USB o disco duro). Se pueden
   copiar a la consola uno por uno (OPTIONS), todos juntos o automáticamente al aparecer en el USB (Configuración), y
-  también de la consola al USB. Antes de copiar se mide el espacio
+  también de la consola al USB (uno o todos, como copia de seguridad). Antes de copiar se mide el espacio
   libre y siempre se deja 1 GB para el sistema; cada copia se verifica.
 - **Bibliotecas grandes.** Hasta 10.000 juegos: la lista aparece al instante (se guarda un índice), el USB se revisa
   en segundo plano analizando solo las ROMs nuevas, y se puede buscar por nombre.

@@ -149,6 +149,7 @@ static void MarcarCopiados(Lista& l)
     for (int i = 0; i < l.n; i++)
     {
         l.j[i].copiado = false;
+        l.j[i].tambienEnUsb = false;
         if (l.j[i].enUsb) continue;
         uint32_t k = HashRuta(l.j[i].archivo) & (t - 1);
         while (h[k] >= 0) k = (k + 1) & (t - 1);
@@ -160,8 +161,8 @@ static void MarcarCopiados(Lista& l)
         if (!j.enUsb) continue;
         for (uint32_t k = HashRuta(j.archivo) & (t - 1); h[k] >= 0; k = (k + 1) & (t - 1))
         {
-            const Juego& c = l.j[h[k]];
-            if (c.bytes == j.bytes && !strcmp(c.archivo, j.archivo)) { j.copiado = true; break; }
+            Juego& c = l.j[h[k]];
+            if (c.bytes == j.bytes && !strcmp(c.archivo, j.archivo)) { j.copiado = true; c.tambienEnUsb = true; break; }
         }
     }
     free(h);

@@ -22,6 +22,7 @@ struct Juego
     bool valida;
     bool enUsb;            // está en un USB (si no, en la consola: /data/snes-ps4/juegos)
     bool copiado;          // está en el USB y también hay una copia igual en la consola (se muestra solo la copia)
+    bool tambienEnUsb;     // está en la consola y también hay una copia igual en un USB
     uint32_t color1, color2;
 };
 

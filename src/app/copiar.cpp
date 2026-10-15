@@ -37,7 +37,7 @@ void TextoTamano(uint64_t bytes, char* out, int max)
     }
 }
 
-bool CarpetaUsb(char* out, int max)
+bool CarpetaUsb(char* out, int max, uint64_t* libresUsb)
 {
     // El primer USB que se pueda abrir. Los juegos copiados van a su carpeta SNES (la búsqueda la recorre igual).
     static const char* const USB[] = {"/mnt/usb0", "/mnt/usb1", "/mnt/usb2", "/mnt/usb3"};
@@ -49,6 +49,7 @@ bool CarpetaUsb(char* out, int max)
         if (ListarCarpeta(u, [](const char*, bool, void*) {}, NULL) >= 0 && EspacioLibre(u, &libres))
         {
             snprintf(out, max, "%s/SNES", u);
+            if (libresUsb) *libresUsb = libres;
             hay = true;
             break;
         }

@@ -158,11 +158,24 @@ int main()
         {13.2f, B_CRUZ, NULL},                                  // copiar este juego al USB
         {15.0f, 0, "58_copiado_usb"},
     };
+    // GUION=alusb: copiar todos los juegos de la consola al USB.
+    static const Paso alusb[] = {
+        {4.5f, B_OPTIONS, NULL},
+        {4.8f, B_ABAJO, NULL}, {4.95f, B_ABAJO, NULL}, {5.1f, B_ABAJO, NULL}, {5.25f, B_ABAJO, NULL},
+        {5.6f, 0, "60_menu_todos_al_usb"},
+        {5.8f, B_CRUZ, NULL},
+        {6.4f, 0, "61_confirmar_al_usb"},
+        {6.6f, B_ARRIBA, NULL}, {6.8f, B_CRUZ, NULL},
+        {8.5f, 0, "62_copiados_al_usb"},
+        {8.7f, B_L1, NULL},
+        {9.0f, B_ARRIBA, NULL},
+        {9.5f, 0, "63_config"},
+    };
     const char* g = getenv("GUION");
-    bool corto = g && !strcmp(g, "acerca"), larga = g && !strcmp(g, "lista"), muchos = g && !strcmp(g, "mil"), copia = g && !strcmp(g, "copiar");
-    const Paso* pasos = corto ? acerca : larga ? lista : muchos ? mil : copia ? copiar : guion;
-    const int N = corto ? (int)(sizeof acerca / sizeof acerca[0]) : larga ? (int)(sizeof lista / sizeof lista[0]) : muchos ? (int)(sizeof mil / sizeof mil[0]) : copia ? (int)(sizeof copiar / sizeof copiar[0]) : (int)(sizeof guion / sizeof guion[0]);
-    const double FIN = corto ? 7.0 : larga ? 9.0 : muchos ? 7.5 : copia ? 15.2 : 42.0;
+    bool corto = g && !strcmp(g, "acerca"), larga = g && !strcmp(g, "lista"), muchos = g && !strcmp(g, "mil"), copia = g && !strcmp(g, "copiar"), alUsb = g && !strcmp(g, "alusb");
+    const Paso* pasos = corto ? acerca : larga ? lista : muchos ? mil : copia ? copiar : alUsb ? alusb : guion;
+    const int N = corto ? (int)(sizeof acerca / sizeof acerca[0]) : larga ? (int)(sizeof lista / sizeof lista[0]) : muchos ? (int)(sizeof mil / sizeof mil[0]) : copia ? (int)(sizeof copiar / sizeof copiar[0]) : alUsb ? (int)(sizeof alusb / sizeof alusb[0]) : (int)(sizeof guion / sizeof guion[0]);
+    const double FIN = corto ? 7.0 : larga ? 9.0 : muchos ? 7.5 : copia ? 15.2 : alUsb ? 9.7 : 42.0;
     double peor = 0;
     int k = 0;
     for (int cuadro = 0; tiempoSimulado < FIN; cuadro++)

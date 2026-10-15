@@ -27,7 +27,8 @@ struct ProgresoCopia
 // 'reserva' bytes. false si ya hay una copia en curso.
 bool EmpezarCopia(const char* const* rutas, int n, const char* destino, uint64_t reserva);
 // Busca un USB conectado y devuelve la carpeta donde copiar juegos (por ejemplo /mnt/usb0/SNES). false si no hay.
-bool CarpetaUsb(char* out, int max);
+// También devuelve el espacio libre del USB, si se pide.
+bool CarpetaUsb(char* out, int max, uint64_t* libres = 0);
 ProgresoCopia ProgresoDeCopia();
 bool CopiaEnCurso();
 

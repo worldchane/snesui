@@ -386,7 +386,7 @@ void InterfazCuadro(float t, float dt, const Mando& m)
 }
 
 // ---------- copiar a la consola: ventanas, avisos y progreso ----------
-enum { VN_NADA, VN_JUEGO, VN_BORRAR, VN_COPIAR_TODOS };
+enum { VN_NADA, VN_JUEGO, VN_BORRAR, VN_COPIAR_TODOS, VN_TODOS_AL_USB };
 static int ventana = VN_NADA, opVentana;
 static float ventanaVis;
 struct Elegido { char ruta[512], archivo[96], nombre[64], clave[96]; uint64_t bytes; bool enUsb, otraEnUsb; };
@@ -434,6 +434,35 @@ static int PendientesUsb(const char** rutas, uint64_t* bytes)
     return n;
 }
 
+// Los juegos de la consola que todavía no están en un USB (lo que copiaría "Copiar todos al USB").
+static int PendientesConsola(const char** rutas, uint64_t* bytes)
+{
+    int n = 0;
+    uint64_t b = 0;
+    for (int i = 0; i < nJuegos; i++)
+        if (!juegos[i].enUsb && !juegos[i].tambienEnUsb)
+        {
+            if (rutas) rutas[n] = juegos[i].ruta;
+            b += juegos[i].bytes;
+            n++;
+        }
+    if (bytes) *bytes = b;
+    return n;
+}
+
+// El USB de destino: se busca al abrir la ventana (hace falta el acceso de GoldHEN para verlo).
+static char usbCarpeta[64];
+static bool usbHay;
+static uint64_t usbLibre;
+static void BuscarUsb() { usbHay = CarpetaUsb(usbCarpeta, sizeof usbCarpeta, &usbLibre); }
+
+static void CopiarConsolaAlUsb()
+{
+    static const char* lista[MAX_JUEGOS];
+    int n = PendientesConsola(lista, NULL);
+    if (n && usbHay && EmpezarCopia(lista, n, usbCarpeta, RESERVA_USB)) copiaVista = false;
+}
+
 static void CopiarPendientes()
 {
     static const char* lista[MAX_JUEGOS];
@@ -442,7 +471,7 @@ static void CopiarPendientes()
 }
 
 // Lo que se puede hacer con el juego elegido, según dónde está. Copiar solo ese juego va primero.
-enum { JA_A_CONSOLA, JA_A_USB, JA_BORRAR, JA_FAVORITO, JA_TODOS, JA_CANCELAR };
+enum { JA_A_CONSOLA, JA_A_USB, JA_BORRAR, JA_FAVORITO, JA_TODOS, JA_TODOS_AL_USB, JA_CANCELAR };
 static int AccionesJuego(int* ac)
 {
     int n = 0;
@@ -454,6 +483,7 @@ static int AccionesJuego(int* ac)
     }
     ac[n++] = JA_FAVORITO;
     ac[n++] = JA_TODOS;
+    ac[n++] = JA_TODOS_AL_USB;
     ac[n++] = JA_CANCELAR;
     return n;
 }
@@ -466,9 +496,7 @@ static void AbrirMenuJuego(const Juego& j)
     snprintf(elegido.clave, sizeof elegido.clave, "%s", j.clave);
     elegido.bytes = j.bytes;
     elegido.enUsb = j.enUsb;
-    elegido.otraEnUsb = false;
-    for (int i = 0; i < nJuegos; i++)
-        if (juegos[i].enUsb && juegos[i].copiado && !strcmp(juegos[i].archivo, j.archivo)) { elegido.otraEnUsb = true; break; }
+    elegido.otraEnUsb = j.tambienEnUsb;
     ventana = VN_JUEGO;
     opVentana = 0;
     tMedida = 99;
@@ -476,7 +504,7 @@ static void AbrirMenuJuego(const Juego& j)
 
 static void VentanaEntrada(const Mando& m)
 {
-    int acciones[6];
+    int acciones[8];
     int opciones = ventana == VN_JUEGO ? AccionesJuego(acciones) : 2;
     if (m.pulsados & B_ARRIBA) { opVentana = (opVentana + opciones - 1) % opciones; Sonar(SON_MOVER); }
     if (m.pulsados & B_ABAJO) { opVentana = (opVentana + 1) % opciones; Sonar(SON_MOVER); }
@@ -509,6 +537,7 @@ static void VentanaEntrada(const Mando& m)
         }
         case JA_BORRAR: ventana = VN_BORRAR; opVentana = 1; Sonar(SON_ACEPTAR); break;                     // empieza en "Cancelar"
         case JA_TODOS: ventana = VN_COPIAR_TODOS; opVentana = 1; tMedida = 99; Sonar(SON_ACEPTAR); break;   // ídem
+        case JA_TODOS_AL_USB: BuscarUsb(); ventana = VN_TODOS_AL_USB; opVentana = 1; Sonar(SON_ACEPTAR); break;
         default: ventana = VN_NADA; Sonar(SON_ATRAS); break;
         }
         return;
@@ -524,10 +553,12 @@ static void VentanaEntrada(const Mando& m)
         ventana = VN_NADA;
         return;
     }
-    // Copiar todos.
+    // Copiar todos (del USB a la consola, o de la consola al USB).
     if (opVentana == 0)
     {
         if (CopiaEnCurso()) { Avisar("Ya hay una copia en curso: espera a que termine.", C_AVISO); Sonar(SON_ERROR); }
+        else if (ventana == VN_TODOS_AL_USB && !usbHay) { Avisar("No hay un USB conectado.", C_MAL); Sonar(SON_ERROR); }
+        else if (ventana == VN_TODOS_AL_USB) { CopiarConsolaAlUsb(); Sonar(SON_ACEPTAR); }
         else { CopiarPendientes(); Sonar(SON_ACEPTAR); }
     }
     else Sonar(SON_ATRAS);
@@ -540,16 +571,16 @@ static void VentanaDibujar(float dt)
     float a = ventanaVis;
     if (a <= .01f || ventana == VN_NADA) return;
     Velo(0, 0, ANCHO, ALTO, 0, 0x05030C, .6f * a, .6f * a);
-    int acciones[6];
+    int acciones[8];
     int nAcc = AccionesJuego(acciones);
-    float w = 860, h = ventana == VN_JUEGO ? 230 + nAcc * 62.f : ventana == VN_COPIAR_TODOS ? 560 : 470;
+    float w = 860, h = ventana == VN_JUEGO ? 230 + nAcc * 62.f : (ventana == VN_COPIAR_TODOS || ventana == VN_TODOS_AL_USB) ? 560 : 470;
     float x = (ANCHO - w) / 2, y = (ALTO - h) / 2 + (1 - a) * 40;
     Sombra(x, y, w, h, 28, 50, .6f * a);
     Caja(x, y, w, h, 28, 0x1A1033, .98f * a);
     Borde(x, y, w, h, 28, 2, C_ACENTO, .5f * a);
     char t[200], tam[32], libre[96];
     TextoLibre(libre, sizeof libre);
-    const char* op[6] = {NULL, NULL, NULL, NULL, NULL, NULL};
+    const char* op[8] = {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL};
     int n = 0;
     if (ventana == VN_JUEGO)
     {
@@ -568,6 +599,7 @@ static void VentanaDibujar(float dt)
             case JA_BORRAR: op[i] = "Borrar de la consola"; break;
             case JA_FAVORITO: op[i] = EsFavorito(elegido.clave) ? "Quitar de favoritos" : "Agregar a favoritos"; break;
             case JA_TODOS: op[i] = "Copiar todos los juegos del USB a la consola"; break;
+            case JA_TODOS_AL_USB: op[i] = "Copiar todos los juegos de la consola al USB"; break;
             default: op[i] = "Cancelar"; break;
             }
         n = nAcc;
@@ -579,6 +611,33 @@ static void VentanaDibujar(float dt)
                                             : "No hay otra copia de este juego en el USB: para volver a jugarlo tendrás que copiarlo otra vez. Tus partidas no se tocan.",
                 x + 48, y + 100, w - 96, C_TEXTO_2, a);
         op[0] = "Borrar";
+        op[1] = "Cancelar";
+        n = 2;
+    }
+    else if (ventana == VN_TODOS_AL_USB)
+    {
+        uint64_t bytes = 0;
+        int pend = PendientesConsola(NULL, &bytes);
+        TextoTamano(bytes, tam, sizeof tam);
+        Texto(F_SUBTITULO, "Copiar los juegos de la consola al USB", x + 48, y + 40, C_TEXTO, a);
+        snprintf(t, sizeof t, pend == 1 ? "%d juego por copiar   ·   %s" : "%d juegos por copiar   ·   %s", pend, tam);
+        Texto(F_CUERPO_M, t, x + 48, y + 100, C_TEXTO, a);
+        char lu[32], tu[120];
+        TextoTamano(usbLibre, lu, sizeof lu);
+        if (usbHay) snprintf(tu, sizeof tu, "Espacio libre en el USB: %s   (se copia a %s)", lu, usbCarpeta);
+        else snprintf(tu, sizeof tu, "No hay un USB conectado.");
+        Texto(F_CUERPO, tu, x + 48, y + 142, usbHay ? C_TEXTO_2 : C_MAL, a);
+        bool alcanza = usbHay && bytes + RESERVA_USB <= usbLibre;
+        float ay = y + 188, ah = 150;
+        Caja(x + 32, ay, w - 64, ah, 16, C_AVISO, .1f * a);
+        Borde(x + 32, ay, w - 64, ah, 16, 2, C_AVISO, .6f * a);
+        Texto(F_CUERPO_M, "Antes de copiar, verifica la capacidad de tu USB", x + 56, ay + 16, C_AVISO, a);
+        const char* nota = !usbHay ? "Conecta un USB a la consola y vuelve a abrir esta ventana."
+                         : !pend ? "Todos los juegos de la consola ya están en el USB: no hay nada para copiar."
+                         : alcanza ? "Entran todos. Los juegos se copian a la carpeta SNES del USB y la consola los sigue teniendo."
+                                   : "No entran todos: se copiarán solo los que entren. Si quieres copiarlos todos, usa un USB con más espacio.";
+        Parrafo(F_PEQUENA, nota, x + 56, ay + 58, w - 112, C_TEXTO_2, a);
+        op[0] = "Copiar";
         op[1] = "Cancelar";
         n = 2;
     }
@@ -674,7 +733,7 @@ static void DibujarCopia(float dt)
 }
 
 // ---------- pestaña de configuración (vale para todos los juegos) ----------
-enum { CF_PROPORCION, CF_FILTRO, CF_AVANCE, CF_REBOBINAR, CF_COPIAR_AUTO, CF_COPIAR_TODOS, CF_ACERCA, NUM_CF };
+enum { CF_PROPORCION, CF_FILTRO, CF_AVANCE, CF_REBOBINAR, CF_COPIAR_AUTO, CF_COPIAR_TODOS, CF_TODOS_AL_USB, CF_ACERCA, NUM_CF };
 static int selConfig;
 static bool viendoAcerca;
 static void AcercaDe();
@@ -691,10 +750,11 @@ static void Configuracion(float dt, const Mando& m)
     }
     if (selConfig == CF_ACERCA && (m.pulsados & (B_CRUZ | B_DER))) { viendoAcerca = true; Sonar(SON_ACEPTAR); return; }
     if (selConfig == CF_COPIAR_TODOS && (m.pulsados & (B_CRUZ | B_DER))) { ventana = VN_COPIAR_TODOS; opVentana = 1; tMedida = 99; Sonar(SON_ACEPTAR); return; }
+    if (selConfig == CF_TODOS_AL_USB && (m.pulsados & (B_CRUZ | B_DER))) { BuscarUsb(); ventana = VN_TODOS_AL_USB; opVentana = 1; Sonar(SON_ACEPTAR); return; }
     if (m.pulsados & B_ARRIBA) { selConfig = (selConfig + NUM_CF - 1) % NUM_CF; Sonar(SON_MOVER); }
     if (m.pulsados & B_ABAJO) { selConfig = (selConfig + 1) % NUM_CF; Sonar(SON_MOVER); }
     int d = (m.pulsados & (B_DER | B_CRUZ)) ? 1 : (m.pulsados & B_IZQ) ? -1 : 0;
-    if (d && selConfig != CF_ACERCA && selConfig != CF_COPIAR_TODOS)
+    if (d && selConfig != CF_ACERCA && selConfig != CF_COPIAR_TODOS && selConfig != CF_TODOS_AL_USB)
     {
         switch (selConfig)
         {
@@ -709,17 +769,18 @@ static void Configuracion(float dt, const Mando& m)
     }
     Suave(selConfigSuave, (float)selConfig, 18, dt);
 
-    float w = 1180, x = (ANCHO - w) / 2, y = 228, paso = 92, h = 124 + (float)NUM_CF * paso;
+    float w = 1180, x = (ANCHO - w) / 2, y = 222, paso = 84, h = 120 + (float)NUM_CF * paso;
     Sombra(x, y, w, h, 28, 40, .5f, true);
     Caja(x, y, w, h, 28, C_PANEL, .92f);
     Texto(F_SUBTITULO, "Configuración general", x + 48, y + 36, C_TEXTO);
     Texto(F_PEQUENA, "Vale para todos los juegos. Cada juego puede tener su propia proporción y filtro desde el menú de pausa (L3 + R3).",
           x + 48, y + 86, C_TEXTO_3);
-    float y0 = y + 124;
+    float y0 = y + 120;
     Caja(x + 24, y0 + selConfigSuave * paso - 14, w - 48, paso - 12, 18, C_ACENTO, .2f);
     Borde(x + 24, y0 + selConfigSuave * paso - 14, w - 48, paso - 12, 18, 2, C_ACENTO, .7f);
     static const char* const TITULOS[NUM_CF] = {"Proporción de la imagen", "Filtro", "Avance rápido (mantener R2)", "Rebobinar (mantener L2)",
-                                                "Copiar juegos nuevos del USB automáticamente", "Copiar todos los juegos del USB a la consola", "Acerca de SNESUI"};
+                                                "Copiar juegos nuevos del USB automáticamente", "Copiar todos los juegos del USB a la consola",
+                                                "Copiar todos los juegos de la consola al USB", "Acerca de SNESUI"};
     static const char* const AYUDAS[NUM_CF] = {
         "Cómo se ajusta la imagen a la pantalla.",
         "Suave, nítido o el aspecto de un televisor antiguo.",
@@ -727,6 +788,7 @@ static void Configuracion(float dt, const Mando& m)
         "Guarda los últimos segundos para volver atrás. Desactivado, la consola trabaja menos.",
         "Los juegos que aparezcan en el USB se copian solos a la consola, si hay espacio.",
         NULL,   // el espacio libre (se calcula)
+        "Una copia de seguridad de tus juegos en el USB (se ve el espacio libre del USB antes de copiar).",
         "Versión, autor y página del proyecto.",
     };
     for (int i = 0; i < NUM_CF; i++)
@@ -747,7 +809,7 @@ static void Configuracion(float dt, const Mando& m)
         const char* ayuda = AYUDAS[i];
         if (!ayuda) { TextoLibre(libre, sizeof libre); ayuda = libre; }
         Texto(F_CUERPO_M, TITULOS[i], x + 56, fy + 2, elegida ? C_TEXTO : C_TEXTO_2);
-        Texto(F_PEQUENA, ayuda, x + 56, fy + 38, C_TEXTO_3);
+        Texto(F_PEQUENA, ayuda, x + 56, fy + 36, C_TEXTO_3);
         Texto(F_CUERPO_M, v, x + w - 56, fy + 12, elegida ? C_ACENTO : C_TEXTO_2, 1, 2);
     }
     Texto(F_PEQUENA, "↑ ↓ elegir   ·   ← → cambiar   ·   L1 / R1 otras pestañas", ANCHO / 2, ALTO - 50, C_TEXTO_3, 1, 1);
