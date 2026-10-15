@@ -275,7 +275,7 @@ static int Candidatos(const char* clave, char out[][96], int max)
 // ---------- índice de carátulas ----------
 // La carpeta de carátulas del servidor tiene una página con la lista de todas (unas 3.700, ~1 MB). Se baja una vez y
 // se busca en ella el nombre más parecido al de cada rom: así se encuentran aunque el archivo no tenga el nombre exacto
-// ("Earthbound" → "EarthBound (USA)", "Contra III" → "Contra III - The Alien Wars (USA)").
+// (mayúsculas distintas, la región que falta, o el subtítulo que el archivo no trae).
 static char (*indice)[112];
 static int nIndice;
 
@@ -318,7 +318,7 @@ static void LeerIndice(const uint8_t* html, int largo)
 }
 
 // Título normalizado para comparar: solo letras y números, en minúsculas, sin "the" al principio ni ", the" (libretro
-// escribe "Legend of Zelda, The - ..."). Corta en el primer " (" o " [" (las marcas de región y versión).
+// escribe "Título, The - ..."). Corta en el primer " (" o " [" (las marcas de región y versión).
 static void Normalizar(const char* s, char* out, int max, bool cortarSubtitulo)
 {
     char t[128];
@@ -364,7 +364,7 @@ static int BuscarEnIndice(const char* clave)
         else if (titCorto[0] && !strcmp(eCorto, titCorto)) puntos = 60;   // mismo título, otro subtítulo
         else
         {
-            // La rom se llama como el subtítulo ("Yoshi's Island" → "Super Mario World 2 - Yoshi's Island").
+            // La rom se llama como el subtítulo ("Subtítulo" → "Título 2 - Subtítulo").
             const char* guion = strstr(indice[i], " - ");
             char sub[128];
             if (!guion) continue;

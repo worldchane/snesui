@@ -93,7 +93,7 @@ bool RomCargar(const char* ruta, InfoRom& info)
     romDatos = d;
     romTam = tam;
     romHiRom = hi;
-    // Tamaño de la SRAM según la cabecera (1 KB << valor). Tiene que ser el exacto: algunos juegos (Donkey Kong Country)
+    // Tamaño de la SRAM según la cabecera (1 KB << valor). Tiene que ser el exacto: algunos juegos
     // escriben más allá y revisan que se repita, para detectar copiadoras.
     uint8_t ramCod = d[(hi ? 0xFFC0 : 0x7FC0) + 0x18];
     sramTam = info.tieneRam && ramCod ? (1024u << (ramCod > 7 ? 7 : ramCod)) : 0;
