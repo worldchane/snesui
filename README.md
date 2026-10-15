@@ -62,6 +62,8 @@ Hay dos versiones del PKG:
 | □ | Bajar las carátulas que falten |
 | OPTIONS | Marcar o quitar de favoritos (★) |
 | L1 / R1 | Cambiar de pestaña: Todos, Recientes, Favoritos, Configuración |
+| L2 / R2 | Subir o bajar una página |
+| Stick derecho ← → | Saltar a la letra anterior o siguiente |
 
 | Jugando | Botón de la SNES |
 |---|---|

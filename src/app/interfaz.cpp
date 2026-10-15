@@ -212,6 +212,25 @@ static void Estrella(float cx, float cy, float r, uint32_t c, float a)
     for (int i = 0; i < 5; i++) Linea(px[i], py[i], px[(i + 2) % 5], py[(i + 2) % 5], r * .32f, c, a);
 }
 
+// Navegación rápida.
+static const int FILAS_PAGINA = 2;    // filas que entran en pantalla (lo que salta L2 / R2)
+static float esperaLetra;             // repetición del salto de letra con el stick derecho
+static char letraVisible;             // la letra a la que se saltó (se muestra grande un momento)
+static float tLetra = 99;
+
+// La letra con la que se agrupa un juego: A–Z, o '#' si empieza con un número o un signo.
+static char Letra(const char* nombre)
+{
+    for (const char* p = nombre; *p; p++)
+    {
+        char c = *p;
+        if (c >= 'a' && c <= 'z') c = c - 'a' + 'A';
+        if (c >= 'A' && c <= 'Z') return c;
+        if (c >= '0' && c <= '9') return '#';
+    }
+    return '#';
+}
+
 // Franja con los cuatro colores de los botones de la Super Famicom (el toque "SNES").
 static void FranjaSnes(float x, float y, float w, float h, float a)
 {
@@ -230,18 +249,8 @@ static void Tarjeta(const Juego& j, float x, float y, float f)
     if (f > .01f) Brillo(cx, cy + 10, 250, car.px ? 0xFFFFFF : j.color1, (car.px ? .22f : .4f) * f);
     Sombra(X, Y + 14 + 6 * f, w, h, 20, 28 + 12 * f, .55f, true);
 
-    if (car.px)
-    {
-        // La carátula real, con un marco oscuro tipo cartucho.
-        Caja(X, Y, w, h, 20, 0x0C0A18, 1);
-        float m = 12;
-        // Mantener la proporción de la carátula dentro del hueco.
-        float iw = w - 2 * m, ih = h - 2 * m;
-        float escala = iw / car.w < ih / car.h ? iw / car.w : ih / car.h;
-        float dw = car.w * escala, dh = car.h * escala;
-        Imagen(car.px, car.w, car.h, cx - dw / 2, cy - dh / 2, dw, dh, 1, true);
-    }
-    else
+    // Sin carátula (o mientras se carga): la tarjeta con las iniciales. La carátula aparece encima con un fundido.
+    if (!car.px || car.aparece < 1)
     {
         CajaDegradada(X, Y, w, h, 20, j.color1, j.color2, 1);
         FranjaSnes(X + w * .12f, Y + 14, w * .76f, 8, .5f);
@@ -251,6 +260,18 @@ static void Tarjeta(const Juego& j, float x, float y, float f)
         Velo(X, Y + h * .52f, w, h * .48f, 20, 0x05070F, 0, .62f);
         Texto(F_ETIQUETA, Acortar(F_ETIQUETA, j.nombre, w - 48, buf, sizeof buf), X + 26, Y + h - 76, C_TEXTO);
         Texto(F_PEQUENA, j.pal ? "PAL" : "NTSC", X + 26, Y + h - 42, C_TEXTO_2);
+    }
+    if (car.px)
+    {
+        // La carátula real, con un marco oscuro tipo cartucho.
+        float a = car.aparece;
+        Caja(X, Y, w, h, 20, 0x0C0A18, a);
+        float m = 12;
+        // Mantener la proporción de la carátula dentro del hueco.
+        float iw = w - 2 * m, ih = h - 2 * m;
+        float escala = iw / car.w < ih / car.h ? iw / car.w : ih / car.h;
+        float dw = car.w * escala, dh = car.h * escala;
+        Imagen(car.px, car.w, car.h, cx - dw / 2, cy - dh / 2, dw, dh, a, true);
     }
     // Favorito: una insignia dorada con estrella en la esquina.
     if (EsFavorito(j.clave))
@@ -460,8 +481,35 @@ static void Biblioteca(float t, float dt, const Mando& m)
     if (m.pulsados & B_DER) sel++;
     if (m.pulsados & B_ARRIBA) sel -= COLS;
     if (m.pulsados & B_ABAJO) sel += COLS;
+    // L2 / R2: una página (las filas que entran en pantalla) hacia arriba o abajo.
+    if (m.pulsados & B_L2) sel -= COLS * FILAS_PAGINA;
+    if (m.pulsados & B_R2) sel += COLS * FILAS_PAGINA;
     if (sel < 0) sel = 0;
     if (sel >= nVista) sel = nVista > 0 ? nVista - 1 : 0;
+    // Stick derecho a los costados: al primer juego de la letra siguiente o anterior (se repite si se mantiene).
+    int dirLetra = m.rx > .6f ? 1 : m.rx < -.6f ? -1 : 0;
+    if (!dirLetra) esperaLetra = 0;
+    else if ((esperaLetra -= dt) <= 0 && nVista > 0)
+    {
+        esperaLetra = .32f;
+        char actual = Letra(juegos[vista[sel]].nombre);
+        int i = sel;
+        if (dirLetra > 0) { while (i < nVista - 1 && Letra(juegos[vista[i]].nombre) == actual) i++; }
+        else
+        {
+            // Atrás: primero salir de la letra actual, después ir al primero de la anterior.
+            if (i > 0 && Letra(juegos[vista[i - 1]].nombre) == actual) { while (i > 0 && Letra(juegos[vista[i - 1]].nombre) == actual) i--; }
+            else if (i > 0)
+            {
+                char previa = Letra(juegos[vista[i - 1]].nombre);
+                i--;
+                while (i > 0 && Letra(juegos[vista[i - 1]].nombre) == previa) i--;
+            }
+        }
+        sel = i;
+        letraVisible = Letra(juegos[vista[sel]].nombre);
+        tLetra = 0;
+    }
     if (sel != antes) Sonar(SON_MOVER);
 
     if (nJuegos <= 0)
@@ -514,13 +562,40 @@ static void Biblioteca(float t, float dt, const Mando& m)
     Tarjeta(juegos[vista[sel]], sx, sy, foco[sel]);
     SinRecorte();
 
+    // Barra de posición a la derecha (solo si no entran todos en pantalla).
+    if (filas > FILAS_PAGINA)
+    {
+        float bx = ANCHO - 40, by = Y0 - 10, bh = ALTO - Y0 - 110;
+        float total = filas * paso, visible = bh;
+        float th = bh * (visible / total);
+        if (th < 60) th = 60;
+        float ty = by + (bh - th) * (maxScroll > 0 ? scrollVis / maxScroll : 0);
+        Caja(bx, by, 8, bh, 4, 0xFFFFFF, .08f);
+        Caja(bx, ty, 8, th, 4, C_ACENTO, .85f);
+    }
+
+    // La letra a la que se saltó, grande en el centro un momento.
+    tLetra += dt;
+    if (tLetra < .9f)
+    {
+        float a = tLetra < .6f ? 1 : (.9f - tLetra) / .3f;
+        char l[2] = {letraVisible, 0};
+        Caja(ANCHO / 2 - 90, ALTO / 2 - 100, 180, 180, 36, 0x0A0614, .82f * a);
+        Borde(ANCHO / 2 - 90, ALTO / 2 - 100, 180, 180, 36, 3, C_ACENTO, .8f * a);
+        Texto(F_LOGO, l, ANCHO / 2, ALTO / 2 - 88, C_TEXTO, a, 1);
+    }
+
     // Pie: datos del juego + pistas.
     Velo(0, ALTO - 86, ANCHO, 86, 0, 0x120A24, 0, .82f);
     const Juego& j = juegos[vista[sel]];
     char buf[120];
     snprintf(buf, sizeof buf, "%s   ·   %d KB   ·   %s%s", j.mapeo, j.tamKB, j.pal ? "PAL" : "NTSC", j.tieneRam ? "   ·   guarda partida" : "");
     Texto(F_CUERPO_M, j.nombre, MARGEN, ALTO - 70, C_TEXTO);
-    Texto(F_PEQUENA, buf, MARGEN, ALTO - 38, C_TEXTO_2);
+    char pos[48];
+    snprintf(pos, sizeof pos, "%d de %d   ·   ", sel + 1, nVista);
+    float pw = AnchoTexto(F_PEQUENA, pos);
+    Texto(F_PEQUENA, pos, MARGEN, ALTO - 38, C_ACENTO);
+    Texto(F_PEQUENA, buf, MARGEN + pw, ALTO - 38, C_TEXTO_2);
     int b[4] = {BM_CRUZ, BM_OPTIONS, BM_TRIANGULO, BM_CUADRADO};
     const char* tx[4] = {"Jugar", EsFavorito(j.clave) ? "Quitar favorito" : "Favorito", "Buscar juegos", "Bajar carátulas"};
     Pistas(b, tx, 4);

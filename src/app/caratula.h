@@ -4,10 +4,12 @@
 #pragma once
 #include <stdint.h>
 
-struct Caratula { const uint32_t* px; int w, h; };   // px = NULL si todavía no hay carátula
+// px = NULL si todavía no hay carátula (no existe, o se está cargando). aparece: de 0 a 1 en el cuarto de segundo
+// después de cargarse (para mostrarla con un fundido).
+struct Caratula { const uint32_t* px; int w, h; float aparece; };
 
-// Devuelve la carátula del juego (por su clave: el nombre del archivo sin extensión) si ya está en /data; si no,
-// {NULL,0,0}.
+// Devuelve la carátula del juego (por su clave: el nombre del archivo sin extensión) si ya está cargada; si no, la pide
+// a un hilo aparte (que la lee de /data y la achica) y devuelve px = NULL. No se traba nunca: llamarla cada cuadro.
 Caratula ObtenerCaratula(const char* nombre);
 // ¿Existe el archivo de la carátula en /data? (sin cargarla a memoria)
 bool HayCaratula(const char* nombre);

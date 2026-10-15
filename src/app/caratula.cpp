@@ -1,7 +1,9 @@
-// Ver caratula.h. Las carátulas se decodifican con stb_image. Se mantiene un caché chico (las más vistas) porque cada
-// una ocupa cerca de 1 MB ya decodificada.
+// Ver caratula.h. Las carátulas se decodifican con stb_image en un hilo aparte (otro núcleo): el hilo principal solo
+// las pide y las dibuja, así la biblioteca nunca se traba aunque aparezcan varias juntas al desplazarse. Se guardan
+// achicadas al tamaño de la tarjeta (unos 250 KB cada una en vez de ~1 MB), y entran muchas en memoria.
 #include "caratula.h"
 
+#include <atomic>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,11 +16,6 @@
 #define STBI_ASSERT(x) ((void)0)
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb/stb_image.h>
-
-static const int CACHE = 24;
-struct Entrada { char nombre[128]; uint32_t* px; int w, h; uint64_t uso; };
-static Entrada cache[CACHE];
-static uint64_t reloj;
 
 static void RutaCaratula(const char* nombre, char* ruta, int max)
 {
@@ -42,39 +39,143 @@ bool HayCaratula(const char* nombre)
     return ExisteArchivo(ruta);
 }
 
+// ---------- caché y carga en segundo plano ----------
+// Cada entrada pasa por estos estados. El hilo principal pide (VACIA → PEDIDA) y descarta (→ VACIA, nunca una que se
+// está CARGANDO); el hilo de carga toma las pedidas (PEDIDA → CARGANDO) y las deja LISTA o FALTA (no hay archivo).
+// Los cambios de estado son con compare_exchange, así nunca los dos tocan la misma entrada a la vez.
+enum { E_VACIA, E_PEDIDA, E_CARGANDO, E_LISTA, E_FALTA };
+static const int CACHE = 120;
+static const int LADO = 300;   // las carátulas se achican para entrar en LADO × LADO (el tamaño de la tarjeta)
+struct Entrada
+{
+    char nombre[128];
+    uint32_t* px;
+    int w, h;
+    volatile uint64_t uso;   // cuándo se pidió por última vez (la más reciente se carga primero)
+    double lista;            // cuándo quedó lista (para el fundido)
+    double revisada;         // cuándo se vio que faltaba (se vuelve a mirar cada tanto: puede haberse bajado)
+    std::atomic<int> estado;
+};
+static Entrada cache[CACHE];
+static uint64_t reloj;
+static bool hiloLanzado;
+
+static bool Cambiar(Entrada& e, int de, int a) { return e.estado.compare_exchange_strong(de, a, std::memory_order_acq_rel); }
+
+// Achica 'rgba' (w × h) para que entre en LADO × LADO, promediando los píxeles de cada zona (sin escalones), y lo
+// pasa a 0xRRGGBB sobre fondo oscuro (por si tiene transparencia).
+static uint32_t* Achicar(const uint8_t* rgba, int w, int h, int* nw, int* nh)
+{
+    float esc = (float)LADO / (w > h ? w : h);
+    if (esc > 1) esc = 1;
+    int W = (int)(w * esc + .5f), H = (int)(h * esc + .5f);
+    if (W < 1) W = 1;
+    if (H < 1) H = 1;
+    uint32_t* px = (uint32_t*)malloc((size_t)W * H * 4);
+    if (!px) return NULL;
+    for (int y = 0; y < H; y++)
+    {
+        int y0 = y * h / H, y1 = (y + 1) * h / H;
+        if (y1 <= y0) y1 = y0 + 1;
+        for (int x = 0; x < W; x++)
+        {
+            int x0 = x * w / W, x1 = (x + 1) * w / W;
+            if (x1 <= x0) x1 = x0 + 1;
+            uint32_t r = 0, g = 0, b = 0, n = 0;
+            for (int yy = y0; yy < y1; yy++)
+                for (int xx = x0; xx < x1; xx++)
+                {
+                    const uint8_t* p = rgba + ((size_t)yy * w + xx) * 4;
+                    r += p[0] * p[3] / 255; g += p[1] * p[3] / 255; b += p[2] * p[3] / 255; n++;
+                }
+            px[y * W + x] = (r / n) << 16 | (g / n) << 8 | (b / n);
+        }
+    }
+    *nw = W;
+    *nh = H;
+    return px;
+}
+
+static void* HiloCaratulas(void*)
+{
+    uint8_t* buf = (uint8_t*)malloc(4 * 1024 * 1024);
+    for (;;)
+    {
+        // La pedida más reciente primero (la que el usuario está mirando ahora).
+        Entrada* elegida = NULL;
+        for (Entrada& e : cache)
+            if (e.estado.load(std::memory_order_acquire) == E_PEDIDA && (!elegida || e.uso > elegida->uso)) elegida = &e;
+        if (!elegida || !Cambiar(*elegida, E_PEDIDA, E_CARGANDO)) { Dormir(8); continue; }
+
+        Entrada& e = *elegida;
+        uint32_t* px = NULL;
+        int w = 0, h = 0;
+        char ruta[600];
+        RutaCaratula(e.nombre, ruta, sizeof ruta);
+        uint64_t tam = 0;
+        if (buf && ExisteArchivo(ruta, &tam) && tam > 0 && tam <= 4u * 1024 * 1024)
+        {
+            int leido = LeerTexto(ruta, (char*)buf, 4 * 1024 * 1024);
+            int iw, ih, canales;
+            uint8_t* rgba = leido > 0 ? stbi_load_from_memory(buf, leido, &iw, &ih, &canales, 4) : NULL;
+            if (rgba)
+            {
+                px = Achicar(rgba, iw, ih, &w, &h);
+                stbi_image_free(rgba);
+            }
+        }
+        e.px = px;
+        e.w = w;
+        e.h = h;
+        e.lista = Segundos();
+        e.revisada = e.lista;
+        e.estado.store(px ? E_LISTA : E_FALTA, std::memory_order_release);
+    }
+    return NULL;
+}
+
+// Libera una entrada que no se está cargando. Devuelve false si el hilo de carga la tiene.
+static bool Descartar(Entrada& e)
+{
+    int st = e.estado.load(std::memory_order_acquire);
+    if (st == E_VACIA) return true;
+    if (st == E_CARGANDO || !Cambiar(e, st, E_VACIA)) return false;
+    free(e.px);
+    e.px = NULL;
+    return true;
+}
+
 Caratula ObtenerCaratula(const char* nombre)
 {
+    if (!hiloLanzado) hiloLanzado = Lanzar(HiloCaratulas, NULL, "caratulas_carga");
+    double ahora = Segundos();
     for (Entrada& e : cache)
-        if (e.px && !strcmp(e.nombre, nombre)) { e.uso = ++reloj; return {e.px, e.w, e.h}; }
-
-    char ruta[600];
-    RutaCaratula(nombre, ruta, sizeof ruta);
-    uint64_t tam = 0;
-    if (!ExisteArchivo(ruta, &tam) || tam == 0 || tam > 4u * 1024 * 1024) return {NULL, 0, 0};
-
-    static uint8_t buf[4 * 1024 * 1024];
-    int leido = LeerTexto(ruta, (char*)buf, sizeof buf);
-    if (leido <= 0) return {NULL, 0, 0};
-    int w, h, canales;
-    uint8_t* rgba = stbi_load_from_memory(buf, leido, &w, &h, &canales, 4);
-    if (!rgba) return {NULL, 0, 0};
-
-    // A 0xRRGGBB (sobre un fondo oscuro, por si tiene transparencia).
-    uint32_t* px = (uint32_t*)malloc((size_t)w * h * 4);
-    for (int i = 0; i < w * h; i++)
     {
-        uint8_t r = rgba[i * 4], g = rgba[i * 4 + 1], b = rgba[i * 4 + 2], a = rgba[i * 4 + 3];
-        px[i] = (uint32_t)(r * a / 255) << 16 | (g * a / 255) << 8 | (b * a / 255);
+        int st = e.estado.load(std::memory_order_acquire);
+        if (st == E_VACIA || strcmp(e.nombre, nombre)) continue;
+        e.uso = ++reloj;
+        if (st == E_LISTA)
+        {
+            float f = (float)((ahora - e.lista) / .25);   // aparece en un cuarto de segundo
+            return {e.px, e.w, e.h, f > 1 ? 1.f : f};
+        }
+        // Faltaba: cada 3 s se vuelve a mirar (la descarga de carátulas puede haberla traído).
+        if (st == E_FALTA && ahora - e.revisada > 3) { e.revisada = ahora; Cambiar(e, E_FALTA, E_PEDIDA); }
+        return {NULL, 0, 0, 0};
     }
-    stbi_image_free(rgba);
-
-    // Reemplazar la entrada menos usada.
-    Entrada* lru = &cache[0];
-    for (Entrada& e : cache) { if (!e.px) { lru = &e; break; } if (e.uso < lru->uso) lru = &e; }
-    free(lru->px);
-    snprintf(lru->nombre, sizeof lru->nombre, "%s", nombre);
-    lru->px = px; lru->w = w; lru->h = h; lru->uso = ++reloj;
-    return {px, w, h};
+    // No está: ocupar una entrada libre o la que hace más tiempo no se pide.
+    Entrada* lugar = NULL;
+    for (Entrada& e : cache)
+    {
+        int st = e.estado.load(std::memory_order_acquire);
+        if (st == E_VACIA) { lugar = &e; break; }
+        if (st != E_CARGANDO && (!lugar || e.uso < lugar->uso)) lugar = &e;
+    }
+    if (!lugar || !Descartar(*lugar)) return {NULL, 0, 0, 0};
+    snprintf(lugar->nombre, sizeof lugar->nombre, "%s", nombre);
+    lugar->uso = ++reloj;
+    lugar->estado.store(E_PEDIDA, std::memory_order_release);
+    return {NULL, 0, 0, 0};
 }
 
 // ---------- descarga ----------
@@ -404,5 +505,5 @@ uint32_t* CargarImagen(const char* ruta, int* w, int* h)
 
 void OlvidarCaratulas()
 {
-    for (Entrada& e : cache) { free(e.px); e.px = NULL; e.nombre[0] = 0; }
+    for (Entrada& e : cache) Descartar(e);
 }

@@ -34,6 +34,7 @@ static void Guardar(const char* nombre)
 }
 
 struct Paso { float t; uint32_t botones; const char* captura; };
+static const uint32_t STICK_DER = 0x80000000u;   // en el guion: el stick derecho a la derecha durante ese cuadro
 
 int main()
 {
@@ -109,11 +110,24 @@ int main()
         {6.3f, B_CRUZ, NULL},
         {6.9f, 0, "21_acerca"},
     };
+    // GUION=lista: bajar por una biblioteca grande (para ver el desplazamiento y cuánto tarda cargar carátulas).
+    static const Paso lista[] = {
+        {4.4f, 0, "30_lista_arriba"},
+        {4.6f, B_ABAJO, NULL}, {4.9f, B_ABAJO, NULL}, {5.2f, B_ABAJO, NULL},
+        {5.9f, 0, "31_lista_medio"},
+        {6.0f, B_R2, NULL},
+        {6.6f, 0, "32_lista_pagina"},
+        {6.8f, STICK_DER, NULL},
+        {7.1f, 0, "33_lista_letra"},
+        {7.6f, B_R2, NULL}, {7.9f, B_R2, NULL}, {8.2f, B_R2, NULL},
+        {8.9f, 0, "34_lista_abajo"},
+    };
     const char* g = getenv("GUION");
-    bool corto = g && !strcmp(g, "acerca");
-    const Paso* pasos = corto ? acerca : guion;
-    const int N = corto ? (int)(sizeof acerca / sizeof acerca[0]) : (int)(sizeof guion / sizeof guion[0]);
-    const double FIN = corto ? 7.0 : 42.0;
+    bool corto = g && !strcmp(g, "acerca"), larga = g && !strcmp(g, "lista");
+    const Paso* pasos = corto ? acerca : larga ? lista : guion;
+    const int N = corto ? (int)(sizeof acerca / sizeof acerca[0]) : larga ? (int)(sizeof lista / sizeof lista[0]) : (int)(sizeof guion / sizeof guion[0]);
+    const double FIN = corto ? 7.0 : larga ? 9.0 : 42.0;
+    double peor = 0;
     int k = 0;
     for (int cuadro = 0; tiempoSimulado < FIN; cuadro++)
     {
@@ -125,14 +139,20 @@ int main()
         {
             m.pulsados |= pasos[k].botones;
             m.apretados |= pasos[k].botones;
+            if (pasos[k].botones & STICK_DER) m.rx = 1;
             if (pasos[k].captura) captura = pasos[k].captura;
             k++;
         }
+        auto t0 = std::chrono::steady_clock::now();
         PantallaComenzar();
         InterfazCuadro((float)tiempoSimulado, 1 / 60.f, m);
         PantallaMostrar();
+        double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+        if (tiempoSimulado > 4.3 && ms > peor) peor = ms;
+        if (larga && tiempoSimulado > 4.3 && ms > 20) printf("  lento: %.1f ms en t=%.2f\n", ms, tiempoSimulado);
         if (captura) Guardar(captura);
         std::this_thread::sleep_for(std::chrono::milliseconds(16));   // a tiempo real: la descarga y la emulación corren en sus hilos
     }
+    if (larga) printf("cuadro más lento en la biblioteca: %.1f ms\n", peor);
     return 0;
 }
