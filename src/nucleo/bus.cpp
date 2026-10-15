@@ -75,17 +75,42 @@ extern uint64_t ciclosMaestros;
 // Cartuchos Super FX: rom LoROM en 00-3F:8000-FFFF y lineal en 40-5F; RAM del chip en 70-71 (y sus primeros 8 KB en
 // 00-3F:6000-7FFF); registros del chip en 00-3F:3000-32FF. Antes de tocar algo del chip se lo pone al día.
 // Devuelve true si la dirección es del cartucho Super FX (y deja el valor en 'v').
+// Mientras el chip usa la rom, la SNES no la ve: el cartucho contesta con direcciones fijas en los vectores de
+// interrupción (NMI → $0108, IRQ → $010C...), que apuntan a la RAM de la consola. Los juegos ponen ahí sus rutinas
+// para cuando el chip está dibujando.
+static const uint8_t VECTOR_GSU[16] = {0x00, 0x01, 0x00, 0x01, 0x04, 0x01, 0x00, 0x01, 0x00, 0x01, 0x08, 0x01, 0x00, 0x01, 0x0C, 0x01};
+
 static inline bool LeerSuperFx(uint8_t banco, uint16_t off, uint8_t& v)
 {
     uint8_t b = banco & 0x7F;
     if (b < 0x40)
     {
         if (off >= 0x3000 && off < 0x3300) { GsuCorrerHasta(ciclosMaestros); v = GsuLeer(off); return true; }
-        if (off >= 0x6000 && off < 0x8000) { GsuCorrerHasta(ciclosMaestros); v = sram[off - 0x6000]; return true; }
+        if (off >= 0x6000 && off < 0x8000)
+        {
+            GsuCorrerHasta(ciclosMaestros);
+            v = GsuTieneRam() ? mdr : sram[off - 0x6000];
+            return true;
+        }
+        if (off >= 0x8000 && gsuCorre)
+        {
+            GsuCorrerHasta(ciclosMaestros);
+            if (GsuTieneRom()) { v = VECTOR_GSU[off & 15]; return true; }
+        }
         return false;
     }
-    if (b < 0x60) { v = romDatos[(((uint32_t)(b & 0x1F) << 16) | off) % romTam]; return true; }
-    if (b == 0x70 || b == 0x71) { GsuCorrerHasta(ciclosMaestros); v = sram[((uint32_t)(b & 1) << 16) | off]; return true; }
+    if (b < 0x60)
+    {
+        if (gsuCorre) { GsuCorrerHasta(ciclosMaestros); if (GsuTieneRom()) { v = VECTOR_GSU[off & 15]; return true; } }
+        v = romDatos[(((uint32_t)(b & 0x1F) << 16) | off) % romTam];
+        return true;
+    }
+    if (b == 0x70 || b == 0x71)
+    {
+        GsuCorrerHasta(ciclosMaestros);
+        v = GsuTieneRam() ? mdr : sram[((uint32_t)(b & 1) << 16) | off];
+        return true;
+    }
     if (b >= 0x60 && b < 0x7E) { v = mdr; return true; }
     return false;
 }
@@ -96,10 +121,20 @@ static inline bool EscribirSuperFx(uint8_t banco, uint16_t off, uint8_t v)
     if (b < 0x40)
     {
         if (off >= 0x3000 && off < 0x3300) { GsuCorrerHasta(ciclosMaestros); GsuEscribir(off, v); return true; }
-        if (off >= 0x6000 && off < 0x8000) { GsuCorrerHasta(ciclosMaestros); sram[off - 0x6000] = v; sramCambiada = true; return true; }
+        if (off >= 0x6000 && off < 0x8000)
+        {
+            GsuCorrerHasta(ciclosMaestros);
+            if (!GsuTieneRam()) { sram[off - 0x6000] = v; sramCambiada = true; }   // con la RAM en uso por el chip, se ignora
+            return true;
+        }
         return false;
     }
-    if (b == 0x70 || b == 0x71) { GsuCorrerHasta(ciclosMaestros); sram[((uint32_t)(b & 1) << 16) | off] = v; sramCambiada = true; return true; }
+    if (b == 0x70 || b == 0x71)
+    {
+        GsuCorrerHasta(ciclosMaestros);
+        if (!GsuTieneRam()) { sram[((uint32_t)(b & 1) << 16) | off] = v; sramCambiada = true; }
+        return true;
+    }
     return b >= 0x40 && b < 0x7E;   // la rom y lo que no existe no se escriben
 }
 

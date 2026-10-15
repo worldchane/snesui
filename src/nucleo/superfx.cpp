@@ -13,6 +13,7 @@
 
 bool gsuPresente;
 bool irqGsu;
+bool gsuCorre;   // copia del bit G (corriendo), para que el bus lo consulte sin llamar al chip
 
 // Bits de SFR.
 enum { S_Z = 1 << 1, S_CY = 1 << 2, S_S = 1 << 3, S_OV = 1 << 4, S_G = 1 << 5, S_R = 1 << 6, S_ALT1 = 1 << 8,
@@ -189,6 +190,7 @@ static void Paso()
         {
         case 0x00:   // STOP
             g.sfr &= ~S_G;
+            gsuCorre = false;
             if (!(g.cfgr & 0x80)) { g.sfr |= S_IRQ; irqGsu = true; }
             Fin();
             return;
@@ -454,6 +456,7 @@ static void Arrancar()
 {
     if (g.ciclos < ciclosMaestros) g.ciclos = ciclosMaestros;
     g.sfr |= S_G;
+    gsuCorre = true;
     g.r15Escrito = false;
     g.pipe = LeerPrograma(g.r[15]);
 }
@@ -516,6 +519,7 @@ void GsuEscribir(uint16_t dir, uint8_t v)
         bool corria = g.sfr & S_G;
         g.sfr = (g.sfr & 0xFF00) | v;
         if (corria && !(g.sfr & S_G)) { g.cbr = 0; InvalidarCache(); }   // detenerlo desde la SNES
+        gsuCorre = g.sfr & S_G;
         break;
     }
     case 0x3031: g.sfr = (g.sfr & 0x00FF) | (v << 8); break;
@@ -529,11 +533,15 @@ void GsuEscribir(uint16_t dir, uint8_t v)
 }
 
 bool GsuCorriendo() { return gsuPresente && (g.sfr & S_G); }
+// Mientras corre, el chip puede quedarse con la rom (RON, bit 4 de SCMR) y con la RAM (RAN, bit 3).
+bool GsuTieneRom() { return (g.sfr & S_G) && (g.scmr & 0x10); }
+bool GsuTieneRam() { return (g.sfr & S_G) && (g.scmr & 0x08); }
 
 void GsuReiniciar()
 {
     memset(&g, 0, sizeof g);
     irqGsu = false;
+    gsuCorre = false;
 }
 
 void GsuConfigurar(bool presente, uint32_t ramTam, bool gsu2)
@@ -553,4 +561,5 @@ void GsuEstado(Serial& s)
 {
     s(g);
     s(irqGsu);
+    if (s.cargar) gsuCorre = g.sfr & S_G;
 }

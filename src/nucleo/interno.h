@@ -96,10 +96,12 @@ void ApuEstado(Serial& s);
 extern bool sramCambiada;
 
 // Super FX (superfx.cpp).
-extern bool gsuPresente, irqGsu;
+extern bool gsuPresente, irqGsu, gsuCorre;
 void GsuConfigurar(bool presente, uint32_t ramTam, bool gsu2);
 void GsuReiniciar();
 void GsuCorrerHasta(uint64_t hasta);
 uint8_t GsuLeer(uint16_t dir);
 void GsuEscribir(uint16_t dir, uint8_t v);
-void GsuEstado(Serial& s);   // el juego escribió en la SRAM (hay que guardarla en el archivo)   // botones de cada jugador (ver SnesMando)
+void GsuEstado(Serial& s);
+bool GsuTieneRom();
+bool GsuTieneRam();   // el juego escribió en la SRAM (hay que guardarla en el archivo)   // botones de cada jugador (ver SnesMando)
