@@ -9,6 +9,7 @@
 //     hasta 32 sprites y 34 mosaicos por línea, como el chip.
 // El color de la SNES es de 15 bits (BGR555) y se convierte a 0xRRGGBB al final.
 #include "interno.h"
+#include <stdlib.h>
 
 #include <stdio.h>
 
@@ -164,6 +165,11 @@ void PpuLatchContadores() { int h, v; SnesContadores(&h, &v); hLatch = h; vLatch
 
 void PpuEscribir(uint16_t reg, uint8_t v)
 {
+#ifdef GSU_TRAZA
+    static int log_ = getenv("PPUREG") ? 1 : 0;
+    extern int depurCuadro;
+    if (log_ && reg >= 0x2105 && reg <= 0x2133 && depurCuadro) { int h, l; SnesContadores(&h, &l); printf("  ppu %04X=%02X linea %d\n", reg, v, l); }
+#endif
     switch (reg)
     {
     case 0x2100:
@@ -249,7 +255,7 @@ static uint8_t objZ[256], objMate[256];   // objMate: paleta 4..7 (solo esas par
 struct TablaModo { uint8_t bg[4][2]; uint8_t obj[4]; };
 static const TablaModo MODO0 = {{{8, 11}, {7, 10}, {2, 5}, {1, 4}}, {3, 6, 9, 12}};
 static const TablaModo MODO1 = {{{6, 9}, {5, 8}, {1, 3}, {0, 0}}, {2, 4, 7, 10}};
-static const TablaModo MODO1_BG3 = {{{5, 8}, {4, 7}, {1, 10}, {0, 0}}, {2, 3, 6, 9}};   // BG3 adelante de todo
+static const TablaModo MODO1_BG3 = {{{5, 8}, {4, 7}, {2, 10}, {0, 0}}, {1, 3, 6, 9}};   // BG3 adelante de todo
 static const TablaModo MODO2A5 = {{{3, 7}, {1, 5}, {0, 0}, {0, 0}}, {2, 4, 6, 8}};
 static const TablaModo MODO6 = {{{2, 5}, {0, 0}, {0, 0}, {0, 0}}, {1, 3, 4, 6}};
 static const TablaModo MODO7 = {{{3, 3}, {1, 5}, {0, 0}, {0, 0}}, {2, 4, 6, 7}};
@@ -598,6 +604,11 @@ static void ComponerLinea(int y, int vFondo, int campo, uint16_t* linea)
     bool hires = modo == 5 || modo == 6;
     bool pseudo = setini & 8;
     uint8_t activas = tm | ts;
+#ifdef GSU_TRAZA
+    // Herramientas de PC: CAPAS=hex deja solo esas capas (1 BG1, 2 BG2, 4 BG3, 8 BG4, 10 sprites).
+    static int capasDepur = getenv("CAPAS") ? (int)strtol(getenv("CAPAS"), NULL, 16) : 0x1F;
+    activas &= capasDepur;
+#endif
 
     // Capas del modo: bpp de cada fondo (0 = no existe).
     int bpp[4] = {0, 0, 0, 0};
@@ -777,3 +788,10 @@ void PpuEstado(Serial& s)
     s(cgwsel); s(cgadsub); s(fijoR); s(fijoG); s(fijoB); s(hLatch); s(vLatch); s(hAlto); s(vAlto); s(contadorLatch);
     s(ppu1Bus); s(ppu2Bus); s(rangoExcedido); s(tiempoExcedido);
 }
+
+#ifdef GSU_TRAZA
+const uint8_t* PpuOam() { return oam; }
+#endif
+#ifdef GSU_TRAZA
+const uint8_t* PpuVram() { return (const uint8_t*)vram; }
+#endif

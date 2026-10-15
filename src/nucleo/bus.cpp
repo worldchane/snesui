@@ -5,6 +5,8 @@
 //   bancos 0x40-0x7D y 0xC0-0xFF: rom (en HiROM, los 64 KB completos).
 //   bancos 0x7E-0x7F: los 128 KB de RAM de trabajo.
 #include "interno.h"
+#include <stdlib.h>
+#include <stdio.h>
 #include "rom.h"
 #include <stdio.h>
 
@@ -71,6 +73,10 @@ static inline int32_t MapaSram(uint8_t banco, uint16_t off)
 }
 
 extern uint64_t ciclosMaestros;
+extern uint32_t ramMascara;   // superfx.cpp
+#ifdef GSU_TRAZA
+unsigned gsuLecturasBloqueadas, gsuRomBloqueada;
+#endif
 
 // Cartuchos Super FX: rom LoROM en 00-3F:8000-FFFF y lineal en 40-5F; RAM del chip en 70-71 (y sus primeros 8 KB en
 // 00-3F:6000-7FFF); registros del chip en 00-3F:3000-32FF. Antes de tocar algo del chip se lo pone al día.
@@ -89,26 +95,40 @@ static inline bool LeerSuperFx(uint8_t banco, uint16_t off, uint8_t& v)
         if (off >= 0x6000 && off < 0x8000)
         {
             GsuCorrerHasta(ciclosMaestros);
-            v = GsuTieneRam() ? mdr : sram[off - 0x6000];
+    #ifdef GSU_TRAZA
+        if (GsuTieneRam()) gsuLecturasBloqueadas++;
+#endif
+        v = GsuTieneRam() ? mdr : sram[(off - 0x6000) & ramMascara];
             return true;
         }
         if (off >= 0x8000 && gsuCorre)
         {
             GsuCorrerHasta(ciclosMaestros);
-            if (GsuTieneRom()) { v = VECTOR_GSU[off & 15]; return true; }
+            if (GsuTieneRom()) {
+#ifdef GSU_TRAZA
+            { gsuRomBloqueada++; static int n_ = 0; if (getenv("ROMBLOQ") && n_ < 40 && (gsuRomBloqueada % 500) == 1) { n_++; printf("  rom bloqueada %02X:%04X desde PC=%02X:%04X\n", banco, off, cpu.pbr, cpu.pc); } }
+#endif
+            v = VECTOR_GSU[off & 15]; return true; }
         }
         return false;
     }
     if (b < 0x60)
     {
-        if (gsuCorre) { GsuCorrerHasta(ciclosMaestros); if (GsuTieneRom()) { v = VECTOR_GSU[off & 15]; return true; } }
+        if (gsuCorre) { GsuCorrerHasta(ciclosMaestros); if (GsuTieneRom()) {
+#ifdef GSU_TRAZA
+            { gsuRomBloqueada++; static int n_ = 0; if (getenv("ROMBLOQ") && n_ < 40 && (gsuRomBloqueada % 500) == 1) { n_++; printf("  rom bloqueada %02X:%04X desde PC=%02X:%04X\n", banco, off, cpu.pbr, cpu.pc); } }
+#endif
+            v = VECTOR_GSU[off & 15]; return true; } }
         v = romDatos[(((uint32_t)(b & 0x1F) << 16) | off) % romTam];
         return true;
     }
     if (b == 0x70 || b == 0x71)
     {
         GsuCorrerHasta(ciclosMaestros);
-        v = GsuTieneRam() ? mdr : sram[((uint32_t)(b & 1) << 16) | off];
+#ifdef GSU_TRAZA
+        if (GsuTieneRam()) gsuLecturasBloqueadas++;
+#endif
+        v = GsuTieneRam() ? mdr : sram[(((uint32_t)(b & 1) << 16) | off) & ramMascara];
         return true;
     }
     if (b >= 0x60 && b < 0x7E) { v = mdr; return true; }
@@ -127,7 +147,7 @@ static inline bool EscribirSuperFx(uint8_t banco, uint16_t off, uint8_t v)
 #ifdef GSU_TRAZA
             { void VigilarRam(uint32_t, uint8_t, const char*); VigilarRam(off - 0x6000, v, GsuTieneRam() ? "SNES(bloq)" : "SNES"); }
 #endif
-            if (!GsuTieneRam()) { sram[off - 0x6000] = v; sramCambiada = true; }   // con la RAM en uso por el chip, se ignora
+            if (!GsuTieneRam()) { sram[(off - 0x6000) & ramMascara] = v; sramCambiada = true; }   // con la RAM en uso por el chip, se ignora
             return true;
         }
         return false;
@@ -138,7 +158,7 @@ static inline bool EscribirSuperFx(uint8_t banco, uint16_t off, uint8_t v)
 #ifdef GSU_TRAZA
         { void VigilarRam(uint32_t, uint8_t, const char*); VigilarRam(((uint32_t)(b & 1) << 16) | off, v, GsuTieneRam() ? "SNES(bloq)" : "SNES"); }
 #endif
-        if (!GsuTieneRam()) { sram[((uint32_t)(b & 1) << 16) | off] = v; sramCambiada = true; }
+        if (!GsuTieneRam()) { sram[(((uint32_t)(b & 1) << 16) | off) & ramMascara] = v; sramCambiada = true; }
         return true;
     }
     return b >= 0x40 && b < 0x7E;   // la rom y lo que no existe no se escriben
@@ -261,11 +281,18 @@ void BusEscribir(uint32_t dir, uint8_t v)
             else { cociente = 0xFFFF; prodDiv = dividendo; }
             return;
         case 0x420B: IniciarDma(v); return;         // DMA general
-        case 0x420C: hdmaen = v; return;            // HDMA: arranca al empezar el cuadro siguiente
+        case 0x420C: hdmaen = v;
+#ifdef GSU_TRAZA
+            { extern int depurCuadro; static int l_ = getenv("PPUREG") ? 1 : 0; if (l_ && depurCuadro) { { void SnesContadores(int*, int*); int h_, l_; SnesContadores(&h_, &l_); printf("  HDMAEN=%02X linea %d\n", v, l_); } for (int k = 0; k < 8; k++) if (v & (1 << k)) printf("    canal %d ctrl=%02X dest=21%02X fuente=%02X:%04X ind=%02X\n", k, dma[k].ctrl, dma[k].dest, dma[k].banco, dma[k].dir, dma[k].bancoInd); } }
+#endif
+            return;            // HDMA: arranca al empezar el cuadro siguiente
         }
         if (off >= 0x4300 && off < 0x4380)
         {
             Canal& c = dma[(off >> 4) & 7];
+#ifdef GSU_TRAZA
+            { extern int depurCuadro; static int l_ = getenv("PPUREG") ? 1 : 0; if (l_ && depurCuadro) { void SnesContadores(int*, int*); int h_, li; SnesContadores(&h_, &li); printf("  dma %04X=%02X linea %d\n", off, v, li); } }
+#endif
             switch (off & 0xF)
             {
             case 0: c.ctrl = v; return;
@@ -360,12 +387,13 @@ static void HdmaRecargar(int i)
 
 void HdmaIniciar()
 {
+    // Como en la consola: todos los canales quedan "sin terminar" al empezar el cuadro, aunque estén apagados. Si el
+    // juego enciende uno a mitad de cuadro ($420C), sigue desde donde estaba su tabla (hay juegos que lo hacen).
     for (int i = 0; i < 8; i++)
     {
-        hdmaFin[i] = true;
-        hdmaHacer[i] = false;
-        if (!(hdmaen & (1 << i))) continue;
         hdmaFin[i] = false;
+        hdmaHacer[i] = true;
+        if (!(hdmaen & (1 << i))) continue;
         dma[i].dirHdma = dma[i].dir;
         HdmaRecargar(i);
     }

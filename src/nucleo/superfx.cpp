@@ -33,17 +33,23 @@ static struct
     uint8_t cache[512];
     bool valida[32];
     uint64_t ciclos;   // en el reloj maestro de la SNES
+    // Búferes de memoria: la escritura a la RAM y la lectura de la rom (R14) siguen solas mientras el chip ejecuta;
+    // solo se espera si hace falta usarlos antes de que terminen (como en bsnes).
+    uint64_t ramLibre, romListo;
 } g;
 
-static uint32_t ramMascara = 0xFFFF;
+uint32_t ramMascara = 0xFFFF;   // también la usa el bus: la RAM se repite igual vista desde la SNES
 
 // Diagnóstico: cuántas veces arrancó y paró, cuántas instrucciones corrió y cuánto tiempo estuvo ocupado.
 static struct { uint64_t arranques, paradas, instrucciones, ocupado; uint16_t r15Inicio; uint8_t pbrInicio; } diag;
 static uint8_t version = 1;
 
 // ---------- memoria ----------
+static inline uint8_t& Ram(uint32_t a);
 static inline uint8_t Rom(uint8_t banco, uint16_t dir)
 {
+    // Los bancos 60-7F son la RAM del chip (también para el búfer de rom: ROMB puede apuntar ahí).
+    if ((banco & 0x60) == 0x60) return Ram(((uint32_t)(banco & 1) << 16) | dir);
     uint32_t a = banco < 0x40 ? ((uint32_t)(banco & 0x3F) << 15) | (dir & 0x7FFF) : ((uint32_t)(banco & 0x1F) << 16) | dir;
     return romTam ? romDatos[a % romTam] : 0;
 }
@@ -60,14 +66,15 @@ static inline uint8_t LeerMem(uint8_t banco, uint16_t dir)
     return banco >= 0x70 ? Ram(((uint32_t)(banco & 1) << 16) | dir) : Rom(banco, dir);
 }
 
-static inline uint8_t Ram8(uint16_t dir) { g.ciclos += CostoMemoria(); return Ram(DirRam(dir)); }
+static inline void Esperar(uint64_t t) { if (g.ciclos < t) g.ciclos = t; }
+static inline uint8_t Ram8(uint16_t dir) { Esperar(g.ramLibre); return Ram(DirRam(dir)); }
 #ifdef GSU_TRAZA
 void VigilarRam(uint32_t a, uint8_t v, const char* quien);
 #define VIGILAR(a, v, q) VigilarRam(a, v, q)
 #else
 #define VIGILAR(a, v, q)
 #endif
-static inline void Ram8(uint16_t dir, uint8_t v) { g.ciclos += CostoMemoria(); VIGILAR(DirRam(dir), v, "GSU"); Ram(DirRam(dir)) = v; }
+static inline void Ram8(uint16_t dir, uint8_t v) { Esperar(g.ramLibre); g.ramLibre = g.ciclos + CostoMemoria(); VIGILAR(DirRam(dir), v, "GSU"); Ram(DirRam(dir)) = v; }
 // Palabras: el byte alto está en la dirección con el bit 0 invertido (así lo hace el chip).
 static inline uint16_t RamW(uint16_t dir) { g.ultimaRam = dir; return Ram8(dir) | Ram8(dir ^ 1) << 8; }
 static inline void RamW(uint16_t dir, uint16_t v) { g.ultimaRam = dir; Ram8(dir, (uint8_t)v); Ram8(dir ^ 1, v >> 8); }
@@ -86,10 +93,10 @@ static uint8_t LeerPrograma(uint16_t pc)
             for (int i = 0; i < 16; i++) g.cache[(linea << 4) + i] = LeerMem(g.pbr, g.cbr + (linea << 4) + i);
             g.valida[linea] = true;
         }
-        g.ciclos += CostoCiclo();
+        else g.ciclos += CostoCiclo();
         return g.cache[off];
     }
-    g.ciclos += CostoCiclo();
+    Esperar(g.pbr >= 0x60 ? g.ramLibre : g.romListo);
     return LeerMem(g.pbr, pc);
 }
 
@@ -97,7 +104,7 @@ static uint8_t LeerPrograma(uint16_t pc)
 static inline void PonerR(int n, uint16_t v)
 {
     g.r[n] = v;
-    if (n == 14) g.romBuf = Rom(g.rombr, v);   // escribir R14 pide un byte de la rom (lo lee GETB/GETC)
+    if (n == 14) { g.romBuf = Rom(g.rombr, v); g.romListo = g.ciclos + CostoMemoria(); }   // escribir R14 pide un byte de la rom (GETB/GETC)
     if (n == 15) g.r15Escrito = true;
 }
 
@@ -163,8 +170,8 @@ static void Plot()
             else b &= ~bit;
         }
     }
-    // El chip junta los píxeles en un búfer de 8 y los escribe juntos: cada PLOT cuesta poco más de un ciclo.
-    g.ciclos += CostoCiclo() + (CostoMemoria() * bpp) / 16;
+    // El chip junta los píxeles en un búfer de 8 y escribe los planos juntos: un acceso por plano cada 8 píxeles.
+    g.ciclos += (CostoMemoria() * bpp) / 8;
     PonerR(1, g.r[1] + 1);
 }
 
@@ -176,7 +183,7 @@ static uint8_t LeerPixel()
     uint8_t bit = 0x80 >> (x & 7), c = 0;
     for (int i = 0; i < bpp; i++)
         if (Ram(base + ((i >> 1) << 4) + (i & 1)) & bit) c |= 1 << i;
-    g.ciclos += CostoMemoria() * (bpp / 2);
+    g.ciclos += CostoMemoria() * bpp;
     return c;
 }
 
@@ -195,7 +202,7 @@ extern uint64_t ciclosMaestros;
 void VigilarRam(uint32_t a, uint8_t v, const char* quien)
 {
     static int lo = -2, hi;
-    if (lo == -2) { lo = -1; if (getenv("VIGILAR")) sscanf(getenv("VIGILAR"), "%x,%x", &lo, &hi); }
+    if (lo == -2) { lo = 1; hi = 0; if (getenv("VIGILAR")) sscanf(getenv("VIGILAR"), "%x,%x", &lo, &hi); }
     if ((int)a >= lo && (int)a <= hi)
         printf("  %s escribe RAM %05X = %02X  (R15=%04X ciclo %llu)\n", quien, a, v, g.r[15], (unsigned long long)g.ciclos);
 }
@@ -455,14 +462,18 @@ static void Paso()
         if (n < 15) { uint16_t v = g.r[n] + 1; PonerR(n, v); ZS(v); Fin(); return; }   // INC Rn
         switch (alt)
         {
-        case 2: g.rambr = S() & 1; break;                                     // RAMB
-        case 3: g.rombr = S() & 0x7F; g.romBuf = Rom(g.rombr, g.r[14]); break;   // ROMB
-        default: g.colr = Color(g.romBuf); break;                             // GETC
+        case 2: Esperar(g.ramLibre); g.rambr = S() & 1; break;                                     // RAMB
+        case 3: Esperar(g.romListo); g.rombr = S() & 0x7F; g.romBuf = Rom(g.rombr, g.r[14]); break;   // ROMB
+        default: Esperar(g.romListo); g.colr = Color(g.romBuf); break;                             // GETC
         }
         Fin();
         return;
     case 0xE:
         if (n < 15) { uint16_t v = g.r[n] - 1; PonerR(n, v); ZS(v); Fin(); return; }   // DEC Rn
+        Esperar(g.romListo);
+#ifdef GSU_TRAZA
+        { static int n_ = 0; if (getenv("GETB") && n_ < 30 && (diag.instrucciones % 997) < 40) { n_++; printf("  GETB rombr=%02X r14=%04X -> %02X (pc %04X)\n", g.rombr, g.r[14], g.romBuf, g.r[15]); } }
+#endif
         switch (alt)   // GETB / GETBH / GETBL / GETBS
         {
         case 0: D(g.romBuf); break;
@@ -470,7 +481,6 @@ static void Paso()
         case 2: D((S() & 0xFF00) | g.romBuf); break;
         default: D((uint16_t)(int8_t)g.romBuf); break;
         }
-        g.ciclos += CostoMemoria();
         Fin();
         return;
     default:   // 0xF: IWT Rn,#xx / LM Rn,(xx) / SM (xx),Rn
@@ -506,6 +516,10 @@ void GsuCorrerHasta(uint64_t hasta)
     if (!gsuPresente) return;
     if (!(g.sfr & S_G)) { if (g.ciclos < hasta) g.ciclos = hasta; return; }
     uint64_t antes = g.ciclos;
+#ifdef GSU_TRAZA
+    static int instantaneo = getenv("GSU_INSTANTANEO") ? 1 : 0;   // prueba: el chip termina sin gastar tiempo
+    if (instantaneo) { while (g.sfr & S_G) Paso(); g.ciclos = hasta; }
+#endif
     while ((g.sfr & S_G) && g.ciclos < hasta) Paso();
     diag.ocupado += g.ciclos - antes;
     if (!(g.sfr & S_G) && g.ciclos < hasta) g.ciclos = hasta;
