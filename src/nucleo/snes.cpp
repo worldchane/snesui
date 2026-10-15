@@ -126,10 +126,10 @@ static void RevisarAnomalias(const Muestra& m)
     // Muchos juegos apagan la NMI mientras cargan o descomprimen; solo es raro si el juego ya andaba (10 s seguidos con
     // NMI) y después pasa 20 s sin ninguna (cargar un nivel puede tardar más de 10).
     static int segConNmi;
-    if (m.nmi) { segConNmi++; segSinNmi = 0; }
+    if (m.nmi || m.irq) { segConNmi++; segSinNmi = 0; }   // algunos juegos usan solo la IRQ
     else segSinNmi++;
     if (segSinNmi == 20 && segConNmi >= 10)
-        Anomalia(AN_SIN_NMI, "El juego lleva 20 segundos sin interrupciones de cuadro (NMI) después de andar bien: parece trabado");
+        Anomalia(AN_SIN_NMI, "El juego lleva 20 segundos sin interrupciones (ni NMI ni IRQ) después de andar bien: parece trabado");
     if (segSinNmi >= 20) segConNmi = 0;
     if (cpu.parado) Anomalia(AN_PARADO, "El procesador se detuvo (instrucción STP)");
     if (gsuPresente)
