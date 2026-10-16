@@ -23,7 +23,7 @@ uint32_t spc7110RamTam;   // la RAM del juego; en la SRAM, después de ella, van
 static uint64_t Ahora()
 {
 #ifdef _WIN32
-    return Ahora();
+    return (uint64_t)time(0);
 #else
     struct timeval tv;
     gettimeofday(&tv, 0);
