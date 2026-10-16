@@ -24,6 +24,7 @@ int BusHtime();
 int BusVtime();
 void BusDispararIrq();
 void BusFinVblank();
+void BusProgramarNmi(uint64_t t);
 void BusMandoLinea();
 
 static InfoRom info;
@@ -71,6 +72,7 @@ void SnesReiniciar()
     if (obc1Presente) Obc1Reiniciar();
     if (sa1Presente) Sa1Reiniciar();
     if (cx4Presente) Cx4Reiniciar();
+    if (sdd1Presente) Sdd1Reiniciar();
     PpuReiniciar();
     ApuReiniciar();
     CpuReiniciar();
@@ -230,6 +232,7 @@ int SnesCuadro(uint32_t* pantalla, int16_t* audio, int maxAudio)
         if (y == 0)
         {
             BusFinVblank();
+            BusProgramarNmi(base + (uint64_t)lineaVblank * CICLOS_LINEA);
             PpuNuevoCuadro();
             HdmaIniciar();
         }
@@ -328,6 +331,7 @@ static void Estado(Serial& s)
     if (obc1Presente) Obc1Estado(s);
     if (sa1Presente) Sa1Estado(s);
     if (cx4Presente) Cx4Estado(s);
+    if (sdd1Presente) Sdd1Estado(s);
     if (gsuPresente)
     {
         // El chip y toda su RAM (no solo la parte con batería).

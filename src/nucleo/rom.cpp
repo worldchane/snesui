@@ -134,6 +134,9 @@ bool RomCargar(const char* ruta, InfoRom& info)
     // Cx4: coprocesador "a medida" (tipo 0xF3) con el subtipo 0x10 en la cabecera extendida (0x7FBF).
     cx4Presente = !superfx && !hi && (tipo >> 4) == 0xF && h[-1] == 0x10;
     if (cx4Presente) romChip = "Cx4";
+    // S-DD1: mapa 0x32 y coprocesador 4 (tipo 0x43/0x45).
+    sdd1Presente = !superfx && (h[0x15] & 0xEF) == 0x22 && (tipo >> 4) == 4;
+    if (sdd1Presente) romChip = "S-DD1";
     if (!superfx && (tipo & 0xF0) == 0 && (tipo & 0x0F) >= 3 && (tipo & 0x0F) <= 5)
     {
         // Huella (FNV-1a) del título de la cabecera, sin los espacios del final: identifica los pocos cartuchos que

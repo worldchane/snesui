@@ -75,6 +75,7 @@ static inline int32_t MapaSram(uint8_t banco, uint16_t off)
 }
 
 extern uint64_t ciclosMaestros;
+static inline void NmiAlDia();   // ver BusMarcarNmi
 extern uint32_t ramMascara;   // superfx.cpp
 #ifdef GSU_TRAZA
 unsigned gsuLecturasBloqueadas, gsuRomBloqueada;
@@ -198,6 +199,7 @@ uint8_t BusLeer(uint32_t dir)
     if (dsp1Presente) { int r = RegistroDsp(banco, off); if (r >= 0) return mdr = Dsp1Leer(r); }
     if (obc1Presente && EsObc1(banco, off)) return mdr = Obc1Leer(off);
     if (cx4Presente && b < 0x40 && off >= 0x6000 && off < 0x8000) return mdr = Cx4Leer(off, mdr);
+    if (sdd1Presente && banco != 0x7E && banco != 0x7F) { uint8_t v; if (Sdd1Leer(banco, off, v, mdr)) return mdr = v; }
 
     if (banco == 0x7E || banco == 0x7F) return mdr = wram[(banco - 0x7E) << 16 | off];
 
@@ -221,7 +223,7 @@ uint8_t BusLeer(uint32_t dir)
             // $4017: los bits 2-4 están siempre en 1 en la consola (algunos juegos lo usan para detectar el multitap).
             return mdr = j ? (uint8_t)((mdr & 0xE0) | 0x1C | bit) : (uint8_t)((mdr & 0xFC) | bit);
         }
-        if (off == 0x4210) { uint8_t v = (rdnmi & 0x80) | (mdr & 0x70) | 0x02; rdnmi &= 0x7F; return mdr = v; }   // NMI ocurrida (bit 7, se borra al leer); 4-6 bus abierto
+        if (off == 0x4210) { NmiAlDia(); uint8_t v = (rdnmi & 0x80) | (mdr & 0x70) | 0x02; rdnmi &= 0x7F; return mdr = v; }   // NMI ocurrida (bit 7, se borra al leer); 4-6 bus abierto
         if (off == 0x4211) { uint8_t v = (irqBandera ? 0x80 : 0) | (mdr & 0x7F); irqBandera = irqLinea = false; return mdr = v; }   // IRQ por tiempo (se borra al leer)
         if (off == 0x4212) return mdr = (hvbjoy & 0xC0) | (mandoOcupado ? 1 : 0) | (mdr & 0x3E);   // vblank/hblank/mando; 1-5 bus abierto
         if (off == 0x4213) return mdr = wrio;
@@ -294,6 +296,7 @@ void BusEscribir(uint32_t dir, uint8_t v)
     if (dsp1Presente) { int r = RegistroDsp(banco, off); if (r >= 0) { Dsp1Escribir(r, v); return; } }
     if (obc1Presente && EsObc1(banco, off)) { Obc1Escribir(off, v); return; }
     if (cx4Presente && b < 0x40 && off >= 0x6000 && off < 0x8000) { Cx4Escribir(off, v); return; }
+    if (sdd1Presente && banco != 0x7E && banco != 0x7F && Sdd1Escribir(banco, off, v)) return;
 
     if (banco == 0x7E || banco == 0x7F) { wram[(banco - 0x7E) << 16 | off] = v; return; }
 
@@ -365,6 +368,7 @@ void BusEscribir(uint32_t dir, uint8_t v)
         if (off >= 0x4300 && off < 0x4380)
         {
             Canal& c = dma[(off >> 4) & 7];
+            if (sdd1Presente) Sdd1RegistroDma((off >> 4) & 7, off & 0xF, v);   // el chip mira la dirección y el tamaño
 #ifdef GSU_TRAZA
             { extern int depurCuadro; static int l_ = getenv("PPUREG") ? 1 : 0; if (l_ && depurCuadro) { void SnesContadores(int*, int*); int h_, li; SnesContadores(&h_, &li); printf("  dma %04X=%02X linea %d\n", off, v, li); } }
 #endif
@@ -527,7 +531,27 @@ void BusLeerMandos()
 }
 
 bool BusNmiHabilitado() { return nmiHabilitado; }
-void BusMarcarNmi() { rdnmi |= 0x80; if (nmiHabilitado) nmiPendiente = true; }
+// El vblank empieza en un momento exacto, pero el procesador corre de a instrucciones: la última de la línea anterior
+// puede leer $4210 cuando el vblank ya empezó. Entonces la bandera se marca ahí mismo (hay juegos que esperan el vblank
+// leyendo $4210 con la NMI encendida, y solo la ven así: la NMI la borra apenas empieza).
+static uint64_t momentoNmi = ~0ull;
+static bool nmiAdelantada;
+void BusProgramarNmi(uint64_t t) { momentoNmi = t; nmiAdelantada = false; }
+static inline void NmiAlDia()
+{
+    if (ciclosMaestros < momentoNmi) return;
+    momentoNmi = ~0ull;
+    nmiAdelantada = true;
+    rdnmi |= 0x80;
+    if (nmiHabilitado) nmiPendiente = true;
+}
+void BusMarcarNmi()
+{
+    momentoNmi = ~0ull;
+    if (nmiAdelantada) { nmiAdelantada = false; return; }
+    rdnmi |= 0x80;
+    if (nmiHabilitado) nmiPendiente = true;
+}
 void BusHvbjoy(uint8_t v) { hvbjoy = v; }
 void BusReiniciar()
 {

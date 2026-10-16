@@ -141,6 +141,14 @@ void Cx4Reiniciar();
 uint8_t Cx4Leer(uint16_t off, uint8_t abierto);
 void Cx4Escribir(uint16_t off, uint8_t v);
 void Cx4Estado(Serial& s);
+// S-DD1 (sdd1.cpp): descompresión de gráficos durante la DMA y mapeador de la rom.
+extern bool sdd1Presente;
+void Sdd1Reiniciar();
+void Sdd1RegistroDma(int canal, int reg, uint8_t v);
+bool Sdd1Leer(uint8_t banco, uint16_t off, uint8_t& v, uint8_t abierto);
+bool Sdd1Escribir(uint8_t banco, uint16_t off, uint8_t v);
+void Sdd1Estado(Serial& s);
+
 // Lee la memoria de la SNES (rom, WRAM, SRAM) sin efectos: para los chips que copian de ella por su cuenta.
 uint8_t BusVer(uint32_t dir);
 void GsuVelocidad(int v);
