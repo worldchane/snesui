@@ -129,10 +129,15 @@ bool RomCargar(const char* ruta, InfoRom& info)
     if (obc1Presente) { romChip = "OBC1"; if (!sramTam) sramTam = 8 * 1024; }
     if (!superfx && (tipo & 0xF0) == 0 && (tipo & 0x0F) >= 3 && (tipo & 0x0F) <= 5)
     {
-        auto Titulo = [&](const char* t) { return !memcmp(h, t, strlen(t)); };
-        if (Titulo("DUNGEON MASTER")) romChip = "DSP-2 (todavía no soportado)";
-        else if (Titulo("TOP GEAR 3000") || Titulo("PLANETS CHAMP TG3000")) romChip = "DSP-4 (todavía no soportado)";
-        else if (h[0] == 0xBB && h[1] == 0xC4) romChip = "DSP-3 (todavía no soportado)";   // SDガンダムGX
+        // Huella (FNV-1a) del título de la cabecera, sin los espacios del final: identifica los pocos cartuchos que
+        // traen otro programa en el chip (DSP-2, DSP-3, DSP-4).
+        int largo = 21;
+        while (largo > 0 && (h[largo - 1] == ' ' || h[largo - 1] == 0)) largo--;
+        uint32_t huella = 0x811C9DC5;
+        for (int i = 0; i < largo; i++) huella = (huella ^ h[i]) * 0x01000193;
+        if (huella == 0x50AC5A2D) romChip = "DSP-2 (todavía no soportado)";
+        else if (huella == 0x84C00A36 || huella == 0xC5DD26D3) romChip = "DSP-4 (todavía no soportado)";
+        else if (h[0] == 0xBB && h[1] == 0xC4) romChip = "DSP-3 (todavía no soportado)";
         else
         {
             romChip = "DSP-1";
