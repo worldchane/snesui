@@ -149,6 +149,14 @@ bool Sdd1Leer(uint8_t banco, uint16_t off, uint8_t& v, uint8_t abierto);
 bool Sdd1Escribir(uint8_t banco, uint16_t off, uint8_t v);
 void Sdd1Estado(Serial& s);
 
+// SPC7110 (spc7110.cpp): rom grande con mapeador, descompresión, puerto de datos, aritmética y reloj Epson.
+extern bool spc7110Presente, spc7110Reloj;
+extern uint32_t spc7110RamTam;
+void Spc7110Reiniciar();
+bool Spc7110Leer(uint8_t banco, uint16_t off, uint8_t& v, uint8_t abierto);
+bool Spc7110Escribir(uint8_t banco, uint16_t off, uint8_t v);
+void Spc7110Estado(Serial& s);
+
 // Lee la memoria de la SNES (rom, WRAM, SRAM) sin efectos: para los chips que copian de ella por su cuenta.
 uint8_t BusVer(uint32_t dir);
 void GsuVelocidad(int v);

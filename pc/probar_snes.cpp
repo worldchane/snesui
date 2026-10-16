@@ -69,12 +69,16 @@ int main(int argc, char** argv)
     auto t0 = std::chrono::steady_clock::now();
     // Con un tercer argumento 'jugar': aprieta Start cada 3 s y avanza a la derecha, y guarda capturas cada 5 s.
     bool jugar = argc > 3;
+    const int reinicio = getenv("REINICIAR") ? atoi(getenv("REINICIAR")) : 0;   // botón de reinicio en ese cuadro
     for (int i = 0; i < cuadros; i++)
     {
+        if (reinicio && i == reinicio) SnesReiniciar();
         uint16_t b = 0;
         if (jugar)
         {
-            if (i % 180 < 6) b |= SB_START;
+            static const int boton = getenv("BOTON") ? atoi(getenv("BOTON")) : 3;   // BOTON=8: A en lugar de Start
+            static const int desde = getenv("DESDE") ? atoi(getenv("DESDE")) : 0;   // no apretar antes de ese cuadro
+            if (i % 180 < 6 && i >= desde) b |= (uint16_t)(1 << boton);
             if (i > 1500) b |= SB_DER | ((i / 40) % 2 ? SB_B : 0);
         }
         SnesMando(0, b);
@@ -115,6 +119,11 @@ int main(int argc, char** argv)
         fwrite("data", 1, 4, w); fwrite(&datos, 4, 1, w); fwrite(wav.data(), 2, wav.size(), w); fclose(w);
         int pico = 0; for (int16_t x : wav) { int a = x < 0 ? -x : x; if (a > pico) pico = a; }
         printf("audio: %d muestras, pico %d\n", (int)wav.size() / 2, pico);
+    }
+    if (SnesSramTam())   // la RAM del cartucho al final, para comparar con la de bsnes
+    {
+        char rr[300]; snprintf(rr, sizeof rr, "%s/sram.bin", Salida());
+        if (FILE* f = fopen(rr, "wb")) { fwrite(SnesSramDatos(), 1, SnesSramTam(), f); fclose(f); }
     }
     double s = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
 

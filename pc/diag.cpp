@@ -33,8 +33,10 @@ int main(int argc, char** argv)
     bool jugar = argc > 3;
     static uint32_t fb[256 * 224];
     static int16_t au[4096];
+    const int reinicio = getenv("REINICIAR") ? atoi(getenv("REINICIAR")) : 0;   // botón de reinicio en ese cuadro
     for (int i = 0; i < cuadros; i++)
     {
+        if (reinicio && i == reinicio) SnesReiniciar();
         uint16_t b = 0;
         if (jugar) { if (i % 180 < 6) b |= SB_START; if (i > 1500) b |= SB_DER | ((i / 40) % 2 ? SB_B : 0); }
         SnesMando(0, b);

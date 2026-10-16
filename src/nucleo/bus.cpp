@@ -200,6 +200,7 @@ uint8_t BusLeer(uint32_t dir)
     if (obc1Presente && EsObc1(banco, off)) return mdr = Obc1Leer(off);
     if (cx4Presente && b < 0x40 && off >= 0x6000 && off < 0x8000) return mdr = Cx4Leer(off, mdr);
     if (sdd1Presente && banco != 0x7E && banco != 0x7F) { uint8_t v; if (Sdd1Leer(banco, off, v, mdr)) return mdr = v; }
+    if (spc7110Presente && banco != 0x7E && banco != 0x7F) { uint8_t v; if (Spc7110Leer(banco, off, v, mdr)) return mdr = v; }
 
     if (banco == 0x7E || banco == 0x7F) return mdr = wram[(banco - 0x7E) << 16 | off];
 
@@ -297,6 +298,7 @@ void BusEscribir(uint32_t dir, uint8_t v)
     if (obc1Presente && EsObc1(banco, off)) { Obc1Escribir(off, v); return; }
     if (cx4Presente && b < 0x40 && off >= 0x6000 && off < 0x8000) { Cx4Escribir(off, v); return; }
     if (sdd1Presente && banco != 0x7E && banco != 0x7F && Sdd1Escribir(banco, off, v)) return;
+    if (spc7110Presente && banco != 0x7E && banco != 0x7F && Spc7110Escribir(banco, off, v)) return;
 
     if (banco == 0x7E || banco == 0x7F) { wram[(banco - 0x7E) << 16 | off] = v; return; }
 
@@ -553,9 +555,12 @@ void BusMarcarNmi()
     if (nmiHabilitado) nmiPendiente = true;
 }
 void BusHvbjoy(uint8_t v) { hvbjoy = v; }
+// Al encender: la RAM de la consola no arranca en cero; bsnes y snes9x usan este patrón. El botón de reinicio no la
+// borra (hay juegos que lo usan para saber que vienen de un reinicio).
+void BusEncender() { memset(wram, 0x55, sizeof wram); }
+
 void BusReiniciar()
 {
-    memset(wram, 0x55, sizeof wram);   // la RAM de la consola no arranca en cero; bsnes y snes9x usan este patrón
     memset(dma, 0, sizeof dma);
     nmitimen = hvbjoy = rdnmi = 0;
     nmiHabilitado = autoLeerMando = false;

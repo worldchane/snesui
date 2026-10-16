@@ -103,7 +103,7 @@ bool RomCargar(const char* ruta, InfoRom& info)
     const uint8_t* h = d + (hi ? 0xFFC0 : 0x7FC0);
     uint8_t ramCod = h[0x18];
     sramTam = info.tieneRam && ramCod ? (1024u << (ramCod > 7 ? 7 : ramCod)) : 0;
-    memset(sram, 0, sizeof sram);
+    memset(sram, 0xFF, sizeof sram);   // un cartucho sin partida guardada: como en bsnes (hay juegos que lo revisan)
 
     // Super FX: mapa LoROM (0x20/0x30) y tipo de cartucho 0x13..0x1A. La RAM del chip va en el mismo búfer que la
     // SRAM; su tamaño sale de la cabecera extendida (0x7FBD) y, si no la hay, 64 KB. Con batería (0x15, 0x1A) se guarda.
@@ -137,6 +137,16 @@ bool RomCargar(const char* ruta, InfoRom& info)
     // S-DD1: mapa 0x32 y coprocesador 4 (tipo 0x43/0x45).
     sdd1Presente = !superfx && (h[0x15] & 0xEF) == 0x22 && (tipo >> 4) == 4;
     if (sdd1Presente) romChip = "S-DD1";
+    // SPC7110: mapa 0x3A, tipo 0xF5 (o 0xF9 con el reloj Epson). El reloj se guarda en 16 bytes después de la RAM.
+    spc7110Presente = !superfx && h[0x15] == 0x3A && (tipo == 0xF5 || tipo == 0xF9);
+    spc7110Reloj = spc7110Presente && tipo == 0xF9;
+    if (spc7110Presente && ramCod) { sramTam = 1024u << (ramCod > 7 ? 7 : ramCod); info.tieneRam = true; }   // RAM a batería
+    spc7110RamTam = spc7110Presente ? sramTam : 0;
+    if (spc7110Presente)
+    {
+        romChip = spc7110Reloj ? "SPC7110 + reloj" : "SPC7110";
+        if (spc7110Reloj) { sramTam += 16; info.tieneRam = true; memset(sram + spc7110RamTam, 0, 16); }
+    }
     if (!superfx && (tipo & 0xF0) == 0 && (tipo & 0x0F) >= 3 && (tipo & 0x0F) <= 5)
     {
         // Huella (FNV-1a) del título de la cabecera, sin los espacios del final: identifica los pocos cartuchos que

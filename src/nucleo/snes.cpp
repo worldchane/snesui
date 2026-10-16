@@ -15,6 +15,7 @@ bool BusNmiHabilitado();
 void BusMarcarNmi();
 void BusHvbjoy(uint8_t v);
 void BusReiniciar();
+void BusEncender();
 void PpuVblank();
 bool PpuSobrebarrido();
 void HdmaIniciar();
@@ -48,6 +49,7 @@ bool SnesCargar(const char* ruta, char* error)
 {
     if (!RomCargar(ruta, info)) { if (error) snprintf(error, 160, "%s", info.error); return false; }
     cargado = true;
+    BusEncender();
     SnesReiniciar();
     return true;
 }
@@ -73,6 +75,7 @@ void SnesReiniciar()
     if (sa1Presente) Sa1Reiniciar();
     if (cx4Presente) Cx4Reiniciar();
     if (sdd1Presente) Sdd1Reiniciar();
+    if (spc7110Presente) Spc7110Reiniciar();
     PpuReiniciar();
     ApuReiniciar();
     CpuReiniciar();
@@ -332,6 +335,7 @@ static void Estado(Serial& s)
     if (sa1Presente) Sa1Estado(s);
     if (cx4Presente) Cx4Estado(s);
     if (sdd1Presente) Sdd1Estado(s);
+    if (spc7110Presente) Spc7110Estado(s);
     if (gsuPresente)
     {
         // El chip y toda su RAM (no solo la parte con batería).
