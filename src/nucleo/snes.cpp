@@ -70,6 +70,7 @@ void SnesReiniciar()
     if (dsp1Presente) Dsp1Reiniciar();
     if (obc1Presente) Obc1Reiniciar();
     if (sa1Presente) Sa1Reiniciar();
+    if (cx4Presente) Cx4Reiniciar();
     PpuReiniciar();
     ApuReiniciar();
     CpuReiniciar();
@@ -326,6 +327,7 @@ static void Estado(Serial& s)
     if (dsp1Presente) Dsp1Estado(s);
     if (obc1Presente) Obc1Estado(s);
     if (sa1Presente) Sa1Estado(s);
+    if (cx4Presente) Cx4Estado(s);
     if (gsuPresente)
     {
         // El chip y toda su RAM (no solo la parte con batería).

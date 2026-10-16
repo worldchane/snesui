@@ -131,6 +131,9 @@ bool RomCargar(const char* ruta, InfoRom& info)
     // OBC1: coprocesador 2 (tipo 0x25), con 8 KB de RAM a batería.
     obc1Presente = !superfx && (tipo >> 4) == 2 && (tipo & 0x0F) >= 3;
     if (obc1Presente) { romChip = "OBC1"; if (!sramTam) sramTam = 8 * 1024; }
+    // Cx4: coprocesador "a medida" (tipo 0xF3) con el subtipo 0x10 en la cabecera extendida (0x7FBF).
+    cx4Presente = !superfx && !hi && (tipo >> 4) == 0xF && h[-1] == 0x10;
+    if (cx4Presente) romChip = "Cx4";
     if (!superfx && (tipo & 0xF0) == 0 && (tipo & 0x0F) >= 3 && (tipo & 0x0F) <= 5)
     {
         // Huella (FNV-1a) del título de la cabecera, sin los espacios del final: identifica los pocos cartuchos que

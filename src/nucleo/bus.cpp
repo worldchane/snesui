@@ -197,6 +197,7 @@ uint8_t BusLeer(uint32_t dir)
     if (sa1Presente && banco != 0x7E && banco != 0x7F) { uint8_t v; if (Sa1LeerCpu(banco, off, v, mdr)) return mdr = v; }
     if (dsp1Presente) { int r = RegistroDsp(banco, off); if (r >= 0) return mdr = Dsp1Leer(r); }
     if (obc1Presente && EsObc1(banco, off)) return mdr = Obc1Leer(off);
+    if (cx4Presente && b < 0x40 && off >= 0x6000 && off < 0x8000) return mdr = Cx4Leer(off, mdr);
 
     if (banco == 0x7E || banco == 0x7F) return mdr = wram[(banco - 0x7E) << 16 | off];
 
@@ -268,6 +269,18 @@ uint8_t BusLeer(uint32_t dir)
     return mdr = romDatos[MapaRom(banco, off)];
 }
 
+uint8_t BusVer(uint32_t dir)
+{
+    uint8_t banco = dir >> 16, b = banco & 0x7F;
+    uint16_t off = dir & 0xFFFF;
+    if (banco == 0x7E || banco == 0x7F) return wram[(banco - 0x7E) << 16 | off];
+    if (b < 0x40 && off < 0x2000) return wram[off];
+    int32_t sr = MapaSram(banco, off);
+    if (sr >= 0) return sram[sr];
+    if (b < 0x40 && off < 0x8000) return mdr;
+    return romDatos[MapaRom(banco, off)];
+}
+
 static void IniciarDma(uint8_t mascara);
 
 void BusEscribir(uint32_t dir, uint8_t v)
@@ -280,6 +293,7 @@ void BusEscribir(uint32_t dir, uint8_t v)
     if (sa1Presente && banco != 0x7E && banco != 0x7F && Sa1EscribirCpu(banco, off, v)) return;
     if (dsp1Presente) { int r = RegistroDsp(banco, off); if (r >= 0) { Dsp1Escribir(r, v); return; } }
     if (obc1Presente && EsObc1(banco, off)) { Obc1Escribir(off, v); return; }
+    if (cx4Presente && b < 0x40 && off >= 0x6000 && off < 0x8000) { Cx4Escribir(off, v); return; }
 
     if (banco == 0x7E || banco == 0x7F) { wram[(banco - 0x7E) << 16 | off] = v; return; }
 

@@ -134,6 +134,15 @@ void Sa1CorrerHasta(uint64_t hasta);
 bool Sa1LeerCpu(uint8_t banco, uint16_t off, uint8_t& v, uint8_t abierto);
 bool Sa1EscribirCpu(uint8_t banco, uint16_t off, uint8_t v);
 void Sa1Estado(Serial& s);
+
+// Cx4 (cx4.cpp): cuentas de geometría y sprites, en 00-3F:6000-7FFF.
+extern bool cx4Presente;
+void Cx4Reiniciar();
+uint8_t Cx4Leer(uint16_t off, uint8_t abierto);
+void Cx4Escribir(uint16_t off, uint8_t v);
+void Cx4Estado(Serial& s);
+// Lee la memoria de la SNES (rom, WRAM, SRAM) sin efectos: para los chips que copian de ella por su cuenta.
+uint8_t BusVer(uint32_t dir);
 void GsuVelocidad(int v);
 extern uint32_t diagNmi, diagIrq;   // interrupciones atendidas por el procesador (cpu.cpp)
 bool GsuTieneRam();   // el juego escribió en la SRAM (hay que guardarla en el archivo)   // botones de cada jugador (ver SnesMando)
