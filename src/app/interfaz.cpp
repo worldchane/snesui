@@ -18,7 +18,7 @@
 #include "registro.h"
 #include "juego.h"
 
-static const char* const VERSION = "1.0";
+static const char* const VERSION = "1.1";
 // Número de compilación (lo genera construir.sh): commit y fecha; en el simulador de PC, "pc".
 #ifdef CON_COMPILACION
 #include "compilacion.h"
@@ -951,8 +951,8 @@ static void AcercaDe()
         Caja(x + 20, y + 20, w - 40, lh + 8, 20, 0x000000, 1);
         Imagen(logo, logoW, logoH, cx - lw / 2, y + 24, lw, lh, 1, true);
     }
-    char v[64];
-    snprintf(v, sizeof v, "Emulador de SNES para PS4   ·   versión %s", VERSION);
+    char v[128];
+    snprintf(v, sizeof v, "Emulador de SNES para PS4   ·   versión %s   ·   compilación %s", VERSION, COMPILACION);
     Texto(F_CUERPO, v, cx, y + 270, C_TEXTO_2, 1, 1);
     Texto(F_PEQUENA, "CREADO POR", cx, y + 318, C_TEXTO_3, 1, 1);
     Texto(F_TITULO, AUTOR, cx, y + 344, C_TEXTO, 1, 1);
@@ -1086,9 +1086,6 @@ static void Biblioteca(float t, float dt, const Mando& m)
     Texto(F_TITULO, "SNESUI", MARGEN, 58, C_TEXTO);
     float lw = AnchoTexto(F_TITULO, "SNESUI");
     FranjaSnes(MARGEN, 118, lw, 7, 1);
-    char v[64];
-    snprintf(v, sizeof v, "versión %s  ·  compilación %s", VERSION, COMPILACION);
-    Texto(F_PEQUENA, v, ANCHO - MARGEN, 70, C_TEXTO_3, 1, 2);
     char cont[48];
     int halladas = 0;
     if (BibliotecaBuscando(&halladas)) snprintf(cont, sizeof cont, "Buscando juegos…  %d", halladas);

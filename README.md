@@ -19,8 +19,15 @@ definición, carátulas automáticas, guardado de partidas y filtros de imagen.
   - transparencias y mezcla de colores;
   - ventanas, mosaico y HDMA (degradados y efectos por línea);
   - entrelazado.
-- **Chip Super FX.** Los juegos que lo usan (gráficos 3D y efectos) funcionan. En Configuración se puede acelerar
-  el chip (×2 a ×4) para que los juegos 3D se vean más fluidos que en la consola original.
+- **Chips especiales del cartucho.**
+  - **Super FX:** gráficos 3D y efectos. En Configuración se puede acelerar (×2 a ×4) para que los juegos 3D se vean
+    más fluidos que en la consola original.
+  - **SA-1:** el segundo procesador de algunos cartuchos.
+  - **DSP-1:** cuentas de 3D y modo 7.
+  - **Cx4:** geometría, giros y escalas de sprites.
+  - **S-DD1:** gráficos comprimidos.
+  - **SPC7110:** gráficos comprimidos y rom grande, con su reloj (que sigue en hora entre sesiones).
+  - **OBC1:** ayuda con los sprites.
 - **Sonido completo.** Están el procesador de sonido y el DSP, con eco.
 - **Guardado.**
   - La batería del cartucho se guarda sola en `.srm`, compatible con snes9x y bsnes.
@@ -86,7 +93,7 @@ Hay dos versiones del PKG:
 | Panel táctil | Select |
 | **R2** (mantener) | Avance rápido |
 | **L2** (mantener) | Rebobinar (vuelve atrás en el tiempo) |
-| **L3 + R3** | Menú de pausa: guardar o cargar estado, proporción, filtro, informe de diagnóstico, reiniciar, salir |
+| **L3 + R3** | Menú de pausa: guardar o cargar estado, proporción, filtro, reiniciar, salir |
 
 **Dos jugadores:** inicia sesión con un segundo usuario de la PS4 en el otro mando; SNESUI lo detecta solo y lo pone
 como jugador 2.
@@ -104,16 +111,13 @@ Todo queda en `/data/snes-ps4/` en la consola:
 
 ## Estado actual
 
-- **Super FX (GSU):** soportado. Pasa las 58 pruebas de hardware públicas del chip igual que bsnes, y los juegos
-  comerciales que lo usan se ven igual que en bsnes.
+- **Chips soportados:** Super FX, SA-1, DSP-1, Cx4, S-DD1, SPC7110 (con reloj Epson) y OBC1. Los juegos que los usan
+  se comparan con bsnes cuadro a cuadro. El Super FX pasa además las 58 pruebas de hardware públicas del chip.
+- El chip Cx4 y el DSP-1 no traen su programa en la rom: SNESUI hace lo mismo que el chip, con tablas calculadas por
+  fórmula (no hace falta ningún archivo de firmware).
 
-Todavía **no** funcionan los juegos con estos otros chips especiales en el cartucho:
-
-- SA-1;
-- DSP-1;
-- Cx4, S-DD1 y SPC7110.
-
-Están planeados para próximas versiones.
+Todavía **no** funcionan los juegos con los chips DSP-2, DSP-3, DSP-4, ST010/ST011 y ST018. Están planeados para
+próximas versiones.
 
 ## Compilar
 
@@ -135,7 +139,8 @@ globales. Están explicados en `construir.sh`, y `herramientas/revisar_elf.py` r
   - `ppu.cpp`: gráficos;
   - `apu.cpp`, `spc700.inc`, `dsp.inc`: sonido;
   - `bus.cpp`: memoria, DMA y HDMA;
-  - `superfx.cpp`: el chip Super FX.
+  - `superfx.cpp`, `sa1.cpp`, `dsp1.cpp`, `cx4.cpp`, `sdd1.cpp`, `spc7110.cpp`, `obc1.cpp`: los chips del
+    cartucho.
 - `src/app/`: la interfaz (biblioteca, juego, carátulas, fondo animado, diagnóstico).
 - `src/comun/`: dibujo en HD por software, texto y acceso a la PS4.
 - `pc/`: simulador y pruebas en PC.

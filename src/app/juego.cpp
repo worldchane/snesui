@@ -449,9 +449,9 @@ static void DibujarImagen()
 }
 
 // ---------- menú de pausa ----------
-enum { OP_CONTINUAR, OP_GUARDAR, OP_CARGAR, OP_PROPORCION, OP_FILTRO, OP_GENERAL, OP_INFORME, OP_REINICIAR, OP_SALIR, NUM_OPCIONES };
+enum { OP_CONTINUAR, OP_GUARDAR, OP_CARGAR, OP_PROPORCION, OP_FILTRO, OP_GENERAL, OP_REINICIAR, OP_SALIR, NUM_OPCIONES };
 static const char* const OPCIONES[NUM_OPCIONES] = {"Continuar", "Guardar estado", "Cargar estado", "Proporción", "Filtro",
-                                                   "Usar la configuración general", "Guardar informe de diagnóstico",
+                                                   "Usar la configuración general",
                                                    "Reiniciar", "Volver a la biblioteca"};
 static bool menu;
 static float visMenu, selSuave, transparencia;
@@ -574,24 +574,6 @@ static void MenuEntrada(const Mando& m)
         break;
     case OP_GUARDAR: GuardarEstado(ranura); Sonar(SON_ACEPTAR); menu = false; break;
     case OP_CARGAR: if (CargarEstado(ranura)) { Sonar(SON_ACEPTAR); menu = false; } else Sonar(SON_ERROR); break;
-    case OP_INFORME:
-    {
-        // El hilo está en pausa: el informe se arma acá mismo.
-        int l = listo.load(std::memory_order_acquire);
-        ArmarInforme("Pedido desde el menú de pausa", marcos[l >= 0 ? l : 0]);
-        char donde[220];
-        bool ok = RegistroInforme(informeMotivo, informeTexto, marcos[l >= 0 ? l : 0], informeEstado, informeEstadoN, donde, sizeof donde);
-        if (ok)
-        {
-            char t[96];
-            const char* n = strstr(donde, "/informe-");
-            snprintf(t, sizeof t, "Informe guardado: %s", n ? n + 1 : donde);
-            Avisar(t, C_BIEN);
-            Sonar(SON_ACEPTAR);
-        }
-        else { Avisar("No se pudo guardar el informe", C_MAL); Sonar(SON_ERROR); }
-        break;
-    }
     case OP_REINICIAR: Registrar("Juego reiniciado desde el menú"); SnesReiniciar(); AudioJuegoVaciar(); NuevaHistoria(); Avisar("Juego reiniciado", C_TEXTO); Sonar(SON_ACEPTAR); menu = false; break;
     case OP_SALIR: Salir(); break;
     }

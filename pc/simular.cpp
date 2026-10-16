@@ -108,7 +108,7 @@ int main()
     // GUION=acerca: un recorrido corto hasta Configuración → Acerca de.
     static const Paso acerca[] = {
         {4.6f, B_R1, NULL}, {4.8f, B_R1, NULL}, {5.0f, B_R1, NULL},
-        {5.3f, B_ABAJO, NULL}, {5.45f, B_ABAJO, NULL}, {5.6f, B_ABAJO, NULL}, {5.75f, B_ABAJO, NULL},
+        {5.3f, B_ARRIBA, NULL},   // de la primera fila sube a la última: "Acerca de SNESUI"
         {6.2f, 0, "20_config"},
         {6.3f, B_CRUZ, NULL},
         {6.9f, 0, "21_acerca"},
