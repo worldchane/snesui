@@ -124,6 +124,9 @@ static inline int LargoSalto(uint8_t op)
     return 0;
 }
 
+// Corre el SPC700 hasta 'ciclosSpc'. Una instrucción que terminaría después no se ejecuta todavía: lo que escribe en los
+// puertos ocurre al final de la instrucción, y la SNES no tiene que verlo antes de ese momento (si no, las cargas de
+// música al APU, donde la SNES espera el eco de cada byte, van más rápido que en la consola).
 static void spcCorrerHasta(uint64_t ciclosSpc)
 {
     while (spc.ciclos < ciclosSpc)
@@ -131,6 +134,7 @@ static void spcCorrerHasta(uint64_t ciclosSpc)
         uint64_t antes = spc.ciclos;
         uint16_t pc0 = spc.pc;
         uint8_t op = (pc0 >= 0xFFC0 && spc.iplVisible) ? IPL[pc0 - 0xFFC0] : aram[pc0];
+        if (antes + SPC_CICLOS[op] > ciclosSpc) break;
         Spc700Paso();
         int c = SPC_CICLOS[op];
         int largo = LargoSalto(op);
