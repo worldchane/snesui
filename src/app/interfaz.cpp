@@ -19,6 +19,12 @@
 #include "juego.h"
 
 static const char* const VERSION = "1.0";
+// Número de compilación (lo genera construir.sh): commit y fecha; en el simulador de PC, "pc".
+#ifdef CON_COMPILACION
+#include "compilacion.h"
+#else
+#define COMPILACION "pc"
+#endif
 static const char* const AUTOR = "RudolphGamerBkn";   // el creador de SNESUI (Configuración → Acerca de)
 static const char* const PAGINA = "github.com/worldchane/snesui";
 
@@ -216,7 +222,7 @@ static void ArmarVista()
 
 void InterfazIniciar()
 {
-    RegistroIniciar(VERSION);
+    RegistroIniciar(VERSION " (" COMPILACION ")");
     logo = CargarImagen(RUTA_ASSETS "/logo.png", &logoW, &logoH);
     BibliotecaIniciar();   // la lista guardada al instante; la búsqueda en el USB sigue en segundo plano
     juegos = BibliotecaJuegos(&nJuegos);
@@ -1079,7 +1085,7 @@ static void Biblioteca(float t, float dt, const Mando& m)
     float lw = AnchoTexto(F_TITULO, "SNESUI");
     FranjaSnes(MARGEN, 118, lw, 7, 1);
     char v[64];
-    snprintf(v, sizeof v, "versión %s", VERSION);
+    snprintf(v, sizeof v, "versión %s  ·  compilación %s", VERSION, COMPILACION);
     Texto(F_PEQUENA, v, ANCHO - MARGEN, 70, C_TEXTO_3, 1, 2);
     char cont[48];
     int halladas = 0;

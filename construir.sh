@@ -30,9 +30,13 @@ construir() {
   PAQ=$AQUI/paquete/$1                 # lo que va dentro del PKG
   mkdir -p "$OBJ" "$PAQ/sce_sys/about" "$PAQ/sce_module" "$AQUI/salida"
   rm -f "$OBJ"/*.o
+  # Número de compilación (commit + fecha), para saber en la consola qué versión exacta está instalada.
+  COMMIT=$(git -C "$AQUI" rev-parse --short HEAD 2>/dev/null || echo sin-git)
+  git -C "$AQUI" diff --quiet 2>/dev/null || COMMIT="$COMMIT+"
+  printf '#define COMPILACION "%s %s"\n' "$COMMIT" "$(date +%Y-%m-%d)" > "$OBJ/compilacion.h"
   for c in $CARPETAS; do
     for f in "$AQUI"/src/$c/*.cpp; do
-      "$LLVM/clang++" $FLAGS $DEFS -isystem "$TCW\\include\\c++\\v1" -isystem "$TCW\\include" -std=gnu++17 -Wall -Wno-unused-function \
+      "$LLVM/clang++" $FLAGS $DEFS -isystem "$TCW\\include\\c++\\v1" -isystem "$TCW\\include" -std=gnu++17 -Wall -Wno-unused-function -I "$OBJ" -DCON_COMPILACION \
         -c -o "$OBJ/${c}_$(basename "${f%.cpp}").o" "$f"
     done
   done

@@ -40,6 +40,13 @@ int main(int argc, char** argv)
         SnesMando(0, b);
         depurCuadro = i >= cuadros - (getenv("DEPUR_CUADROS") ? atoi(getenv("DEPUR_CUADROS")) : 1);
         SnesCuadro(fb, au, 2048);
+        // REBOBINAR=1: guarda un estado cada 2 cuadros, como la consola para poder rebobinar.
+        static bool rebobinar = getenv("REBOBINAR") != NULL;
+        if (rebobinar && (i & 1))
+        {
+            static uint8_t* buf = (uint8_t*)malloc(SnesEstadoTam());
+            SnesGuardarEstado(buf, SnesEstadoTam());
+        }
         // VOLCAR=c1,c2,...: guarda la WRAM y la RAM del cartucho al final de esos cuadros (pc/salida/mem_<c>_*.bin).
         static const char* volcar = getenv("VOLCAR");
         if (volcar)
