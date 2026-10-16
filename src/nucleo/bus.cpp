@@ -14,6 +14,7 @@ void ApuLog(int escribe, int puerto, uint8_t v);
 
 uint8_t wram[128 * 1024];
 uint16_t mando[2];
+bool mandoConectado[2] = {true, false};   // un puerto vacío se lee como ceros (los juegos lo usan para contar jugadores)
 bool sramCambiada;
 
 // Registros del propio CPU y del DMA.
@@ -165,12 +166,36 @@ static inline bool EscribirSuperFx(uint8_t banco, uint16_t off, uint8_t v)
     return b >= 0x40 && b < 0x7E;   // la rom y lo que no existe no se escriben
 }
 
+// Registros del DSP-1 en la dirección: -1 no es del chip; 0 datos (DR); 1 estado (SR). Como en las placas de Nintendo:
+// HiROM 00-1F:6000-7FFF (bit 12), LoROM 30-3F o 20-3F:8000-FFFF, o 60-6F:0000-7FFF (bit 14).
+static inline int RegistroDsp(uint8_t banco, uint16_t off)
+{
+    uint8_t b = banco & 0x7F;
+    switch (dspMapa)
+    {
+    case DSP_HIROM: return (b < 0x20 && off >= 0x6000 && off < 0x8000) ? (off >> 12) & 1 : -1;
+    case DSP_LOROM_30: return (b >= 0x30 && b < 0x40 && off >= 0x8000) ? (off >> 14) & 1 : -1;
+    case DSP_LOROM_20: return (b >= 0x20 && b < 0x40 && off >= 0x8000) ? (off >> 14) & 1 : -1;
+    default: return (b >= 0x60 && b < 0x70 && off < 0x8000) ? (off >> 14) & 1 : -1;
+    }
+}
+
+// RAM y registros del OBC1: 00-3F:6000-7FFF y 70-71:6000-7FFF, E000-FFFF.
+static inline bool EsObc1(uint8_t banco, uint16_t off)
+{
+    uint8_t b = banco & 0x7F;
+    if (b < 0x40) return off >= 0x6000 && off < 0x8000;
+    return (b == 0x70 || b == 0x71) && ((off & 0xE000) == 0x6000 || (off & 0xE000) == 0xE000);
+}
+
 uint8_t BusLeer(uint32_t dir)
 {
     uint8_t banco = dir >> 16;
     uint16_t off = dir & 0xFFFF;
     uint8_t b = banco & 0x7F;
     if (gsuPresente && banco != 0x7E && banco != 0x7F) { uint8_t v; if (LeerSuperFx(banco, off, v)) return mdr = v; }
+    if (dsp1Presente) { int r = RegistroDsp(banco, off); if (r >= 0) return mdr = Dsp1Leer(r); }
+    if (obc1Presente && EsObc1(banco, off)) return mdr = Obc1Leer(off);
 
     if (banco == 0x7E || banco == 0x7F) return mdr = wram[(banco - 0x7E) << 16 | off];
 
@@ -186,8 +211,11 @@ uint8_t BusLeer(uint32_t dir)
         {
             int j = off - 0x4016;
             if (cerrojoMando) serieMando[j] = registroMando[j];
-            uint8_t bit = serieMando[j] >> 15;
-            serieMando[j] = (uint16_t)(serieMando[j] << 1 | 1);
+            uint8_t bit = mandoConectado[j] ? serieMando[j] >> 15 : 0;
+#ifdef GSU_TRAZA
+            { extern int depurCuadro; static int l_ = getenv("MANDOS") ? 1 : 0; if (l_ && depurCuadro) printf("  serie %04X bit %d (PC %02X:%04X)\n", off, bit, cpu.pbr, cpu.pc); }
+#endif
+            serieMando[j] = (uint16_t)(serieMando[j] << 1 | 1);   // después de los 16 botones, un mando da unos
             // $4017: los bits 2-4 están siempre en 1 en la consola (algunos juegos lo usan para detectar el multitap).
             return mdr = j ? (uint8_t)((mdr & 0xE0) | 0x1C | bit) : (uint8_t)((mdr & 0xFC) | bit);
         }
@@ -199,6 +227,10 @@ uint8_t BusLeer(uint32_t dir)
         if (off == 0x4215) return mdr = cociente >> 8;
         if (off == 0x4216) return mdr = prodDiv & 0xFF;
         if (off == 0x4217) return mdr = prodDiv >> 8;
+#ifdef GSU_TRAZA
+        if (off >= 0x4218 && off <= 0x421F)
+        { extern int depurCuadro; static int l_ = getenv("MANDOS") ? 1 : 0; if (l_ && depurCuadro) { void SnesContadores(int*, int*); int h_, li; SnesContadores(&h_, &li); printf("  lee %04X = %02X linea %d (PC %02X:%04X)\n", off, off < 0x421C ? (off & 1 ? mandoLeido[(off - 0x4218) >> 1] >> 8 : mandoLeido[(off - 0x4218) >> 1] & 0xFF) : 0, li, cpu.pbr, cpu.pc); } }
+#endif
         if (off == 0x4218) return mdr = mandoLeido[0] & 0xFF;
         if (off == 0x4219) return mdr = mandoLeido[0] >> 8;
         if (off == 0x421A) return mdr = mandoLeido[1] & 0xFF;
@@ -244,12 +276,18 @@ void BusEscribir(uint32_t dir, uint8_t v)
     uint8_t b = banco & 0x7F;
     mdr = v;
     if (gsuPresente && banco != 0x7E && banco != 0x7F && EscribirSuperFx(banco, off, v)) return;
+    if (dsp1Presente) { int r = RegistroDsp(banco, off); if (r >= 0) { Dsp1Escribir(r, v); return; } }
+    if (obc1Presente && EsObc1(banco, off)) { Obc1Escribir(off, v); return; }
 
     if (banco == 0x7E || banco == 0x7F) { wram[(banco - 0x7E) << 16 | off] = v; return; }
 
     if (b < 0x40)
     {
-        if (off < 0x2000) { wram[off] = v; return; }
+        if (off < 0x2000) {
+#ifdef GSU_TRAZA
+            { static int lo_ = -2, hi_; if (lo_ == -2) { lo_ = 1; hi_ = 0; if (getenv("WRAMVIG")) sscanf(getenv("WRAMVIG"), "%x,%x", &lo_, &hi_); } if (off >= lo_ && off <= hi_) printf("  wram %04X = %02X (PC %02X:%04X)\n", off, v, cpu.pbr, cpu.pc); }
+#endif
+            wram[off] = v; return; }
         if (off >= 0x2100 && off < 0x2140) { PpuEscribir(off, v); return; }
         if (off >= 0x2140 && off < 0x2144) { ApuLog(1, off & 3, v); ApuEscribir(off & 3, v); return; }
         switch (off)
@@ -465,7 +503,7 @@ void BusLeerMandos()
     for (int j = 0; j < 2; j++)
     {
         uint16_t r = 0;
-        for (int i = 0; i < 12; i++)
+        for (int i = 0; i < 12 && mandoConectado[j]; i++)
             if (mando[j] & (1 << i)) r |= 0x8000 >> i;
         registroMando[j] = r;
     }
@@ -477,7 +515,7 @@ void BusMarcarNmi() { rdnmi |= 0x80; if (nmiHabilitado) nmiPendiente = true; }
 void BusHvbjoy(uint8_t v) { hvbjoy = v; }
 void BusReiniciar()
 {
-    memset(wram, 0, sizeof wram);
+    memset(wram, 0x55, sizeof wram);   // la RAM de la consola no arranca en cero; bsnes y snes9x usan este patrón
     memset(dma, 0, sizeof dma);
     nmitimen = hvbjoy = rdnmi = 0;
     nmiHabilitado = autoLeerMando = false;

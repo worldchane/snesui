@@ -15,6 +15,8 @@ uint8_t* romDatos;
 uint32_t romTam;
 bool romHiRom;
 bool romSuperFx;
+uint8_t dspMapa;
+const char* romChip = "";   // chip especial del cartucho (para el diagnóstico): "Super FX", "DSP-1"...
 uint8_t sram[128 * 1024];
 uint32_t sramTam;
 
@@ -117,6 +119,29 @@ bool RomCargar(const char* ruta, InfoRom& info)
         GsuConfigurar(true, ram, tipo == 0x1A || ram > 64 * 1024 || tam > 1024 * 1024);
     }
     else GsuConfigurar(false, 0, false);
+    romChip = superfx ? "Super FX" : "";
+
+    // DSP (NEC µPD7725): tipo 0x03..0x05 sin otro coprocesador. Hay cuatro programas distintos; cuál es sale del título
+    // (como hace bsnes). El lugar de sus registros depende de la placa: HiROM, LoROM sin RAM, LoROM con RAM.
+    dsp1Presente = false;
+    // OBC1: coprocesador 2 (tipo 0x25), con 8 KB de RAM a batería.
+    obc1Presente = !superfx && (tipo >> 4) == 2 && (tipo & 0x0F) >= 3;
+    if (obc1Presente) { romChip = "OBC1"; if (!sramTam) sramTam = 8 * 1024; }
+    if (!superfx && (tipo & 0xF0) == 0 && (tipo & 0x0F) >= 3 && (tipo & 0x0F) <= 5)
+    {
+        auto Titulo = [&](const char* t) { return !memcmp(h, t, strlen(t)); };
+        if (Titulo("DUNGEON MASTER")) romChip = "DSP-2 (todavía no soportado)";
+        else if (Titulo("TOP GEAR 3000") || Titulo("PLANETS CHAMP TG3000")) romChip = "DSP-4 (todavía no soportado)";
+        else if (h[0] == 0xBB && h[1] == 0xC4) romChip = "DSP-3 (todavía no soportado)";   // SDガンダムGX
+        else
+        {
+            romChip = "DSP-1";
+            dsp1Presente = true;
+            if (hi) dspMapa = DSP_HIROM;
+            else if (!sramTam) dspMapa = DSP_LOROM_30;
+            else dspMapa = tam > 1024 * 1024 ? DSP_LOROM_60 : DSP_LOROM_20;
+        }
+    }
     return true;
 }
 

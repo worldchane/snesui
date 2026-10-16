@@ -70,6 +70,7 @@ void ApuReiniciar();
 int ApuCuadro(int16_t* audio, int maxAudio, bool pal);
 
 extern uint16_t mando[2];
+extern bool mandoConectado[2];
 
 // Guardar y cargar el estado completo (estados rápidos). Cada parte pasa sus variables por el mismo Serial: al guardar se
 // copian al búfer, al cargar se leen de él, y sin búfer solo se mide el tamaño. Así el orden es siempre el mismo.
@@ -108,6 +109,22 @@ bool GsuTieneRom();
 void GsuContadores(uint64_t* arranques, uint64_t* paradas, uint64_t* instrucciones, uint64_t* ocupado);
 int GsuDiagnostico(char* out, int max);
 extern uint32_t gsuConsultasSfr;
+
+// DSP-1 (dsp1.cpp). dspMapa dice dónde aparecen sus registros según la placa del cartucho.
+extern bool dsp1Presente;
+enum { DSP_HIROM, DSP_LOROM_30, DSP_LOROM_20, DSP_LOROM_60 };
+extern uint8_t dspMapa;
+void Dsp1Reiniciar();
+uint8_t Dsp1Leer(bool estado);
+void Dsp1Escribir(bool estado, uint8_t v);
+void Dsp1Estado(Serial& s);
+
+// OBC1 (obc1.cpp): ayuda con la tabla de sprites en la RAM del cartucho.
+extern bool obc1Presente;
+void Obc1Reiniciar();
+uint8_t Obc1Leer(uint16_t dir);
+void Obc1Escribir(uint16_t dir, uint8_t v);
+void Obc1Estado(Serial& s);
 void GsuVelocidad(int v);
 extern uint32_t diagNmi, diagIrq;   // interrupciones atendidas por el procesador (cpu.cpp)
 bool GsuTieneRam();   // el juego escribió en la SRAM (hay que guardarla en el archivo)   // botones de cada jugador (ver SnesMando)

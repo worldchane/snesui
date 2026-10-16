@@ -34,6 +34,7 @@ static int16_t audio[2048];
 static std::atomic<int> pedidos{0}, hechos{0};   // cuadros pedidos al hilo y cuadros terminados
 static std::atomic<int> listo{-1};               // el último cuadro terminado (0 o 1)
 static std::atomic<uint16_t> botones{0}, botones2{0};   // jugador 1 y jugador 2
+static std::atomic<bool> hayJugador2{false};            // hay un segundo mando (el puerto 2 de la SNES está conectado)
 static std::atomic<int> velocidad{1};                   // cuadros por cuadro mostrado (R2: avance rápido)
 static std::atomic<bool> rebobinando{false};            // L2 mantenido
 static bool hayHistoria;                                // se pudo reservar la memoria para rebobinar
@@ -248,6 +249,7 @@ static void* HiloEmulacion(void*)
         visto = p;
         SnesMando(0, botones.load(std::memory_order_relaxed));
         SnesMando(1, botones2.load(std::memory_order_relaxed));
+        SnesMandoConectado(1, hayJugador2.load(std::memory_order_relaxed));
         if (rebobinando.load(std::memory_order_relaxed) && hayHistoria)
         {
             // Rebobinar: un paso atrás (2 cuadros) por cuadro mostrado, sin sonido. Se corre un cuadro para tener la
@@ -775,6 +777,7 @@ void JuegoCuadro(float t, float dt, const Mando& m)
     if (abierto && con2 != jugador2)
     {
         jugador2 = con2;
+        hayJugador2.store(con2, std::memory_order_relaxed);
         Avisar(con2 ? "Jugador 2 conectado" : "Jugador 2 desconectado", con2 ? C_BIEN : C_AVISO);
     }
     if (abierto && !error[0] && !menu)

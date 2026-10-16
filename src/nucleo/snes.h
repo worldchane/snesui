@@ -23,6 +23,8 @@ enum
     SB_A = 1 << 8, SB_X = 1 << 9, SB_L = 1 << 10, SB_R = 1 << 11,
 };
 void SnesMando(int jugador, uint16_t botones);
+// Si hay un mando en el puerto (por defecto, el 1 sí y el 2 no). Un puerto vacío se lee como ceros.
+void SnesMandoConectado(int jugador, bool si);
 
 struct InfoRom
 {

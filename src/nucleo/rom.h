@@ -8,6 +8,7 @@ extern uint8_t* romDatos;
 extern uint32_t romTam;
 extern bool romHiRom;
 extern bool romSuperFx;
+extern const char* romChip;
 extern uint8_t sram[128 * 1024];
 extern uint32_t sramTam;
 

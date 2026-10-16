@@ -67,12 +67,15 @@ void SnesReiniciar()
     DiagReiniciar();
     BusReiniciar();
     GsuReiniciar();
+    if (dsp1Presente) Dsp1Reiniciar();
+    if (obc1Presente) Obc1Reiniciar();
     PpuReiniciar();
     ApuReiniciar();
     CpuReiniciar();
 }
 
 void SnesMando(int jugador, uint16_t botones) { if (jugador >= 0 && jugador < 2) mando[jugador] = botones; }
+void SnesMandoConectado(int jugador, bool si) { if (jugador >= 0 && jugador < 2) mandoConectado[jugador] = si; }
 const InfoRom& SnesInfo() { return info; }
 
 // Posición del haz, para los contadores que lee el juego ($2137/$213C/$213D).
@@ -318,6 +321,8 @@ static void Estado(Serial& s)
     BusEstado(s);
     PpuEstado(s);
     ApuEstado(s);
+    if (dsp1Presente) Dsp1Estado(s);
+    if (obc1Presente) Obc1Estado(s);
     if (gsuPresente)
     {
         // El chip y toda su RAM (no solo la parte con batería).
@@ -368,7 +373,7 @@ int SnesDiagnostico(char* o, int m)
     if (h && romTam > (uint32_t)(romHiRom ? 0xFFE0 : 0x7FE0))
         mas("  mapa=%02X tipo=%02X rom=%02X ram=%02X país=%02X versión=%02X suma=%02X%02X  cabecera extendida=%s ram exp=%02X\n",
             h[0x15], h[0x16], h[0x17], h[0x18], h[0x19], h[0x1B], h[0x1F], h[0x1E], h[0x1A] == 0x33 ? "sí" : "no", h[-3]);
-    mas("  tamaño real %u bytes, SRAM con batería %u bytes, Super FX: %s\n", romTam, sramTam, gsuPresente ? "sí" : "no");
+    mas("  tamaño real %u bytes, SRAM con batería %u bytes, chip: %s\n", romTam, sramTam, romChip[0] ? romChip : "ninguno");
     mas("Cuadros emulados: %u\n", cuadros);
     mas("CPU: PC=%02X:%04X A=%04X X=%04X Y=%04X S=%04X D=%04X DB=%02X P=%02X E=%d %s%s\n", cpu.pbr, cpu.pc, cpu.a, cpu.x,
         cpu.y, cpu.s, cpu.d, cpu.dbr, cpu.p, cpu.e, cpu.esperando ? "(esperando WAI) " : "", cpu.parado ? "(parado STP)" : "");
