@@ -24,6 +24,8 @@ definición, carátulas automáticas, guardado de partidas y filtros de imagen.
     más fluidos que en la consola original.
   - **SA-1:** el segundo procesador de algunos cartuchos.
   - **DSP-1:** cuentas de 3D y modo 7.
+  - **DSP-2:** dibujo con mapas de bits.
+  - **ST010:** cuentas de un juego de carreras (con su RAM de récords).
   - **Cx4:** geometría, giros y escalas de sprites.
   - **S-DD1:** gráficos comprimidos.
   - **SPC7110:** gráficos comprimidos y rom grande, con su reloj (que sigue en hora entre sesiones).
@@ -111,12 +113,12 @@ Todo queda en `/data/snes-ps4/` en la consola:
 
 ## Estado actual
 
-- **Chips soportados:** Super FX, SA-1, DSP-1, Cx4, S-DD1, SPC7110 (con reloj Epson) y OBC1. Los juegos que los usan
+- **Chips soportados:** Super FX, SA-1, DSP-1, DSP-2, Cx4, S-DD1, SPC7110 (con reloj Epson), ST010 y OBC1. Los juegos que los usan
   se comparan con bsnes cuadro a cuadro. El Super FX pasa además las 58 pruebas de hardware públicas del chip.
-- El chip Cx4 y el DSP-1 no traen su programa en la rom: SNESUI hace lo mismo que el chip, con tablas calculadas por
-  fórmula (no hace falta ningún archivo de firmware).
+- Los chips Cx4, DSP-1, DSP-2 y ST010 no traen su programa en la rom: SNESUI hace lo mismo que el chip, con tablas
+  calculadas por fórmula (no hace falta ningún archivo de firmware).
 
-Todavía **no** funcionan los juegos con los chips DSP-2, DSP-3, DSP-4, ST010/ST011 y ST018. Están planeados para
+Todavía **no** funcionan los juegos con los chips DSP-3, DSP-4, ST011 y ST018. Están planeados para
 próximas versiones.
 
 ## Compilar
@@ -139,7 +141,7 @@ globales. Están explicados en `construir.sh`, y `herramientas/revisar_elf.py` r
   - `ppu.cpp`: gráficos;
   - `apu.cpp`, `spc700.inc`, `dsp.inc`: sonido;
   - `bus.cpp`: memoria, DMA y HDMA;
-  - `superfx.cpp`, `sa1.cpp`, `dsp1.cpp`, `cx4.cpp`, `sdd1.cpp`, `spc7110.cpp`, `obc1.cpp`: los chips del
+  - `superfx.cpp`, `sa1.cpp`, `dsp1.cpp`, `dsp2.cpp`, `st010.cpp`, `cx4.cpp`, `sdd1.cpp`, `spc7110.cpp`, `obc1.cpp`: los chips del
     cartucho.
 - `src/app/`: la interfaz (biblioteca, juego, carátulas, fondo animado, diagnóstico).
 - `src/comun/`: dibujo en HD por software, texto y acceso a la PS4.
