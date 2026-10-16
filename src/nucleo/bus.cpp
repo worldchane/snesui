@@ -261,7 +261,12 @@ void BusEscribir(uint32_t dir, uint8_t v)
         case 0x4016: cerrojoMando = v & 1; if (cerrojoMando) { serieMando[0] = registroMando[0]; serieMando[1] = registroMando[1]; } return;
         default: break;
         }
-        if (off == 0x4200 || (off >= 0x4207 && off <= 0x420A)) irqReprogramada = true;
+        // Solo cuenta si cambia algo de la IRQ por tiempo (no al tocar la NMI o la lectura de mandos).
+        if (off == 0x4200 && ((v ^ nmitimen) & 0x30)) irqReprogramada = true;
+        if (off == 0x4207 && v != (htime & 0xFF)) irqReprogramada = true;
+        if (off == 0x4208 && (v & 1) != (htime >> 8)) irqReprogramada = true;
+        if (off == 0x4209 && v != (vtime & 0xFF)) irqReprogramada = true;
+        if (off == 0x420A && (v & 1) != (vtime >> 8)) irqReprogramada = true;
 #ifdef GSU_TRAZA
         if (off == 0x4200 || (off >= 0x4207 && off <= 0x420A))
         { extern int depurCuadro; static int l_ = getenv("IRQREG") ? 1 : 0; if (l_ && depurCuadro) { void SnesContadores(int*, int*); int h_, li; SnesContadores(&h_, &li); printf("  irq %04X=%02X linea %d h %d\n", off, v, li, h_); } }

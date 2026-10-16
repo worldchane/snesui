@@ -247,23 +247,32 @@ int SnesCuadro(uint32_t* pantalla, int16_t* audio, int maxAudio)
         int ultimoPunto = -1;   // punto donde ya saltó en esta línea (si se reprograma más adelante, puede saltar otra vez)
         bool reprogramadaEnLinea = false;   // si no se tocó, salta aunque la instrucción anterior se haya pasado unos ciclos
         auto Correr = [&](uint64_t hasta) {
-            while (ciclosMaestros < hasta)
+            for (;;)
             {
                 int p = PuntoIrq(y);
                 uint64_t t = inicioLinea + (uint64_t)p;
                 irqReprogramada = false;
-                if (p > ultimoPunto && (t >= ciclosMaestros || !reprogramadaEnLinea) && t <= hasta)
+                // La IRQ de este tramo: si el procesador ya pasó el punto (por ejemplo, detenido en un DMA largo), queda
+                // pedida igual, salvo que el juego la haya reprogramado en esta línea después del punto.
+                if (p > ultimoPunto && t <= hasta && (t >= ciclosMaestros || !reprogramadaEnLinea))
                 {
-                    CpuCorrerHasta(t);
-                    if (irqReprogramada) reprogramadaEnLinea = true;
-                    if (irqReprogramada && ciclosMaestros < t) continue;   // cambió antes de llegar: se recalcula
+                    if (ciclosMaestros < t)
+                    {
+                        CpuCorrerHasta(t);
+                        if (irqReprogramada)
+                        {
+                            reprogramadaEnLinea = true;
+                            if (ciclosMaestros < t) continue;   // cambió antes de llegar: se recalcula
+                        }
+                    }
                     BusDispararIrq();
                     ultimoPunto = p;
 #ifdef GSU_TRAZA
-                    { extern int depurCuadro; static int l_ = getenv("IRQREG") ? 1 : 0; if (l_ && depurCuadro) printf("  >> IRQ disparada linea %d punto %d (modo %d)\n", y, p, BusIrqModo()); }
+                    { extern int depurCuadro; static int l_ = getenv("IRQREG") ? 1 : 0; if (l_ && depurCuadro) printf("  >> IRQ disparada linea %d punto %d (modo %d) ciclo %d\n", y, p, BusIrqModo(), (int)(ciclosMaestros - inicioLinea)); }
 #endif
                     continue;
                 }
+                if (ciclosMaestros >= hasta) break;
                 CpuCorrerHasta(hasta);
                 if (irqReprogramada) reprogramadaEnLinea = true;
             }
