@@ -194,6 +194,7 @@ uint8_t BusLeer(uint32_t dir)
     uint16_t off = dir & 0xFFFF;
     uint8_t b = banco & 0x7F;
     if (gsuPresente && banco != 0x7E && banco != 0x7F) { uint8_t v; if (LeerSuperFx(banco, off, v)) return mdr = v; }
+    if (sa1Presente && banco != 0x7E && banco != 0x7F) { uint8_t v; if (Sa1LeerCpu(banco, off, v, mdr)) return mdr = v; }
     if (dsp1Presente) { int r = RegistroDsp(banco, off); if (r >= 0) return mdr = Dsp1Leer(r); }
     if (obc1Presente && EsObc1(banco, off)) return mdr = Obc1Leer(off);
 
@@ -276,6 +277,7 @@ void BusEscribir(uint32_t dir, uint8_t v)
     uint8_t b = banco & 0x7F;
     mdr = v;
     if (gsuPresente && banco != 0x7E && banco != 0x7F && EscribirSuperFx(banco, off, v)) return;
+    if (sa1Presente && banco != 0x7E && banco != 0x7F && Sa1EscribirCpu(banco, off, v)) return;
     if (dsp1Presente) { int r = RegistroDsp(banco, off); if (r >= 0) { Dsp1Escribir(r, v); return; } }
     if (obc1Presente && EsObc1(banco, off)) { Obc1Escribir(off, v); return; }
 

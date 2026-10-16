@@ -69,6 +69,7 @@ void SnesReiniciar()
     GsuReiniciar();
     if (dsp1Presente) Dsp1Reiniciar();
     if (obc1Presente) Obc1Reiniciar();
+    if (sa1Presente) Sa1Reiniciar();
     PpuReiniciar();
     ApuReiniciar();
     CpuReiniciar();
@@ -288,6 +289,7 @@ int SnesCuadro(uint32_t* pantalla, int16_t* audio, int maxAudio)
         if (y < lineaVblank) HdmaLinea();
         Correr(inicioLinea + CICLOS_LINEA);
         GsuCorrerHasta(inicioLinea + CICLOS_LINEA);   // el Super FX corre en paralelo: se lo pone al día cada línea
+        Sa1CorrerHasta(inicioLinea + CICLOS_LINEA);   // igual el SA-1
     }
     return ApuCuadro(audio, maxAudio, info.pal);
 }
@@ -323,6 +325,7 @@ static void Estado(Serial& s)
     ApuEstado(s);
     if (dsp1Presente) Dsp1Estado(s);
     if (obc1Presente) Obc1Estado(s);
+    if (sa1Presente) Sa1Estado(s);
     if (gsuPresente)
     {
         // El chip y toda su RAM (no solo la parte con batería).

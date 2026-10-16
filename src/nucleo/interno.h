@@ -99,6 +99,7 @@ extern bool sramCambiada;
 
 // Super FX (superfx.cpp).
 extern bool gsuPresente, irqGsu, gsuCorre;
+extern bool irqSa1;   // el chip SA-1 le pide una interrupción a la SNES (sa1.cpp)
 void GsuConfigurar(bool presente, uint32_t ramTam, bool gsu2);
 void GsuReiniciar();
 void GsuCorrerHasta(uint64_t hasta);
@@ -125,6 +126,14 @@ void Obc1Reiniciar();
 uint8_t Obc1Leer(uint16_t dir);
 void Obc1Escribir(uint16_t dir, uint8_t v);
 void Obc1Estado(Serial& s);
+
+// SA-1 (sa1.cpp, sa1cpu.cpp): un segundo procesador en el cartucho.
+extern bool sa1Presente;
+void Sa1Reiniciar();
+void Sa1CorrerHasta(uint64_t hasta);
+bool Sa1LeerCpu(uint8_t banco, uint16_t off, uint8_t& v, uint8_t abierto);
+bool Sa1EscribirCpu(uint8_t banco, uint16_t off, uint8_t v);
+void Sa1Estado(Serial& s);
 void GsuVelocidad(int v);
 extern uint32_t diagNmi, diagIrq;   // interrupciones atendidas por el procesador (cpu.cpp)
 bool GsuTieneRam();   // el juego escribió en la SRAM (hay que guardarla en el archivo)   // botones de cada jugador (ver SnesMando)

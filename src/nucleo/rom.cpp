@@ -58,7 +58,8 @@ static void LeerCabecera(const uint8_t* d, uint32_t tam, uint32_t base, InfoRom&
     uint8_t pais = h[0x19];
     info.pal = pais >= 2 && pais <= 12 && pais != 7;   // Europa/PAL
     uint8_t tipo = h[0x16];
-    info.tieneRam = tipo == 1 || tipo == 2 || tipo == 5 || tipo == 6;
+    uint8_t lo = tipo & 0x0F;   // la cifra baja: 1-2 RAM (y batería) sin chip; 4-6 RAM o batería con chip
+    info.tieneRam = lo == 1 || lo == 2 || lo == 4 || lo == 5 || lo == 6;
     info.valida = true;
 }
 
@@ -124,6 +125,9 @@ bool RomCargar(const char* ruta, InfoRom& info)
     // DSP (NEC µPD7725): tipo 0x03..0x05 sin otro coprocesador. Hay cuatro programas distintos; cuál es sale del título
     // (como hace bsnes). El lugar de sus registros depende de la placa: HiROM, LoROM sin RAM, LoROM con RAM.
     dsp1Presente = false;
+    // SA-1: coprocesador 3 (tipo 0x34/0x35), mapa 0x23. La BW-RAM es la RAM del cartucho.
+    sa1Presente = !superfx && (tipo >> 4) == 3 && (tipo & 0x0F) >= 3;
+    if (sa1Presente) romChip = "SA-1";
     // OBC1: coprocesador 2 (tipo 0x25), con 8 KB de RAM a batería.
     obc1Presente = !superfx && (tipo >> 4) == 2 && (tipo & 0x0F) >= 3;
     if (obc1Presente) { romChip = "OBC1"; if (!sramTam) sramTam = 8 * 1024; }

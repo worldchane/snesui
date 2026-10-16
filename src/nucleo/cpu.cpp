@@ -1,4 +1,5 @@
-// El procesador 65816 de la SNES por intérprete. Cada instrucción sigue el comportamiento del chip real.
+// El procesador 65816 de la SNES por intérprete. El mismo código hace también el procesador del chip SA-1 (sa1cpu.cpp
+// lo compila otra vez con su memoria, su reloj y sus interrupciones). Cada instrucción sigue el comportamiento del chip real.
 // Bits de ancho: con M=1 el acumulador es de 8 bits y con M=0 de 16; con X=1 los índices son de 8 y con X=0 de 16.
 // En modo emulación (E=1, al encender) M y X quedan forzados a 8 bits, como el 6502.
 #include "interno.h"
@@ -14,7 +15,10 @@ extern uint64_t ciclosMaestros;   // reloj maestro (snes.cpp)
 // ---------- acceso a memoria (cada acceso cuesta ciclos del reloj maestro) ----------
 static inline uint8_t rd8(uint32_t a) { BusCiclo(VelocidadAcceso(a)); return BusLeer(a); }
 static inline void wr8(uint32_t a, uint8_t v) { BusCiclo(VelocidadAcceso(a)); BusEscribir(a, v); }
-static inline void io() { BusCiclo(6); }   // un ciclo interno (sin acceso a memoria)
+#ifndef CICLO_INTERNO
+#define CICLO_INTERNO 6   // un ciclo interno del procesador de la SNES, en ciclos maestros (el SA-1 usa 2)
+#endif
+static inline void io() { BusCiclo(CICLO_INTERNO); }   // un ciclo interno (sin acceso a memoria)
 
 // Ciclos internos de cada instrucción (los accesos a memoria se cuentan solos). Los casos que dependen del estado
 // (página directa no alineada, índice que cruza de página, salto tomado) se suman en cada modo.
@@ -233,11 +237,11 @@ void CpuCorrerHasta(uint64_t hasta)
         // Interrupciones pendientes: la NMI siempre; la IRQ si no está bloqueada (bandera I). WAI despierta con
         // cualquiera de las dos, aunque la IRQ esté bloqueada.
         if (nmiPendiente) { nmiPendiente = false; CpuInterrupcion(true); }
-        else if ((irqLinea || irqGsu) && !(cpu.p & F_I)) CpuInterrupcion(false);
-        else if ((irqLinea || irqGsu) && cpu.esperando) cpu.esperando = false;
+        else if ((irqLinea || irqGsu || irqSa1) && !(cpu.p & F_I)) CpuInterrupcion(false);
+        else if ((irqLinea || irqGsu || irqSa1) && cpu.esperando) cpu.esperando = false;
         if (cpu.parado || cpu.esperando) { ciclosMaestros = hasta; return; }
         if (irqReprogramada) return;   // el juego cambió la IRQ por tiempo: el cuadro recalcula cuándo salta
-#ifdef GSU_TRAZA
+#if defined(GSU_TRAZA) && !defined(CPU_SA1)
         {
             // Herramientas de PC: las últimas instrucciones del procesador; CPUBRK=1 las imprime al primer BRK.
             struct T { uint8_t pbr; uint16_t pc, a, x, y, s; uint8_t p, op; };
