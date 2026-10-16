@@ -197,10 +197,12 @@ uint8_t BusLeer(uint32_t dir)
     if (gsuPresente && banco != 0x7E && banco != 0x7F) { uint8_t v; if (LeerSuperFx(banco, off, v)) return mdr = v; }
     if (sa1Presente && banco != 0x7E && banco != 0x7F) { uint8_t v; if (Sa1LeerCpu(banco, off, v, mdr)) return mdr = v; }
     if (dsp1Presente) { int r = RegistroDsp(banco, off); if (r >= 0) return mdr = Dsp1Leer(r); }
+    if (dsp2Presente) { int r = RegistroDsp(banco, off); if (r >= 0) return mdr = Dsp2Leer(r); }
     if (obc1Presente && EsObc1(banco, off)) return mdr = Obc1Leer(off);
     if (cx4Presente && b < 0x40 && off >= 0x6000 && off < 0x8000) return mdr = Cx4Leer(off, mdr);
     if (sdd1Presente && banco != 0x7E && banco != 0x7F) { uint8_t v; if (Sdd1Leer(banco, off, v, mdr)) return mdr = v; }
     if (spc7110Presente && banco != 0x7E && banco != 0x7F) { uint8_t v; if (Spc7110Leer(banco, off, v, mdr)) return mdr = v; }
+    if (st010Presente) { uint8_t v; if (St010Leer(banco, off, v)) return mdr = v; }
 
     if (banco == 0x7E || banco == 0x7F) return mdr = wram[(banco - 0x7E) << 16 | off];
 
@@ -295,10 +297,12 @@ void BusEscribir(uint32_t dir, uint8_t v)
     if (gsuPresente && banco != 0x7E && banco != 0x7F && EscribirSuperFx(banco, off, v)) return;
     if (sa1Presente && banco != 0x7E && banco != 0x7F && Sa1EscribirCpu(banco, off, v)) return;
     if (dsp1Presente) { int r = RegistroDsp(banco, off); if (r >= 0) { Dsp1Escribir(r, v); return; } }
+    if (dsp2Presente) { int r = RegistroDsp(banco, off); if (r >= 0) { Dsp2Escribir(r, v); return; } }
     if (obc1Presente && EsObc1(banco, off)) { Obc1Escribir(off, v); return; }
     if (cx4Presente && b < 0x40 && off >= 0x6000 && off < 0x8000) { Cx4Escribir(off, v); return; }
     if (sdd1Presente && banco != 0x7E && banco != 0x7F && Sdd1Escribir(banco, off, v)) return;
     if (spc7110Presente && banco != 0x7E && banco != 0x7F && Spc7110Escribir(banco, off, v)) return;
+    if (st010Presente && St010Escribir(banco, off, v)) return;
 
     if (banco == 0x7E || banco == 0x7F) { wram[(banco - 0x7E) << 16 | off] = v; return; }
 

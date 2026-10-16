@@ -124,7 +124,7 @@ bool RomCargar(const char* ruta, InfoRom& info)
 
     // DSP (NEC µPD7725): tipo 0x03..0x05 sin otro coprocesador. Hay cuatro programas distintos; cuál es sale del título
     // (como hace bsnes). El lugar de sus registros depende de la placa: HiROM, LoROM sin RAM, LoROM con RAM.
-    dsp1Presente = false;
+    dsp1Presente = dsp2Presente = false;
     // SA-1: coprocesador 3 (tipo 0x34/0x35), mapa 0x23. La BW-RAM es la RAM del cartucho.
     sa1Presente = !superfx && (tipo >> 4) == 3 && (tipo & 0x0F) >= 3;
     if (sa1Presente) romChip = "SA-1";
@@ -137,6 +137,9 @@ bool RomCargar(const char* ruta, InfoRom& info)
     // S-DD1: mapa 0x32 y coprocesador 4 (tipo 0x43/0x45).
     sdd1Presente = !superfx && (h[0x15] & 0xEF) == 0x22 && (tipo >> 4) == 4;
     if (sdd1Presente) romChip = "S-DD1";
+    // ST010: coprocesador "a medida" (tipo 0xF6) con el subtipo 0x01; su RAM de datos (4 KB, a batería) se guarda.
+    st010Presente = !superfx && !hi && tipo == 0xF6 && h[-1] == 0x01;
+    if (st010Presente) { romChip = "ST010"; sramTam = 4096; info.tieneRam = true; }
     // SPC7110: mapa 0x3A, tipo 0xF5 (o 0xF9 con el reloj Epson). El reloj se guarda en 16 bytes después de la RAM.
     spc7110Presente = !superfx && h[0x15] == 0x3A && (tipo == 0xF5 || tipo == 0xF9);
     spc7110Reloj = spc7110Presente && tipo == 0xF9;
@@ -155,13 +158,16 @@ bool RomCargar(const char* ruta, InfoRom& info)
         while (largo > 0 && (h[largo - 1] == ' ' || h[largo - 1] == 0)) largo--;
         uint32_t huella = 0x811C9DC5;
         for (int i = 0; i < largo; i++) huella = (huella ^ h[i]) * 0x01000193;
-        if (huella == 0x50AC5A2D) romChip = "DSP-2 (todavía no soportado)";
+        if (huella == 0x50AC5A2D) { romChip = "DSP-2"; dsp2Presente = true; }
         else if (huella == 0x84C00A36 || huella == 0xC5DD26D3) romChip = "DSP-4 (todavía no soportado)";
         else if (h[0] == 0xBB && h[1] == 0xC4) romChip = "DSP-3 (todavía no soportado)";
         else
         {
             romChip = "DSP-1";
             dsp1Presente = true;
+        }
+        if (dsp1Presente || dsp2Presente)
+        {
             if (hi) dspMapa = DSP_HIROM;
             else if (!sramTam) dspMapa = DSP_LOROM_30;
             else dspMapa = tam > 1024 * 1024 ? DSP_LOROM_60 : DSP_LOROM_20;

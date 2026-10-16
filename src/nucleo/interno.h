@@ -119,6 +119,12 @@ void Dsp1Reiniciar();
 uint8_t Dsp1Leer(bool estado);
 void Dsp1Escribir(bool estado, uint8_t v);
 void Dsp1Estado(Serial& s);
+// DSP-2 (dsp2.cpp): el mismo chip con otro programa (mapas de bits); usa el mismo lugar que el DSP-1 (dspMapa).
+extern bool dsp2Presente;
+void Dsp2Reiniciar();
+uint8_t Dsp2Leer(bool estado);
+void Dsp2Escribir(bool estado, uint8_t v);
+void Dsp2Estado(Serial& s);
 
 // OBC1 (obc1.cpp): ayuda con la tabla de sprites en la RAM del cartucho.
 extern bool obc1Presente;
@@ -156,6 +162,13 @@ void Spc7110Reiniciar();
 bool Spc7110Leer(uint8_t banco, uint16_t off, uint8_t& v, uint8_t abierto);
 bool Spc7110Escribir(uint8_t banco, uint16_t off, uint8_t v);
 void Spc7110Estado(Serial& s);
+
+// ST010 (st010.cpp): cuentas de un juego de carreras; su RAM de 4 KB es la SRAM del cartucho.
+extern bool st010Presente;
+void St010Reiniciar();
+bool St010Leer(uint8_t banco, uint16_t off, uint8_t& v);
+bool St010Escribir(uint8_t banco, uint16_t off, uint8_t v);
+void St010Estado(Serial& s);
 
 // Lee la memoria de la SNES (rom, WRAM, SRAM) sin efectos: para los chips que copian de ella por su cuenta.
 uint8_t BusVer(uint32_t dir);

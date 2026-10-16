@@ -71,11 +71,13 @@ void SnesReiniciar()
     BusReiniciar();
     GsuReiniciar();
     if (dsp1Presente) Dsp1Reiniciar();
+    if (dsp2Presente) Dsp2Reiniciar();
     if (obc1Presente) Obc1Reiniciar();
     if (sa1Presente) Sa1Reiniciar();
     if (cx4Presente) Cx4Reiniciar();
     if (sdd1Presente) Sdd1Reiniciar();
     if (spc7110Presente) Spc7110Reiniciar();
+    if (st010Presente) St010Reiniciar();
     PpuReiniciar();
     ApuReiniciar();
     CpuReiniciar();
@@ -331,11 +333,13 @@ static void Estado(Serial& s)
     PpuEstado(s);
     ApuEstado(s);
     if (dsp1Presente) Dsp1Estado(s);
+    if (dsp2Presente) Dsp2Estado(s);
     if (obc1Presente) Obc1Estado(s);
     if (sa1Presente) Sa1Estado(s);
     if (cx4Presente) Cx4Estado(s);
     if (sdd1Presente) Sdd1Estado(s);
     if (spc7110Presente) Spc7110Estado(s);
+    if (st010Presente) St010Estado(s);
     if (gsuPresente)
     {
         // El chip y toda su RAM (no solo la parte con batería).

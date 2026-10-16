@@ -61,6 +61,8 @@ int main(int argc, char** argv)
            info.valida, info.titulo, info.mapeo, info.tamKB, info.pal, info.tieneRam, info.error);
     char error[160];
     if (!SnesCargar(ruta, error)) { printf("no cargó: %s\n", error); return 1; }
+    // RAMINICIAL=hex: llena la RAM del cartucho con ese valor (para imitar a otro emulador al comparar).
+    if (getenv("RAMINICIAL") && SnesSramTam()) memset(SnesSramDatos(), (int)strtol(getenv("RAMINICIAL"), NULL, 16), SnesSramTam());
 
     if (getenv("SUPERFX")) SnesSuperFxVelocidad(atoi(getenv("SUPERFX")));   // aceleración del Super FX
     static uint32_t pantalla[SNES_ANCHO * SNES_ALTO];
