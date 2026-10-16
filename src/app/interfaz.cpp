@@ -222,7 +222,9 @@ static void ArmarVista()
 
 void InterfazIniciar()
 {
-    RegistroIniciar(VERSION " (" COMPILACION ")");
+    static char version[64];
+    snprintf(version, sizeof version, "%s (compilación %s)", VERSION, COMPILACION);
+    RegistroIniciar(version);
     logo = CargarImagen(RUTA_ASSETS "/logo.png", &logoW, &logoH);
     BibliotecaIniciar();   // la lista guardada al instante; la búsqueda en el USB sigue en segundo plano
     juegos = BibliotecaJuegos(&nJuegos);
