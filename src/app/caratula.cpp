@@ -182,7 +182,7 @@ Caratula ObtenerCaratula(const char* nombre)
 // Las carátulas de RetroArch: http://thumbnails.libretro.com/<sistema>/Named_Boxarts/<nombre>.png. Se pide por HTTP
 // simple (sin cifrado: la consola no necesita módulos extra) con HTTP/1.0, así la respuesta llega entera y sin trozos.
 static const char* const SERVIDOR = "thumbnails.libretro.com";
-static const char* const SISTEMA = "Nintendo - Super Nintendo Entertainment System";
+static const char* const SISTEMA = "Nintendo - Super Nintendo Entertainment System";   // nombre de la carpeta en el servidor (no cambiar)
 static const int MAX_DESCARGAS = 10000;
 static char claves[MAX_DESCARGAS][96];
 static int nClaves;

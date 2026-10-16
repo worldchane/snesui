@@ -3,7 +3,7 @@
 #include <stdint.h>
 
 // Paleta: azul noche con acentos azul y turquesa.
-// Paleta estilo Super Nintendo: morado/gris de la consola y los cuatro colores de los botones (A rojo, B amarillo,
+// Paleta estilo SNES: morado/gris de la consola y los cuatro colores de los botones (A rojo, B amarillo,
 // X azul, Y verde) como acentos.
 static const uint32_t C_FONDO_ARRIBA = 0x1A1033, C_FONDO_ABAJO = 0x241640;
 static const uint32_t C_PANEL = 0x2A1E4D, C_PANEL_CLARO = 0x392A63;

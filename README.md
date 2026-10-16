@@ -1,25 +1,26 @@
-# SNESUI — emulador de Super Nintendo para PS4
+# SNESUI — emulador de SNES para PS4
 
 ![SNESUI](docs/logo.png)
 
-SNESUI es un emulador de Super Nintendo (SNES) hecho desde cero para la PS4 con GoldHEN. Tiene una interfaz en alta
+SNESUI es un emulador de SNES hecho desde cero para la PS4 con GoldHEN. Tiene una interfaz en alta
 definición, carátulas automáticas, guardado de partidas y filtros de imagen.
 
 ![Biblioteca](docs/imagen-biblioteca.png)
 
 ## Qué tiene
 
-- **Emulación fiel.** Los gráficos, el sonido y el ritmo de la consola se compararon cuadro por cuadro con snes9x y
-  bsnes:
-  - en partidas largas, el juego sigue el mismo recorrido que en snes9x;
-  - 51 de 61 pruebas de hardware dan la misma imagen que bsnes.
+- **Emulación fiel.** Los gráficos, el sonido y el ritmo de la consola se comparan cuadro por cuadro con bsnes:
+  - en una colección de 762 juegos, el 90 % se ve idéntico a bsnes durante los primeros 30 segundos (el resto
+    llega a las mismas pantallas unos segundos antes o después) y ninguno se cuelga;
+  - interrupciones por línea exactas, aunque el juego las reprograme a mitad de línea.
 - **Gráficos completos.** Están los 8 modos de video:
   - modo 7 (rotación y zoom);
   - alta resolución;
   - transparencias y mezcla de colores;
   - ventanas, mosaico y HDMA (degradados y efectos por línea);
   - entrelazado.
-- **Chip Super FX.** Los juegos que lo usan (gráficos 3D y efectos) funcionan.
+- **Chip Super FX.** Los juegos que lo usan (gráficos 3D y efectos) funcionan. En Configuración se puede acelerar
+  el chip (×2 a ×4) para que los juegos 3D se vean más fluidos que en la consola original.
 - **Sonido completo.** Están el procesador de sonido y el DSP, con eco.
 - **Guardado.**
   - La batería del cartucho se guarda sola en `.srm`, compatible con snes9x y bsnes.
@@ -39,6 +40,9 @@ definición, carátulas automáticas, guardado de partidas y filtros de imagen.
   también de la consola al USB (uno o todos, como copia de seguridad). También se pueden borrar todos los juegos de
   la consola o del USB, siempre con una confirmación que avisa cuáles se perderían. Antes de copiar se mide el espacio
   libre y siempre se deja 1 GB para el sistema; cada copia se verifica.
+- **Diagnóstico automático.** Si un juego falla (pantalla negra, juego trabado), SNESUI lo detecta y guarda un
+  informe en el USB, en `SNESUI-diagnostico/`: el registro, una captura y el estado de ese momento. También se puede
+  guardar a mano desde el menú de pausa. No incluye datos personales.
 - **Bibliotecas grandes.** Hasta 10.000 juegos: la lista aparece al instante (se guarda un índice), el USB se revisa
   en segundo plano analizando solo las ROMs nuevas, y se puede buscar por nombre.
 
@@ -82,7 +86,7 @@ Hay dos versiones del PKG:
 | Panel táctil | Select |
 | **R2** (mantener) | Avance rápido |
 | **L2** (mantener) | Rebobinar (vuelve atrás en el tiempo) |
-| **L3 + R3** | Menú de pausa: guardar o cargar estado, proporción, filtro, reiniciar, salir |
+| **L3 + R3** | Menú de pausa: guardar o cargar estado, proporción, filtro, informe de diagnóstico, reiniciar, salir |
 
 **Dos jugadores:** inicia sesión con un segundo usuario de la PS4 en el otro mando; SNESUI lo detecta solo y lo pone
 como jugador 2.
@@ -95,12 +99,13 @@ Todo queda en `/data/snes-ps4/` en la consola:
 - `guardados/`: las partidas (`.srm`) y los estados rápidos (`.st0` a `.st3`);
 - `caratulas/`: las carátulas bajadas;
 - `biblioteca.txt`: el índice de la biblioteca (para que aparezca al instante; se actualiza solo);
-- `ajustes.txt`: la configuración general (proporción, filtro, avance rápido, rebobinar);
+- `ajustes.txt`: la configuración general (proporción, filtro, avance rápido, rebobinar, velocidad del Super FX);
 - `guardados/<juego>.cfg`: la proporción y el filtro propios de un juego, si se cambiaron desde su menú de pausa.
 
 ## Estado actual
 
-- **Super FX (GSU):** soportado. Pasa las 58 pruebas de hardware públicas del chip igual que bsnes.
+- **Super FX (GSU):** soportado. Pasa las 58 pruebas de hardware públicas del chip igual que bsnes, y los juegos
+  comerciales que lo usan se ven igual que en bsnes.
 
 Todavía **no** funcionan los juegos con estos otros chips especiales en el cartucho:
 
@@ -129,8 +134,9 @@ globales. Están explicados en `construir.sh`, y `herramientas/revisar_elf.py` r
   - `cpu.cpp`: procesador 65816;
   - `ppu.cpp`: gráficos;
   - `apu.cpp`, `spc700.inc`, `dsp.inc`: sonido;
-  - `bus.cpp`: memoria, DMA y HDMA.
-- `src/app/`: la interfaz (biblioteca, juego, carátulas, fondo animado).
+  - `bus.cpp`: memoria, DMA y HDMA;
+  - `superfx.cpp`: el chip Super FX.
+- `src/app/`: la interfaz (biblioteca, juego, carátulas, fondo animado, diagnóstico).
 - `src/comun/`: dibujo en HD por software, texto y acceso a la PS4.
 - `pc/`: simulador y pruebas en PC.
 
@@ -143,6 +149,6 @@ globales. Están explicados en `construir.sh`, y `herramientas/revisar_elf.py` r
 - Comparación de exactitud: snes9x y bsnes.
 - Pruebas de hardware de [PeterLemon](https://github.com/PeterLemon/SNES).
 
-SNESUI no tiene relación con Nintendo. Super Nintendo es marca de Nintendo. Usa solo ROMs de juegos que tengas.
+SNESUI no tiene relación con Nintendo. SNES es marca de Nintendo. Usa solo ROMs de juegos que tengas.
 
 Creado por **RudolphGamerBkn**. © RudolphGamerBkn. Todos los derechos reservados.

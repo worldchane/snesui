@@ -1,4 +1,4 @@
-// La interfaz del emulador de SNES, con estilo Super Nintendo: fondo morado, los cuatro colores de los botones como
+// La interfaz del emulador de SNES, con estilo SNES: fondo morado, los cuatro colores de los botones como
 // acentos, y una cuadrícula de carátulas. Si la carátula del juego ya se bajó (de internet, a /data), se muestra; si no,
 // una tarjeta con las iniciales. Reutiliza el dibujo en HD del proyecto anterior.
 #include "interfaz.h"
@@ -952,7 +952,7 @@ static void AcercaDe()
         Imagen(logo, logoW, logoH, cx - lw / 2, y + 24, lw, lh, 1, true);
     }
     char v[64];
-    snprintf(v, sizeof v, "Emulador de Super Nintendo para PS4   ·   versión %s", VERSION);
+    snprintf(v, sizeof v, "Emulador de SNES para PS4   ·   versión %s", VERSION);
     Texto(F_CUERPO, v, cx, y + 270, C_TEXTO_2, 1, 1);
     Texto(F_PEQUENA, "CREADO POR", cx, y + 318, C_TEXTO_3, 1, 1);
     Texto(F_TITULO, AUTOR, cx, y + 344, C_TEXTO, 1, 1);

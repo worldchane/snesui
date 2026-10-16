@@ -1,4 +1,4 @@
-// Emulador de Super Nintendo para PS4: la interfaz en alta definición y el emulador, dibujados por software entre varios
+// Emulador de SNES para PS4: la interfaz en alta definición y el emulador, dibujados por software entre varios
 // núcleos. Hecho con lo que ya funcionó en la PS4 del usuario (ver LEEME.md): sin excepciones de C++, sin RTTI, sin
 // std::thread y sin variables globales con constructores.
 #include <stdio.h>

@@ -1,4 +1,4 @@
-// El núcleo del emulador de Super Nintendo. A diferencia de la PS2, la SNES corre a 3,58 MHz: un intérprete simple la
+// El núcleo del emulador de SNES. A diferencia de la PS2, la SNES corre a 3,58 MHz: un intérprete simple la
 // emula a velocidad completa sin problemas, así que no hace falta recompilador (JIT).
 // Partes: cpu (el procesador 65816), ppu (gráficos), apu (sonido: SPC700 + DSP), bus (la memoria y el hardware).
 #pragma once
