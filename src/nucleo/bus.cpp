@@ -411,7 +411,7 @@ void HdmaIniciar()
     // Como en la consola: todos los canales quedan "sin terminar" al empezar el cuadro, aunque estén apagados. Si el
     // juego enciende uno a mitad de cuadro ($420C), sigue desde donde estaba su tabla (hay juegos que lo hacen).
     // Si no hay ninguno encendido, quedan sin dato pendiente: al encenderlos, la primera línea solo cuenta y lee la
-    // tabla (Yoshi's Island lo usa en su pantalla del logo). Igual que bsnes.
+    // tabla (hay un juego que lo usa en su pantalla del logo). Igual que bsnes.
     for (int i = 0; i < 8; i++)
     {
         hdmaFin[i] = false;
