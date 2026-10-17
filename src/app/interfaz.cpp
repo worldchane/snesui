@@ -18,7 +18,7 @@
 #include "registro.h"
 #include "juego.h"
 
-static const char* const VERSION = "1.1";
+static const char* const VERSION = "1.2";
 // Número de compilación (lo genera construir.sh): commit y fecha; en el simulador de PC, "pc".
 #ifdef CON_COMPILACION
 #include "compilacion.h"
