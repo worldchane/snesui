@@ -36,9 +36,26 @@ static int Puntaje(const uint8_t* d, uint32_t tam, uint32_t base)
         else p -= 3;
     }
     uint16_t reset = h[0x3C] | h[0x3D] << 8;
-    if (reset >= 0x8000) p += 8;
+    if (reset >= 0x8000)
+    {
+        p += 8;
+        // La primera instrucción del programa: las de arranque típicas suman; BRK, COP, STP o WDM restan.
+        uint32_t o = base == 0x7FC0 ? (uint32_t)(reset - 0x8000) : reset;
+        if (o < tam)
+        {
+            uint8_t op = d[o];
+            if (op == 0x78 || op == 0x18 || op == 0x38 || op == 0x9C || op == 0x4C || op == 0x5C || op == 0xC2 ||
+                op == 0xE2 || op == 0xA9 || op == 0xA2 || op == 0xA0 || op == 0x20 || op == 0x22 || op == 0xAD)
+                p += 4;
+            else if (op == 0x00 || op == 0x02 || op == 0xDB || op == 0x42 || op == 0xFF)
+                p -= 8;
+        }
+    }
     uint16_t suma = h[0x1E] | h[0x1F] << 8, comp = h[0x1C] | h[0x1D] << 8;
-    if ((suma ^ comp) == 0xFFFF) p += 8;
+    if ((suma ^ comp) == 0xFFFF) p += suma && comp ? 8 : 2;   // 0000/FFFF cuadra, pero suele ser una cabecera de relleno
+    // El byte de mapa dice LoROM (bit 0 en 0) o HiROM (bit 0 en 1): que coincida con dónde está la cabecera.
+    uint8_t mapa = h[0x15];
+    if ((mapa & 0xE0) == 0x20) p += ((mapa & 1) == (base == 0xFFC0 ? 1 : 0)) ? 4 : -4;
     return p;
 }
 

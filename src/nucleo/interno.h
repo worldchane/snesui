@@ -49,6 +49,7 @@ static inline int VelocidadAcceso(uint32_t a)
 
 // Pedidos de interrupción (bus.cpp): la IRQ por tiempo queda pedida hasta que se lee $4211; la NMI una vez.
 extern bool irqLinea, nmiPendiente;
+extern int nmiDemora;   // NMI pedida a mitad del vblank: se atiende tras la próxima instrucción (bus.cpp)
 extern bool irqReprogramada;   // se escribió $4200 o HTIME/VTIME (ver snes.cpp)
 
 void CpuReiniciar();

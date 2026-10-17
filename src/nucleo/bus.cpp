@@ -37,6 +37,7 @@ static int mandoOcupado;             // líneas que faltan para terminar la lect
 bool memselRapido;                   // $420D: la rom de los bancos 0x80-0xFF se lee a 6 ciclos (FastROM)
 bool irqReprogramada;               // se escribió $4200 o HTIME/VTIME: el cuadro recalcula la IRQ por tiempo
 bool irqLinea, nmiPendiente;         // pedidos de interrupción que el procesador atiende entre instrucciones
+int nmiDemora;                      // instrucciones que faltan para pedir una NMI encendida a mitad del vblank (cpu.cpp)
 
 // DMA: 8 canales.
 // tam también es la dirección indirecta del HDMA; dirHdma es la posición en la tabla; lineas el contador de líneas.
@@ -337,8 +338,11 @@ void BusEscribir(uint32_t dir, uint8_t v)
         switch (off)
         {
         case 0x4200:
+#ifdef GSU_TRAZA
+            { static bool l_ = getenv("REG4200") != NULL; if (l_) { void SnesContadores(int*, int*); int h_, li; SnesContadores(&h_, &li); printf("  4200=%02X linea %d (PC %02X:%04X) rdnmi=%02X\n", v, li, cpu.pbr, cpu.pc, rdnmi); } }
+#endif
             // Encender la NMI en pleno vblank (con la bandera todavía puesta) la dispara enseguida.
-            if (!nmiHabilitado && (v & 0x80) && (rdnmi & 0x80)) nmiPendiente = true;
+            if (!nmiHabilitado && (v & 0x80) && (rdnmi & 0x80)) nmiDemora = 2;   // después de la próxima instrucción (cpu.cpp)
             nmitimen = v; nmiHabilitado = v & 0x80; autoLeerMando = v & 1;
             if (!(v & 0x30)) irqBandera = irqLinea = false;
             return;
@@ -533,7 +537,15 @@ void BusLeerMandos()
             if (mando[j] & (1 << i)) r |= 0x8000 >> i;
         registroMando[j] = r;
     }
-    if (autoLeerMando) { mandoLeido[0] = registroMando[0]; mandoLeido[1] = registroMando[1]; mandoOcupado = 3; }
+    if (autoLeerMando)
+    {
+        mandoLeido[0] = registroMando[0];
+        mandoLeido[1] = registroMando[1];
+        mandoOcupado = 3;
+        // La lectura automática saca los 16 bits por la línea serie: después, $4016/$4017 dan unos (un mando conectado
+        // los da después de sus 16 botones). Hay juegos que miran eso para saber si hay mando antes de leer $4218.
+        serieMando[0] = serieMando[1] = 0xFFFF;
+    }
 }
 
 bool BusNmiHabilitado() { return nmiHabilitado; }
@@ -574,6 +586,7 @@ void BusReiniciar()
     wmaddL = wmaddM = wmaddH = 0;
     htime = vtime = 0x1FF;
     irqBandera = irqLinea = nmiPendiente = false;
+    nmiDemora = 0;
     wrio = 0xFF; hdmaen = 0; memselRapido = false; mandoOcupado = 0;
     for (int i = 0; i < 8; i++)
     {

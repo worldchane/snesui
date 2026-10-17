@@ -443,6 +443,11 @@ void CpuCorrerHasta(uint64_t hasta)
         }
         BusCiclo(CICLOS_INTERNOS[op] * 6);
         cpu.ciclos++;
+#ifndef CPU_SA1
+        // Una NMI que se pidió en el último ciclo de una instrucción (al encenderla en $4200 en pleno vblank) se atiende
+        // después de la instrucción siguiente, como en la consola: hay juegos que guardan ahí lo que la NMI va a leer.
+        if (nmiDemora && --nmiDemora == 0) nmiPendiente = true;
+#endif
     }
 }
 
