@@ -1,5 +1,5 @@
-// La pantalla de 1920 × 1080 a través de SDL2 (el mismo camino que ya funcionó en la consola con Blue Chalk y la
-// plantilla). Cada cuadro: PantallaComenzar → órdenes de dibujo (lienzo.h, texto.h) → PantallaMostrar.
+// La pantalla de 1920 × 1080, directo con la salida de video de la consola (la consola la escala a la resolución de la
+// tele). Cada cuadro: PantallaComenzar → órdenes de dibujo (lienzo.h, texto.h) → PantallaMostrar.
 #pragma once
 
 bool PantallaIniciar();

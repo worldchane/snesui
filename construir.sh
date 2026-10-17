@@ -43,8 +43,8 @@ construir() {
   "$LLVM/ld.lld" -m elf_x86_64 -pie --script "$TCW\\link.x" --eh-frame-hdr -Map "$OBJ/eboot.map" -o "$OBJ/eboot.elf" "-L$TCW\\lib" "$TCW\\lib\\crt1.o" "$OBJ"/*.o $LIBS
   "$BIN/create-fself.exe" -in "$OBJ/eboot.elf" --out "$OBJ/eboot.oelf" --eboot "$PAQ/eboot.bin" --paid 0x3800000000000011 >/dev/null
 
-  # Archivos fijos del paquete: los módulos y right.sprx que trae el propio OpenOrbis, el ícono (512 × 512) y assets/. Sin pic1.png: la consola
-  # la muestra como pantalla de carga encima del programa hasta que este llame a sceSystemServiceHideSplashScreen (no probada).
+  # Archivos fijos del paquete: los módulos y right.sprx que trae el propio OpenOrbis, el ícono (512 × 512) y assets/. Sin pic1.png: la pantalla de
+  # carga queda negra; el programa la quita al mostrar el primer cuadro (src/comun/pantalla.cpp).
   cp "$TC/samples/SDL2/sce_module/"*.prx "$PAQ/sce_module/"
   cp "$TC/samples/SDL2/sce_sys/about/right.sprx" "$PAQ/sce_sys/about/"
   cp "$AQUI/icon0.png" "$PAQ/sce_sys/icon0.png"
