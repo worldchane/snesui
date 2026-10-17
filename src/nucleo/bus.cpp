@@ -54,7 +54,7 @@ static inline uint32_t MapaRom(uint8_t banco, uint16_t off)
     }
     else
         o = ((uint32_t)(banco & 0x7F) << 15) | (off & 0x7FFF);
-    return romTam ? o % romTam : 0;
+    return RomPos(o);
 }
 
 // SRAM de guardado. Devuelve su dirección, o -1 si ahí no hay SRAM.
@@ -122,7 +122,7 @@ static inline bool LeerSuperFx(uint8_t banco, uint16_t off, uint8_t& v)
             { gsuRomBloqueada++; static int n_ = 0; if (getenv("ROMBLOQ") && n_ < 40 && (gsuRomBloqueada % 500) == 1) { n_++; printf("  rom bloqueada %02X:%04X desde PC=%02X:%04X\n", banco, off, cpu.pbr, cpu.pc); } }
 #endif
             v = VECTOR_GSU[off & 15]; return true; } }
-        v = romDatos[(((uint32_t)(b & 0x1F) << 16) | off) % romTam];
+        v = romDatos[RomPos(((uint32_t)(b & 0x1F) << 16) | off)];
         return true;
     }
     if (b == 0x70 || b == 0x71)

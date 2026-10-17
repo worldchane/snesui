@@ -57,7 +57,7 @@ static inline uint8_t Rom(uint8_t banco, uint16_t dir)
     // Los bancos 60-7F son la RAM del chip (también para el búfer de rom: ROMB puede apuntar ahí).
     if ((banco & 0x60) == 0x60) return Ram(((uint32_t)(banco & 1) << 16) | dir);
     uint32_t a = banco < 0x40 ? ((uint32_t)(banco & 0x3F) << 15) | (dir & 0x7FFF) : ((uint32_t)(banco & 0x1F) << 16) | dir;
-    return romTam ? romDatos[a % romTam] : 0;
+    return romTam ? romDatos[RomPos(a)] : 0;
 }
 static inline uint8_t& Ram(uint32_t a) { return sram[a & ramMascara]; }
 static inline uint32_t DirRam(uint16_t dir) { return ((uint32_t)(g.rambr & 1) << 16) | dir; }

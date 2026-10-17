@@ -36,7 +36,7 @@ static struct
 static inline uint8_t LeerMmc(uint32_t dir)
 {
     uint32_t o = (uint32_t)(s.banco[dir >> 20 & 3] & 0xF) << 20 | (dir & 0xFFFFF);
-    return romTam ? romDatos[o % romTam] : 0;
+    return romTam ? romDatos[RomPos(o)] : 0;
 }
 
 // Cuántos bits iguales seguidos (el símbolo más probable) hay antes de uno distinto: el código de Golomb leído, con
@@ -203,7 +203,7 @@ bool Sdd1Leer(uint8_t banco, uint16_t off, uint8_t& v, uint8_t abierto)
         if (!(dir & 1 << 23) && (dir & 1 << 21) && (s.banco[1] & 0x80)) dir &= ~(1u << 21);
         if ((dir & 1 << 23) && (dir & 1 << 21) && (s.banco[3] & 0x80)) dir &= ~(1u << 21);
         dir = (dir >> 1 & 0x1F8000) | (dir & 0x7FFF);
-        v = romTam ? romDatos[dir % romTam] : 0;
+        v = romTam ? romDatos[RomPos(dir)] : 0;
         return true;
     }
     if (banco < 0xC0) return false;

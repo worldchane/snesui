@@ -13,6 +13,7 @@
 
 uint8_t* romDatos;
 uint32_t romTam;
+uint32_t romMascara;
 bool romHiRom;
 bool romSuperFx;
 uint8_t dspMapa;
@@ -97,6 +98,7 @@ bool RomCargar(const char* ruta, InfoRom& info)
     free(romDatos);
     romDatos = d;
     romTam = tam;
+    romMascara = (tam & (tam - 1)) == 0 ? tam - 1 : 0;
     romHiRom = hi;
     // Tamaño de la SRAM según la cabecera (1 KB << valor). Tiene que ser el exacto: algunos juegos
     // escriben más allá y revisan que se repita, para detectar copiadoras.

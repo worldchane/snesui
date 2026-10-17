@@ -1,15 +1,10 @@
-// El procesador del chip SA-1: el mismo 65816 de cpu.cpp, compilado otra vez con la memoria, el reloj y las
-// interrupciones del SA-1 (ver sa1.cpp). Corre al doble de velocidad que el de la SNES: un ciclo interno son 2 ciclos
-// maestros.
+// El chip SA-1: sus registros y su mapa de memoria (sa1.inc) y su procesador, el mismo 65816 de cpu.cpp compilado otra
+// vez con la memoria, el reloj y las interrupciones del SA-1. Corre al doble de velocidad que el de la SNES: un ciclo
+// interno son 2 ciclos maestros. Van juntos en un solo archivo para que el compilador pueda integrar los accesos a
+// memoria en el procesador (es lo que más se ejecuta en los juegos con este chip).
 #include "interno.h"
 
-// Lo que el procesador usa, en su versión del SA-1 (sa1.cpp).
-extern uint64_t sa1Ciclos;
-extern bool sa1Nmi, sa1Irq;
-uint8_t Sa1Leer(uint32_t dir);
-void Sa1Escribir(uint32_t dir, uint8_t v);
-void Sa1Ciclo(int ciclos);
-int Sa1Costo(uint32_t dir);
+#include "sa1.inc"
 
 #define CPU_SA1
 #define CICLO_INTERNO 2

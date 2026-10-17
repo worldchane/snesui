@@ -141,7 +141,7 @@ globales. Están explicados en `construir.sh`, y `herramientas/revisar_elf.py` r
   - `ppu.cpp`: gráficos;
   - `apu.cpp`, `spc700.inc`, `dsp.inc`: sonido;
   - `bus.cpp`: memoria, DMA y HDMA;
-  - `superfx.cpp`, `sa1.cpp`, `dsp1.cpp`, `dsp2.cpp`, `st010.cpp`, `cx4.cpp`, `sdd1.cpp`, `spc7110.cpp`, `obc1.cpp`: los chips del
+  - `superfx.cpp`, `sa1cpu.cpp` (con `sa1.inc`), `dsp1.cpp`, `dsp2.cpp`, `st010.cpp`, `cx4.cpp`, `sdd1.cpp`, `spc7110.cpp`, `obc1.cpp`: los chips del
     cartucho.
 - `src/app/`: la interfaz (biblioteca, juego, carátulas, fondo animado, diagnóstico).
 - `src/comun/`: dibujo en HD por software, texto y acceso a la PS4.

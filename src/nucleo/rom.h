@@ -6,6 +6,10 @@
 
 extern uint8_t* romDatos;
 extern uint32_t romTam;
+extern uint32_t romMascara;   // romTam - 1 si es potencia de 2 (casi siempre); si no, 0
+// Posición en la rom de una dirección que puede pasarse del tamaño (se repite, como en el cartucho). Con una máscara en
+// lugar de una división: es el acceso más frecuente del emulador.
+static inline uint32_t RomPos(uint32_t a) { return romMascara ? (a & romMascara) : (romTam ? a % romTam : 0); }
 extern bool romHiRom;
 extern bool romSuperFx;
 extern const char* romChip;
