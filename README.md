@@ -14,15 +14,15 @@ carátulas automáticas, guardado de partidas y filtros de imagen.
 | Consola | Extensiones | Emulador |
 |---|---|---|
 | SNES | `.sfc` `.smc` `.fig` `.swc` | propio, hecho desde cero |
-| NES / Famicom Disk System | `.nes` `.fds` `.unf` `.unif` | FCEUmm |
-| Game Boy / Game Boy Color | `.gb` `.gbc` | Gambatte |
-| Game Boy Advance | `.gba` | mGBA |
-| Master System | `.sms` | Genesis Plus GX |
-| Mega Drive / Genesis | `.md` `.gen` `.smd` `.bin` | Genesis Plus GX |
-| Game Gear | `.gg` | Genesis Plus GX |
-| Neo Geo Pocket / Color | `.ngp` `.ngc` `.ngpc` | Beetle NeoPop |
-| Atari 7800 | `.a78` | ProSystem |
-| Atari Lynx | `.lnx` | Handy |
+| NES / Famicom Disk System | `.nes` `.fds` `.unf` `.unif` | |
+| Game Boy / Game Boy Color | `.gb` `.gbc` | |
+| Game Boy Advance | `.gba` | |
+| Master System | `.sms` | |
+| Mega Drive / Genesis | `.md` `.gen` `.smd` `.bin` | |
+| Game Gear | `.gg` | |
+| Neo Geo Pocket / Color | `.ngp` `.ngc` `.ngpc` | |
+| Atari 7800 | `.a78` | |
+| Atari Lynx | `.lnx` | |
 
 - **ROMs comprimidas:** las ROMs pueden estar sueltas o en `.zip`, `.7z` o `.rar`.
 - **Juegos de varias consolas juntos:** ALLESIU busca en todo el USB, incluidas las subcarpetas, y reconoce la consola
