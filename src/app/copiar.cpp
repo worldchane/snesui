@@ -9,6 +9,7 @@
 
 #include "../comun/plataforma.h"
 #include "biblioteca.h"
+#include "consola.h"
 
 static ProgresoCopia progreso;
 static std::atomic<bool> enCurso{false};
@@ -182,9 +183,7 @@ static bool EsRomBorrable(const char* r)
     bool lugar = (!strncmp(r, CARPETA_JUEGOS_CONSOLA, n) && r[n] == '/') || !strncmp(r, "/mnt/usb", 8);
     const char* e = strrchr(r, '.');
     if (!lugar || !e || strstr(r, "/../")) return false;
-    char ext[8] = "";
-    for (int i = 0; i < 7 && e[1 + i]; i++) ext[i] = (char)(e[1 + i] | 0x20), ext[i + 1] = 0;
-    return !strcmp(ext, "sfc") || !strcmp(ext, "smc") || !strcmp(ext, "fig") || !strcmp(ext, "swc");
+    return ConsolaParaRuta(r) != NULL || EsComprimido(r);   // solo roms (por la extensión) de alguna consola
 }
 
 static void* HiloBorrado(void*)

@@ -1,4 +1,4 @@
-// Los juegos de SNES que hay en el USB o en /data.
+// Los juegos (de todas las consolas que trae el programa) que hay en el USB o en /data.
 //
 // La lista se arma en un hilo aparte y se guarda en un índice (/data/snes-ps4/biblioteca.txt): al abrir el programa
 // se muestra el índice al instante y, mientras tanto, se vuelve a recorrer el USB. Las roms que ya estaban en el
@@ -15,6 +15,7 @@ struct Juego
     char clave[96];        // nombre del archivo sin extensión: con él se busca la carátula
     char iniciales[4];
     char mapeo[8];
+    int sistema;           // la consola (SIS_* de consola.h)
     uint64_t bytes;        // tamaño del archivo (si cambia, se vuelve a analizar)
     int tamKB;
     bool pal;

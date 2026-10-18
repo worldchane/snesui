@@ -203,11 +203,44 @@ int main()
         {18.5f, B_ABAJO, NULL}, {18.65f, B_ABAJO, NULL}, {18.8f, B_CRUZ, NULL},
         {19.5f, 0, "82_biblioteca"},
     };
+    // GUION=multi: juegos de otras consolas (pc/usb/NES y pc/usb/GB, que ordenan antes que los de SNES): abrir el
+    // primero (NES), salir, abrir el segundo (GB).
+    static const Paso multi[] = {
+        {4.4f, 0, "90_biblioteca_multi"},
+        {4.45f, B_IZQ, NULL}, {4.6f, B_IZQ, NULL}, {4.75f, B_IZQ, NULL},
+        {4.9f, B_CRUZ, NULL},
+        {6.0f, B_OPTIONS, NULL}, {6.1f, 0, NULL}, {7.0f, B_OPTIONS, NULL},
+        {9.5f, 0, "91_nes"},
+        {9.6f, B_L3 | B_R3, NULL},
+        {9.8f, B_ARRIBA, NULL},
+        {10.0f, B_CRUZ, NULL},
+        {11.0f, B_DER, NULL},
+        {11.6f, 0, "92_biblioteca_gb"},
+        {11.7f, B_CRUZ, NULL},
+        {13.0f, B_OPTIONS, NULL}, {14.0f, B_CRUZ, NULL},
+        {17.0f, 0, "93_gb"},
+    };
+    // GUION=menu: la biblioteca con varias consolas: Todos y cada pestaña de consola (R1), un juego de GBA abierto y su
+    // menú de pausa.
+    static const Paso menu[] = {
+        {5.0f, 0, "95_todos"},
+        {5.2f, B_R1, NULL}, {5.8f, 0, "96_snes"},
+        {6.0f, B_R1, NULL}, {6.6f, 0, "97_nes"},
+        {6.8f, B_R1, NULL}, {7.4f, 0, "98_gb"},
+        {7.6f, B_R1, NULL}, {8.2f, 0, "99_gbc"},
+        {8.4f, B_R1, NULL}, {9.0f, 0, "100_gba"},
+        {9.1f, B_CRUZ, NULL},
+        {16.0f, 0, "101_gba_jugando"},
+        {16.1f, B_L3 | B_R3, NULL},
+        {16.8f, 0, "102_pausa"},
+        {17.0f, B_ARRIBA, NULL}, {17.2f, B_CRUZ, NULL},
+        {18.0f, B_R1, NULL}, {18.6f, 0, "103_sms"},
+    };
     const char* g = getenv("GUION");
-    bool corto = g && !strcmp(g, "acerca"), larga = g && !strcmp(g, "lista"), muchos = g && !strcmp(g, "mil"), copia = g && !strcmp(g, "copiar"), alUsb = g && !strcmp(g, "alusb"), borra = g && !strcmp(g, "borrar"), dg = g && !strcmp(g, "diag");
-    const Paso* pasos = corto ? acerca : larga ? lista : muchos ? mil : copia ? copiar : alUsb ? alusb : borra ? borrar : dg ? diag : guion;
-    const int N = corto ? (int)(sizeof acerca / sizeof acerca[0]) : larga ? (int)(sizeof lista / sizeof lista[0]) : muchos ? (int)(sizeof mil / sizeof mil[0]) : copia ? (int)(sizeof copiar / sizeof copiar[0]) : alUsb ? (int)(sizeof alusb / sizeof alusb[0]) : borra ? (int)(sizeof borrar / sizeof borrar[0]) : dg ? (int)(sizeof diag / sizeof diag[0]) : (int)(sizeof guion / sizeof guion[0]);
-    const double FIN = corto ? 7.0 : larga ? 9.0 : muchos ? 7.5 : copia ? 15.2 : alUsb ? 9.7 : borra ? 12.6 : dg ? 19.7 : 42.0;
+    bool corto = g && !strcmp(g, "acerca"), larga = g && !strcmp(g, "lista"), muchos = g && !strcmp(g, "mil"), copia = g && !strcmp(g, "copiar"), alUsb = g && !strcmp(g, "alusb"), borra = g && !strcmp(g, "borrar"), dg = g && !strcmp(g, "diag"), mu = g && !strcmp(g, "multi"), me = g && !strcmp(g, "menu");
+    const Paso* pasos = corto ? acerca : larga ? lista : muchos ? mil : copia ? copiar : alUsb ? alusb : borra ? borrar : dg ? diag : mu ? multi : me ? menu : guion;
+    const int N = corto ? (int)(sizeof acerca / sizeof acerca[0]) : larga ? (int)(sizeof lista / sizeof lista[0]) : muchos ? (int)(sizeof mil / sizeof mil[0]) : copia ? (int)(sizeof copiar / sizeof copiar[0]) : alUsb ? (int)(sizeof alusb / sizeof alusb[0]) : borra ? (int)(sizeof borrar / sizeof borrar[0]) : dg ? (int)(sizeof diag / sizeof diag[0]) : mu ? (int)(sizeof multi / sizeof multi[0]) : me ? (int)(sizeof menu / sizeof menu[0]) : (int)(sizeof guion / sizeof guion[0]);
+    const double FIN = corto ? 7.0 : larga ? 9.0 : muchos ? 7.5 : copia ? 15.2 : alUsb ? 9.7 : borra ? 12.6 : dg ? 19.7 : mu ? 17.2 : me ? 18.8 : 42.0;
     double peor = 0;
     int k = 0;
     for (int cuadro = 0; tiempoSimulado < FIN; cuadro++)

@@ -54,6 +54,15 @@ bool SnesCargar(const char* ruta, char* error)
     return true;
 }
 
+bool SnesCargarMemoria(uint8_t* datos, uint32_t tam, char* error)
+{
+    if (!RomCargarDatos(datos, tam, info)) { if (error) snprintf(error, 160, "%s", info.error); return false; }
+    cargado = true;
+    BusEncender();
+    SnesReiniciar();
+    return true;
+}
+
 void SnesDescargar()
 {
     free(romDatos);

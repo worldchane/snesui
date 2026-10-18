@@ -233,6 +233,9 @@ void AudioJuego(const int16_t* estereo, int n)
     anilloEsc.store(e, std::memory_order_release);
 }
 
+static std::atomic<int> frecJuego{32000};
+void AudioJuegoFrecuencia(int hz) { frecJuego.store(hz > 1000 && hz <= 192000 ? hz : 32000, std::memory_order_relaxed); }
+
 void AudioJuegoVaciar() { anilloLee.store(anilloEsc.load(std::memory_order_acquire), std::memory_order_release); }
 
 static void* HiloAudio(void*)
@@ -289,7 +292,7 @@ static void* HiloAudio(void*)
                 s += w * env * z.amp;
                 z.t += 1 / SR;
             }
-            // Sonido del juego: 32 kHz → 48 kHz con interpolación lineal.
+            // Sonido del juego: su frecuencia (32 kHz en la SNES) → 48 kHz con interpolación lineal.
             float jl = 0, jr = 0;
             uint32_t l = anilloLee.load(std::memory_order_relaxed), e = anilloEsc.load(std::memory_order_acquire);
             uint32_t lleno = e - l;
@@ -300,11 +303,13 @@ static void* HiloAudio(void*)
                 float f = (float)posJuego;
                 jl = (a[0] + (b[0] - a[0]) * f) / 32768.f;
                 jr = (a[1] + (b[1] - a[1]) * f) / 32768.f;
-                // Objetivo: unas 1.600 muestras guardadas (50 ms). Más llenas → un poco más rápido; menos → más lento.
-                double ajuste = 1 + ((double)lleno - 1600) / 1600 * .005;
+                // Objetivo: 50 ms guardados (1.600 muestras a 32 kHz). Más llenas → un poco más rápido; menos → más lento.
+                int hz = frecJuego.load(std::memory_order_relaxed);
+                double objetivo = hz / 20.0;
+                double ajuste = 1 + ((double)lleno - objetivo) / objetivo * .005;
                 if (ajuste < .99) ajuste = .99;
                 if (ajuste > 1.01) ajuste = 1.01;
-                posJuego += 32000.0 / 48000.0 * ajuste;
+                posJuego += hz / 48000.0 * ajuste;
                 uint32_t avanza = (uint32_t)posJuego;
                 posJuego -= avanza;
                 if (avanza > lleno - 1) avanza = lleno - 1;

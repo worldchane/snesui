@@ -43,9 +43,11 @@ void IniciarAudio();
 bool AudioListo();
 void Sonar(Sonido s);
 void SonidosActivos(bool si);
-// Sonido del juego: muestras estéreo de 16 bits a 32 kHz (se pasan a 48 kHz y se mezclan con los de la interfaz).
+// Sonido del juego: muestras estéreo de 16 bits a la frecuencia de la consola (se pasan a 48 kHz y se mezclan con los de la interfaz).
 void AudioJuego(const int16_t* estereo, int n);
 void AudioJuegoVaciar();
+// La frecuencia de las muestras que deja AudioJuego (la SNES usa 32000; los núcleos libretro, la suya).
+void AudioJuegoFrecuencia(int hz);
 
 // ---------- archivos ----------
 bool CrearCarpeta(const char* ruta);

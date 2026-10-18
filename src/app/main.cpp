@@ -10,15 +10,33 @@
 #include "../comun/pantalla.h"
 #include "../comun/plataforma.h"
 #include "../comun/texto.h"
+#include "consola.h"
 #include "interfaz.h"
+
+// Los constructores globales de los núcleos libretro (ver herramientas/sin_constructores.py): en vez de quedar en
+// .init_array, que el sistema correría solo, van en la sección nucleo_init y se llaman acá, al empezar.
+extern "C" {
+typedef void (*Constructor)(void);
+extern const Constructor __start_nucleo_init[] __attribute__((weak));
+extern const Constructor __stop_nucleo_init[] __attribute__((weak));
+}
+
+static void IniciarNucleos()
+{
+    if (!__start_nucleo_init) return;
+    for (const Constructor* c = __start_nucleo_init; c < __stop_nucleo_init; c++)
+        if (*c) (*c)();
+}
 
 int main()
 {
+    IniciarNucleos();
     setvbuf(stdout, NULL, _IONBF, 0);
     Segundos();
     IniciarMando();
     IniciarAudio();
     CrearCarpetas(CARPETA_DATOS);   // /data/snes-ps4 (guardados, carátulas, ajustes)
+    CopiarBiosIncluidas();          // solo en la variante personal
     IniciarTrabajadores(4);
     if (!PantallaIniciar()) for (;;) sceKernelUsleep(1000000);
     bool fuentes = CargarFuentes();

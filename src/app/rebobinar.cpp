@@ -11,7 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../nucleo/snes.h"
+#include "consola.h"
 
 static const uint32_t CAPACIDAD = 16 * 1024 * 1024;
 static const int MAX_ENTRADAS = 8192;
@@ -28,7 +28,7 @@ static bool hayActual;
 
 bool RebobinarIniciar()
 {
-    uint32_t t = SnesEstadoTam();
+    uint32_t t = ConsolaActiva().EstadoTam();
     if (!anillo) anillo = (uint8_t*)malloc(CAPACIDAD);
     if (t != tam || !actual)
     {
@@ -63,7 +63,7 @@ static inline uint8_t ByteAnillo(uint32_t pos) { return anillo[pos % CAPACIDAD];
 void RebobinarCapturar()
 {
     if (!anillo || !actual) return;
-    if (!SnesGuardarEstado(nuevo, tam)) return;
+    if (!ConsolaActiva().GuardarEstado(nuevo, tam)) return;
     if (!hayActual) { memcpy(actual, nuevo, tam); hayActual = true; return; }
 
     // Diferencia nuevo XOR actual, comprimida.
@@ -107,7 +107,7 @@ bool RebobinarAtras()
     if (cuantas == 0)
     {
         // Sin más historia: al menos volver al estado más viejo que quedó.
-        SnesCargarEstado(actual, tam);
+        ConsolaActiva().CargarEstado(actual, tam);
         return false;
     }
     int ultima = (primera + cuantas - 1) % MAX_ENTRADAS;
@@ -134,7 +134,7 @@ bool RebobinarAtras()
     }
     cuantas--;
     usados -= e.largo;
-    SnesCargarEstado(actual, tam);
+    ConsolaActiva().CargarEstado(actual, tam);
     return true;
 }
 

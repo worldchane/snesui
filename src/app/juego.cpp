@@ -1,9 +1,10 @@
 // Ver juego.h. La emulación corre en su propio hilo (otro núcleo) mientras el hilo principal dibuja el cuadro anterior:
-// así el tiempo de un cuadro es el mayor de los dos y no la suma. La imagen de la SNES se agranda manteniendo 4:3.
-// El mando del DualShock 4 se traduce a los botones de la SNES. L3 + R3 juntos abre el menú de pausa.
+// así el tiempo de un cuadro es el mayor de los dos y no la suma. La imagen se agranda con la proporción de la consola.
+// El juego corre en la consola que le toca por la extensión de la rom (consola.h): la SNES con el núcleo propio, las
+// demás con núcleos libretro. El mando del DualShock 4 se traduce a sus botones. L3 + R3 juntos abre el menú de pausa.
 //
 // Guardado, como en snes9x y bsnes:
-//   - Batería (SRAM del cartucho): /data/snes-ps4/guardados/<rom>.srm, el contenido tal cual (se puede usar en esos
+//   - Batería (SRAM del cartucho): /data/snes-ps4/guardados/<rom>.srm (las otras consolas, en guardados/<carpeta>/), el contenido tal cual (se puede usar en esos
 //     emuladores y al revés). Se escribe sola un momento después de que el juego guarda, y siempre al salir.
 //   - Estados rápidos: 4 ranuras por juego, <rom>.st0..st3, cada una con su miniatura (<rom>.st0.img, 128 × 112).
 #include "juego.h"
@@ -19,6 +20,7 @@
 #include "../comun/texto.h"
 #include "../nucleo/snes.h"
 #include "ajustes.h"
+#include "consola.h"
 #include "rebobinar.h"
 #include "registro.h"
 
@@ -28,9 +30,41 @@ static char nombre[64], error[160];
 static bool mostrarAyuda = true;
 static float tAyuda;
 
-// Dos cuadros: el hilo de emulación escribe en uno mientras se muestra el otro.
-static uint32_t marcos[2][SNES_ANCHO * SNES_ALTO];
-static int16_t audio[2048];
+static const Consola* con;   // la consola del juego abierto (JuegoAbrir la elige)
+
+// Dos cuadros: el hilo de emulación escribe en uno mientras se muestra el otro. Cada uno con su tamaño (la imagen de
+// algunas consolas cambia de tamaño durante el juego).
+static uint32_t marcos[2][CONSOLA_MAX_ANCHO * CONSOLA_MAX_ALTO];
+static int marcoW[2] = {SNES_ANCHO, SNES_ANCHO}, marcoH[2] = {SNES_ALTO, SNES_ALTO};
+static int16_t audio[4096];
+
+// Corre un cuadro de la consola en el marco 'm'. Devuelve las muestras de sonido.
+static int Correr(int m)
+{
+    int w = 0, h = 0;
+    int n = con->Cuadro(marcos[m], &w, &h, audio, sizeof audio / 4);
+    marcoW[m] = w > 0 && w <= CONSOLA_MAX_ANCHO ? w : 1;
+    marcoH[m] = h > 0 && h <= CONSOLA_MAX_ALTO ? h : 1;
+    return n;
+}
+
+// Achica (o agranda) una imagen al tamaño de destino promediando 2 × 2 puntos por píxel (miniaturas e informes).
+static void Reducir(const uint32_t* src, int sw, int sh, uint32_t* dst, int dw, int dh)
+{
+    for (int y = 0; y < dh; y++)
+        for (int x = 0; x < dw; x++)
+        {
+            uint32_t r = 0, g = 0, b = 0;
+            for (int k = 0; k < 4; k++)
+            {
+                int sx = (int)(((x * 2 + (k & 1)) * 2 + 1) * (int64_t)sw / (dw * 4));
+                int sy = (int)(((y * 2 + (k >> 1)) * 2 + 1) * (int64_t)sh / (dh * 4));
+                uint32_t c = src[sy * sw + sx];
+                r += (c >> 16) & 255; g += (c >> 8) & 255; b += c & 255;
+            }
+            dst[y * dw + x] = (r / 4) << 16 | (g / 4) << 8 | (b / 4);
+        }
+}
 static std::atomic<int> pedidos{0}, hechos{0};   // cuadros pedidos al hilo y cuadros terminados
 static std::atomic<int> listo{-1};               // el último cuadro terminado (0 o 1)
 static std::atomic<uint16_t> botones{0}, botones2{0};   // jugador 1 y jugador 2
@@ -49,6 +83,14 @@ static bool hayEstado[RANURAS];
 static int contadorSram;   // cuadros que faltan para escribir la batería (hilo de emulación)
 static bool carpetaLista;  // /data/snes-ps4/guardados existe y se puede escribir
 
+// La carpeta de las partidas: guardados/ para la SNES (como siempre) y guardados/<carpeta de la consola> para las demás
+// (dos roms de consolas distintas pueden llamarse igual).
+static void CarpetaGuardados(char* c, int max)
+{
+    if (con->sistema == SIS_SNES) snprintf(c, max, "%s/guardados", CARPETA_DATOS);
+    else snprintf(c, max, "%s/guardados/%s", CARPETA_DATOS, con->carpeta);
+}
+
 static void ArmarBase(const char* ruta)
 {
     const char* n = strrchr(ruta, '/');
@@ -58,7 +100,7 @@ static void ArmarBase(const char* ruta)
     char* punto = strrchr(limpio, '.');
     if (punto) *punto = 0;
     char carpeta[128];
-    snprintf(carpeta, sizeof carpeta, "%s/guardados", CARPETA_DATOS);
+    CarpetaGuardados(carpeta, sizeof carpeta);
     carpetaLista = CrearCarpetas(carpeta);
     snprintf(base, sizeof base, "%s/%s", carpeta, limpio);
 }
@@ -88,10 +130,10 @@ static uint8_t* LeerArchivo(const char* ruta, uint32_t* n)
 
 static bool GuardarSram()
 {
-    if (!SnesSramTam() || !base[0]) return true;
+    if (!con->SramTam() || !base[0]) return true;
     char r[300];
     snprintf(r, sizeof r, "%s.srm", base);
-    return EscribirArchivo(r, SnesSramDatos(), SnesSramTam());
+    return EscribirArchivo(r, con->SramDatos(), con->SramTam());
 }
 
 // ---------- diagnóstico automático ----------
@@ -100,7 +142,7 @@ static bool GuardarSram()
 // arma un informe completo (texto, imagen y estado) y el hilo principal lo escribe en el USB.
 static const int INFORME_MAX = 24 * 1024;
 static char fotoTexto[INFORME_MAX], informeTexto[INFORME_MAX], informeMotivo[200];
-static uint32_t informeImagen[SNES_ANCHO * SNES_ALTO];
+static uint32_t informeImagen[SNES_ANCHO * SNES_ALTO];   // el informe lleva la imagen a 256 × 224
 static uint8_t* informeEstado;
 static uint32_t informeEstadoN;
 static std::atomic<bool> fotoLista{false}, informeListo{false};
@@ -111,17 +153,19 @@ static double tiempoSuma, tiempoMax, tiempoMaxTotal, tiempoSumaTotal, ultimoLent
 static uint32_t cuadrosMedidos, cuadrosTotal, segundosLentos;
 static double inicioPartida;
 
-static void ArmarInforme(const char* motivo, const uint32_t* imagen)
+static void ArmarInforme(const char* motivo, int m)
 {
     snprintf(informeMotivo, sizeof informeMotivo, "%s", motivo);
-    SnesDiagnostico(informeTexto, sizeof informeTexto);
-    memcpy(informeImagen, imagen, sizeof informeImagen);
-    if (!informeEstado) informeEstado = (uint8_t*)malloc(SnesEstadoTam());
-    informeEstadoN = informeEstado ? SnesGuardarEstado(informeEstado, SnesEstadoTam()) : 0;
+    con->Diagnostico(informeTexto, sizeof informeTexto);
+    if (marcoW[m] == SNES_ANCHO && marcoH[m] == SNES_ALTO) memcpy(informeImagen, marcos[m], sizeof informeImagen);
+    else Reducir(marcos[m], marcoW[m], marcoH[m], informeImagen, SNES_ANCHO, SNES_ALTO);
+    free(informeEstado);
+    informeEstado = (uint8_t*)malloc(con->EstadoTam());
+    informeEstadoN = informeEstado ? con->GuardarEstado(informeEstado, con->EstadoTam()) : 0;
 }
 
 // Después de cada cuadro normal (hilo de emulación). 'ms' es lo que tardó en emularse.
-static void Vigilar(const uint32_t* imagen, double ms)
+static void Vigilar(int m, double ms)
 {
     tiempoSuma += ms;
     tiempoSumaTotal += ms;
@@ -131,13 +175,14 @@ static void Vigilar(const uint32_t* imagen, double ms)
     cuadrosTotal++;
 
     char motivo[200];
-    bool problema = SnesAnomalia(motivo, sizeof motivo);
+    bool problema = con->Anomalia(motivo, sizeof motivo);
+    const uint32_t* imagen = marcos[m];
 
     if (++cuadrosDiag % 60 == 0)
     {
         // Imagen de un solo color durante 10 s seguidos (la pantalla negra con sonido, por ejemplo).
         bool plana = true;
-        for (int i = 1; i < SNES_ANCHO * SNES_ALTO && plana; i++) plana = imagen[i] == imagen[0];
+        for (int i = 1; i < marcoW[m] * marcoH[m] && plana; i++) plana = imagen[i] == imagen[0];
         segNegro = plana ? segNegro + 1 : 0;
         if (segNegro == 10 && !negroAvisado && !problema)
         {
@@ -162,7 +207,7 @@ static void Vigilar(const uint32_t* imagen, double ms)
         // Foto del estado cada 10 s.
         if (cuadrosDiag % 600 == 0 && !fotoLista.load(std::memory_order_acquire))
         {
-            SnesDiagnostico(fotoTexto, sizeof fotoTexto);
+            con->Diagnostico(fotoTexto, sizeof fotoTexto);
             fotoLista.store(true, std::memory_order_release);
         }
     }
@@ -172,7 +217,7 @@ static void Vigilar(const uint32_t* imagen, double ms)
     if (informesAuto < 3 && !informeListo.load(std::memory_order_acquire))
     {
         informesAuto++;
-        ArmarInforme(motivo, imagen);
+        ArmarInforme(motivo, m);
         informeListo.store(true, std::memory_order_release);
     }
 }
@@ -199,7 +244,7 @@ static bool ConAccesoSiHaceFalta(bool (*f)(void* u), void* u)
     if (f(u)) return true;
     AbrirAccesoCompleto("snes", true);
     char carpeta[128];
-    snprintf(carpeta, sizeof carpeta, "%s/guardados", CARPETA_DATOS);
+    CarpetaGuardados(carpeta, sizeof carpeta);
     carpetaLista = CrearCarpetas(carpeta);
     bool ok = f(u);
     CerrarAccesoCompleto();
@@ -208,15 +253,15 @@ static bool ConAccesoSiHaceFalta(bool (*f)(void* u), void* u)
 
 static void CargarSram()
 {
-    if (!SnesSramTam()) return;
+    if (!con->SramTam()) return;
     char r[300];
     snprintf(r, sizeof r, "%s.srm", base);
     uint32_t n = 0;
     uint8_t* d = LeerArchivo(r, &n);
     if (!d) return;
-    memcpy(SnesSramDatos(), d, n < SnesSramTam() ? n : SnesSramTam());
+    memcpy(con->SramDatos(), d, n < con->SramTam() ? n : con->SramTam());
     free(d);
-    SnesSramCambiada();   // lo recién cargado no cuenta como cambio
+    con->SramCambiada();   // lo recién cargado no cuenta como cambio
 }
 
 static void LeerMiniaturas()
@@ -247,15 +292,15 @@ static void* HiloEmulacion(void*)
         int p = pedidos.load(std::memory_order_acquire);
         if (p == visto) { Dormir(1); continue; }
         visto = p;
-        SnesMando(0, botones.load(std::memory_order_relaxed));
-        SnesMando(1, botones2.load(std::memory_order_relaxed));
-        SnesMandoConectado(1, hayJugador2.load(std::memory_order_relaxed));
+        con->Mando(0, botones.load(std::memory_order_relaxed));
+        con->Mando(1, botones2.load(std::memory_order_relaxed));
+        con->MandoConectado(1, hayJugador2.load(std::memory_order_relaxed));
         if (rebobinando.load(std::memory_order_relaxed) && hayHistoria)
         {
             // Rebobinar: un paso atrás (2 cuadros) por cuadro mostrado, sin sonido. Se corre un cuadro para tener la
             // imagen de ese momento.
             RebobinarAtras();
-            SnesCuadro(marcos[escribir], audio, sizeof audio / 4);
+            Correr(escribir);
         }
         else
         {
@@ -266,10 +311,10 @@ static void* HiloEmulacion(void*)
             for (int k = 0; k < vel; k++)
             {
                 double tc = Segundos();
-                int n = SnesCuadro(marcos[escribir], audio, sizeof audio / 4);
-                if (vel == 1) { AudioJuego(audio, n); Vigilar(marcos[escribir], (Segundos() - tc) * 1000); }
+                int n = Correr(escribir);
+                if (vel == 1) { AudioJuego(audio, n); Vigilar(escribir, (Segundos() - tc) * 1000); }
                 // Batería: se escribe 1,5 s después del último cambio (los juegos guardan varios bytes seguidos).
-                if (SnesSramCambiada()) contadorSram = 90;
+                if (con->SramCambiada()) contadorSram = 90;
                 else if (contadorSram > 0 && --contadorSram == 0) GuardarSram();
                 // Historia para rebobinar: un estado cada 2 cuadros.
                 if (hayHistoria && (++cuadrosHistoria & 1) == 0) RebobinarCapturar();
@@ -303,6 +348,12 @@ static uint16_t ABotonesSnes(uint32_t a)
     if (a & B_DER) b |= SB_DER;
     if (a & B_OPTIONS) b |= SB_START;
     if (a & B_TACTIL) b |= SB_SELECT;
+    // Consolas de dos botones (NES, Game Boy...): cuadrado y triángulo también sirven de B y A.
+    if (con->sistema != SIS_SNES)
+    {
+        if (a & B_CUADRADO) b |= SB_B;
+        if (a & B_TRIANGULO) b |= SB_A;
+    }
     return b;
 }
 
@@ -346,15 +397,25 @@ static void GuardarAjustesJuego()
 }
 
 // El rectángulo de la imagen en la pantalla según la proporción.
-static void Rectangulo(float& x, float& y, float& w, float& h)
+// 'iw' × 'ih' es el tamaño de la imagen de la consola. "Como la TV" usa la proporción de la consola (4:3 en las de
+// televisor, la de la pantalla en las portátiles); "píxeles cuadrados", la de la imagen tal cual.
+static void Rectangulo(int iw, int ih, float& x, float& y, float& w, float& h)
 {
     switch (proporcion)
     {
-    case PR_8_7: h = ALTO; w = ALTO * (float)SNES_ANCHO / SNES_ALTO; break;
-    case PR_ENTERO: { int k = ALTO / SNES_ALTO; w = (float)SNES_ANCHO * k; h = (float)SNES_ALTO * k; break; }
-    case PR_16_9: w = ANCHO; h = ALTO; break;
-    default: h = ALTO; w = ALTO * 4.f / 3.f; break;
+    case PR_8_7: h = ALTO; w = ALTO * (float)iw / ih; break;
+    case PR_ENTERO:
+    {
+        int k = ALTO / ih;
+        if (k * iw > ANCHO) k = ANCHO / iw;
+        if (k < 1) k = 1;
+        w = (float)iw * k; h = (float)ih * k;
+        break;
     }
+    case PR_16_9: w = ANCHO; h = ALTO; break;
+    default: h = ALTO; w = ALTO * con->aspecto; break;
+    }
+    if (w > ANCHO) { h = h * ANCHO / w; w = ANCHO; }
     x = (ANCHO - w) / 2;
     y = (ALTO - h) / 2;
 }
@@ -363,8 +424,8 @@ static void Rectangulo(float& x, float& y, float& w, float& h)
 //   Nítido suavizado: agrandada ×4 al píxel más cercano (bordes nítidos, sin el temblor del filtro "nítido").
 //   Líneas de TV: el doble de filas, con las impares oscuras (como las líneas de un televisor de tubo).
 //   CRT: además, cada píxel en 3 columnas que resaltan el rojo, el verde y el azul (la máscara del tubo).
-static const int ESCALA_NS = 4;
-static uint32_t procesado[SNES_ANCHO * ESCALA_NS * SNES_ALTO * ESCALA_NS];
+static const int PROCESADO_MAX = 1536 * 1024;   // entra 320 × 224 × 4 y 512 × 480 con el CRT (× 3 × 2)
+static uint32_t procesado[PROCESADO_MAX];
 static int procesadoDe = -1, procesadoFiltro = -1;
 
 static inline uint32_t Escalar(uint32_t c, int num)   // c × num / 256 por componente
@@ -376,43 +437,46 @@ static inline uint32_t Escalar(uint32_t c, int num)   // c × num / 256 por comp
     return r << 16 | g << 8 | b;
 }
 
-static void Filtrar(const uint32_t* src, int cual, int& w, int& h)
+static void Filtrar(const uint32_t* src, int sw, int sh, int cual, int& w, int& h)
 {
     if (filtro == FI_NITIDO_SUAVE)
     {
-        w = SNES_ANCHO * ESCALA_NS; h = SNES_ALTO * ESCALA_NS;
+        // Agrandada ×4, o menos si la imagen es grande.
+        int e = 4;
+        while (e > 1 && sw * e * sh * e > PROCESADO_MAX) e--;
+        w = sw * e; h = sh * e;
         if (procesadoDe == cual && procesadoFiltro == filtro) return;
-        for (int y = 0; y < SNES_ALTO; y++)
+        for (int y = 0; y < sh; y++)
         {
-            uint32_t* fila = procesado + (y * ESCALA_NS) * w;
-            for (int x = 0; x < SNES_ANCHO; x++)
+            uint32_t* fila = procesado + (y * e) * w;
+            for (int x = 0; x < sw; x++)
             {
-                uint32_t c = src[y * SNES_ANCHO + x];
-                for (int k = 0; k < ESCALA_NS; k++) fila[x * ESCALA_NS + k] = c;
+                uint32_t c = src[y * sw + x];
+                for (int k = 0; k < e; k++) fila[x * e + k] = c;
             }
-            for (int k = 1; k < ESCALA_NS; k++) memcpy(fila + k * w, fila, w * 4);
+            for (int k = 1; k < e; k++) memcpy(fila + k * w, fila, w * 4);
         }
     }
     else if (filtro == FI_LINEAS)
     {
-        w = SNES_ANCHO; h = SNES_ALTO * 2;
+        w = sw; h = sh * 2;
         if (procesadoDe == cual && procesadoFiltro == filtro) return;
-        for (int y = 0; y < SNES_ALTO; y++)
-            for (int x = 0; x < SNES_ANCHO; x++)
+        for (int y = 0; y < sh; y++)
+            for (int x = 0; x < sw; x++)
             {
-                uint32_t c = src[y * SNES_ANCHO + x];
+                uint32_t c = src[y * sw + x];
                 procesado[(y * 2) * w + x] = Escalar(c, 280);
                 procesado[(y * 2 + 1) * w + x] = Escalar(c, 110);
             }
     }
     else
     {
-        w = SNES_ANCHO * 3; h = SNES_ALTO * 2;
+        w = sw * 3; h = sh * 2;
         if (procesadoDe == cual && procesadoFiltro == filtro) return;
-        for (int y = 0; y < SNES_ALTO; y++)
-            for (int x = 0; x < SNES_ANCHO; x++)
+        for (int y = 0; y < sh; y++)
+            for (int x = 0; x < sw; x++)
             {
-                uint32_t c = src[y * SNES_ANCHO + x];
+                uint32_t c = src[y * sw + x];
                 uint32_t r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
                 uint32_t sub[3];
                 sub[0] = Escalar(r << 16 | (g * 3 / 4) << 8 | (b * 3 / 4), 300);
@@ -431,21 +495,22 @@ static void Filtrar(const uint32_t* src, int cual, int& w, int& h)
 
 static void DibujarImagen()
 {
+    int l = listo.load(std::memory_order_acquire);
+    int iw = l >= 0 ? marcoW[l] : SNES_ANCHO, ih = l >= 0 ? marcoH[l] : SNES_ALTO;
     float x, y, w, h;
-    Rectangulo(x, y, w, h);
+    Rectangulo(iw, ih, x, y, w, h);
     if (x > 0) { Caja(0, 0, x + 1, ALTO, 0, 0x000000, 1); Caja(x + w - 1, 0, ANCHO - x - w + 1, ALTO, 0, 0x000000, 1); }
     if (y > 0) { Caja(0, 0, ANCHO, y + 1, 0, 0x000000, 1); Caja(0, y + h - 1, ANCHO, ALTO - y - h + 1, 0, 0x000000, 1); }
-    int l = listo.load(std::memory_order_acquire);
     if (l < 0) { Caja(x, y, w, h, 0, 0x000000, 1); return; }
     if (filtro == FI_SUAVE || filtro == FI_NITIDO)
     {
-        Imagen(marcos[l], SNES_ANCHO, SNES_ALTO, x, y, w, h, 1, filtro == FI_SUAVE);
+        Imagen(marcos[l], iw, ih, x, y, w, h, 1, filtro == FI_SUAVE);
         return;
     }
     // El búfer procesado se rehace solo cuando hay un cuadro nuevo (cuenta de cuadros terminados).
-    int iw, ih;
-    Filtrar(marcos[l], hechos.load(std::memory_order_acquire), iw, ih);
-    Imagen(procesado, iw, ih, x, y, w, h, 1, true);
+    int pw, ph;
+    Filtrar(marcos[l], iw, ih, hechos.load(std::memory_order_acquire), pw, ph);
+    Imagen(procesado, pw, ph, x, y, w, h, 1, true);
 }
 
 // ---------- menú de pausa ----------
@@ -476,9 +541,9 @@ static bool EscribirEstado(void* u)
 
 static void GuardarEstado(int r)
 {
-    uint32_t tam = SnesEstadoTam();
+    uint32_t tam = con->EstadoTam();
     uint8_t* d = (uint8_t*)malloc(tam);
-    uint32_t n = d ? SnesGuardarEstado(d, tam) : 0;
+    uint32_t n = d ? con->GuardarEstado(d, tam) : 0;
     if (!n) { free(d); Avisar("No se pudo armar el estado (sin memoria)", C_MAL); Registrar("ERROR: sin memoria para el estado (%u bytes)", tam); return; }
     char ruta[300];
     snprintf(ruta, sizeof ruta, "%s.st%d", base, r);
@@ -487,20 +552,11 @@ static void GuardarEstado(int r)
     free(d);
     if (ok)
     {
-        // Miniatura: la imagen actual a la mitad (promedio de 2 × 2 píxeles).
+        // Miniatura: la imagen actual achicada a 128 × 112.
         int l = listo.load(std::memory_order_acquire);
         if (l >= 0)
         {
-            const uint32_t* src = marcos[l];
-            for (int y = 0; y < MINI_H; y++)
-                for (int x = 0; x < MINI_W; x++)
-                {
-                    const uint32_t* p = src + (y * 2) * SNES_ANCHO + x * 2;
-                    uint32_t q[4] = {p[0], p[1], p[SNES_ANCHO], p[SNES_ANCHO + 1]};
-                    uint32_t r2 = 0, g = 0, b = 0;
-                    for (int k = 0; k < 4; k++) { r2 += (q[k] >> 16) & 255; g += (q[k] >> 8) & 255; b += q[k] & 255; }
-                    miniaturas[r][y * MINI_W + x] = (r2 / 4) << 16 | (g / 4) << 8 | (b / 4);
-                }
+            Reducir(marcos[l], marcoW[l], marcoH[l], miniaturas[r], MINI_W, MINI_H);
             snprintf(ruta, sizeof ruta, "%s.st%d.img", base, r);
             EscribirArchivo(ruta, miniaturas[r], sizeof miniaturas[r]);
         }
@@ -509,7 +565,7 @@ static void GuardarEstado(int r)
         snprintf(t, sizeof t, "Estado guardado en la ranura %d", r + 1);
         Avisar(t, C_BIEN);
     }
-    else if (!carpetaLista) { Avisar("No se pudo crear la carpeta /data/snes-ps4/guardados", C_MAL); Registrar("ERROR: no se pudo crear la carpeta de guardados"); }
+    else if (!carpetaLista) { Avisar("No se pudo crear la carpeta de guardados en /data/snes-ps4", C_MAL); Registrar("ERROR: no se pudo crear la carpeta de guardados"); }
     else { Avisar("No se pudo escribir el archivo del estado en /data", C_MAL); Registrar("ERROR: no se pudo escribir %s", ruta); }
 }
 
@@ -521,7 +577,7 @@ static bool CargarEstado(int r)
     uint8_t* d = LeerArchivo(ruta, &n);
     if (!d) { Avisar("La ranura está vacía", C_AVISO); return false; }
     Registrar("Estado cargado de la ranura %d", r + 1);
-    bool ok = SnesCargarEstado(d, n);
+    bool ok = con->CargarEstado(d, n);
     free(d);
     if (!ok) { Avisar("El estado es de otra versión o está dañado", C_MAL); Registrar("ERROR: el estado %s no se pudo cargar (%u bytes)", ruta, n); return false; }
     AudioJuegoVaciar();
@@ -544,7 +600,7 @@ static void Salir()
         Registrar("Juego cerrado: %.0f s jugados, %u cuadros, %.2f ms por cuadro en promedio (máximo %.1f), %u segundos lentos",
                   Segundos() - inicioPartida, cuadrosTotal, tiempoSumaTotal / cuadrosTotal, tiempoMaxTotal, segundosLentos);
     RegistroFinJuego();
-    SnesDescargar();
+    con->Descargar();
     Sonar(SON_ATRAS);
 }
 
@@ -574,7 +630,7 @@ static void MenuEntrada(const Mando& m)
         break;
     case OP_GUARDAR: GuardarEstado(ranura); Sonar(SON_ACEPTAR); menu = false; break;
     case OP_CARGAR: if (CargarEstado(ranura)) { Sonar(SON_ACEPTAR); menu = false; } else Sonar(SON_ERROR); break;
-    case OP_REINICIAR: Registrar("Juego reiniciado desde el menú"); SnesReiniciar(); AudioJuegoVaciar(); NuevaHistoria(); Avisar("Juego reiniciado", C_TEXTO); Sonar(SON_ACEPTAR); menu = false; break;
+    case OP_REINICIAR: Registrar("Juego reiniciado desde el menú"); con->Reiniciar(); AudioJuegoVaciar(); NuevaHistoria(); Avisar("Juego reiniciado", C_TEXTO); Sonar(SON_ACEPTAR); menu = false; break;
     case OP_SALIR: Salir(); break;
     }
 }
@@ -666,9 +722,27 @@ bool JuegoAbrir(const char* ruta, const char* nom)
     EsperarHilo();
     // La rom está en el USB: solo se ve afuera del encierro del sistema (igual que al buscar). Se carga entera a memoria,
     // así que después se puede volver a entrar.
+    // Una rom comprimida se saca a memoria y la consola sale del archivo de adentro.
+    bool ok = false;
     AbrirAccesoCompleto("snes", true);
-    bool ok = SnesCargar(ruta, error);
+    if (EsComprimido(ruta))
+    {
+        char interno[256];
+        uint32_t tam = 0;
+        uint8_t* datos = SacarDeComprimido(ruta, interno, sizeof interno, &tam, error);
+        const Consola* c = datos ? ConsolaParaRuta(interno) : NULL;
+        con = c ? c : &ConsolaDe(SIS_SNES);
+        if (datos) ok = con->CargarMemoria(ruta, interno, datos, tam, error);
+    }
+    else
+    {
+        const Consola* c = ConsolaParaRuta(ruta);
+        con = c ? c : &ConsolaDe(SIS_SNES);
+        if (!con->presente) snprintf(error, sizeof error, "Esta versión de SNESUI todavía no trae el emulador de %s.", con->nombreLargo);
+        else ok = con->Cargar(ruta, error);
+    }
     CerrarAccesoCompleto();
+    ConsolaActivar(con->sistema);
     ArmarBase(ruta);
     LeerAjustesJuego();
     // Diagnóstico: todo en cero para esta partida, y al registro qué se abrió.
@@ -683,7 +757,7 @@ bool JuegoAbrir(const char* ruta, const char* nom)
     {
         // Las primeras líneas del informe: la cabecera de la rom y sus chips.
         static char cab[1024];
-        SnesDiagnostico(cab, sizeof cab);
+        con->Diagnostico(cab, sizeof cab);
         char* fin = strstr(cab, "Cuadros emulados");
         if (fin) *fin = 0;
         int l = (int)strlen(cab);
@@ -698,7 +772,8 @@ bool JuegoAbrir(const char* ruta, const char* nom)
         NuevaHistoria();
     }
     contadorSram = 0;
-    SnesSuperFxVelocidad(General().superfx);
+    if (con->sistema == SIS_SNES) SnesSuperFxVelocidad(General().superfx);
+    AudioJuegoFrecuencia(ok ? con->Frecuencia() : 32000);
     AudioJuegoVaciar();
     abierto = true;
     menu = false;
@@ -784,7 +859,7 @@ void JuegoCuadro(float t, float dt, const Mando& m)
         return;
     }
 
-    // Imagen de la SNES con la proporción y el filtro elegidos (bandas negras alrededor si no llena la pantalla).
+    // Imagen de la consola con la proporción y el filtro elegidos (bandas negras alrededor si no llena la pantalla).
     DibujarImagen();
 
     // Ayuda al abrir (se va sola a los 4 s).

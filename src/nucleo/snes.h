@@ -8,6 +8,8 @@ static const int SNES_ANCHO = 256, SNES_ALTO = 224;
 
 // Carga la rom (.smc/.sfc). Si falla, explica por qué en 'error' (160 bytes).
 bool SnesCargar(const char* ruta, char* error);
+// Lo mismo con la rom ya en memoria (malloc; el núcleo se queda con ella, también si falla).
+bool SnesCargarMemoria(uint8_t* datos, uint32_t tam, char* error);
 void SnesDescargar();
 void SnesReiniciar();
 

@@ -17,3 +17,5 @@ extern uint8_t sram[128 * 1024];
 extern uint32_t sramTam;
 
 bool RomCargar(const char* ruta, InfoRom& info);
+// La rom ya en memoria (por ejemplo, sacada de un .zip): 'd' (malloc) queda a cargo del núcleo, también si falla.
+bool RomCargarDatos(uint8_t* d, uint32_t tam, InfoRom& info);

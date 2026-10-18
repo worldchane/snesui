@@ -13,12 +13,13 @@
 #include "biblioteca.h"
 #include "ajustes.h"
 #include "caratula.h"
+#include "consola.h"
 #include "copiar.h"
 #include "fondo.h"
 #include "registro.h"
 #include "juego.h"
 
-static const char* const VERSION = "1.2";
+static const char* const VERSION = "1.3";
 // Número de compilación (lo genera construir.sh): commit y fecha; en el simulador de PC, "pc".
 #ifdef CON_COMPILACION
 #include "compilacion.h"
@@ -114,8 +115,14 @@ static const float X0 = MARGEN, Y0 = 258;
 // /data/snes-ps4/recientes.txt y favoritos.txt, una por línea.
 enum { V_TODOS, V_RECIENTES, V_FAVORITOS, V_CONFIG, NUM_VISTAS };
 static const char* const VISTAS[NUM_VISTAS] = {"Todos", "Recientes", "Favoritos", "Configuración"};
-static int vistaActual;
-static float vistaSuave;
+// Las pestañas: Todos, una por cada consola que tiene juegos (si hay más de una), Recientes, Favoritos y Configuración.
+// 'vistaActual' es la posición en esta lista; Tipo() dice qué es y Filtro() la consola (-1 = todas).
+struct Pestana { int tipo, sistema; const char* nombre; };
+static Pestana pestanas[NUM_VISTAS + NUM_SISTEMAS];
+static int nPestanas, vistaActual;
+static float pastillaX, pastillaW, tiraDesde;   // la pastilla de la pestaña elegida y el desplazamiento de la tira
+static int Tipo() { return nPestanas ? pestanas[vistaActual].tipo : V_TODOS; }
+static int Filtro() { return nPestanas ? pestanas[vistaActual].sistema : -1; }
 static int vista[MAX_JUEGOS], nVista;   // índices de 'juegos' que se muestran
 static const int MAX_RECIENTES = 15, MAX_FAVORITOS = 300;
 static char recientes[MAX_RECIENTES][96], favoritos[MAX_FAVORITOS][96];
@@ -203,11 +210,33 @@ static bool Coincide(const char* nombre)
     return false;
 }
 
+// Rehace las pestañas (cuando cambia la lista de juegos) sin perder la elegida.
+static void ArmarPestanas()
+{
+    int tipo = Tipo(), sistema = Filtro();
+    bool hay[NUM_SISTEMAS] = {};
+    int distintas = 0;
+    for (int i = 0; i < nJuegos; i++)
+        if (!juegos[i].copiado && juegos[i].sistema >= 0 && juegos[i].sistema < NUM_SISTEMAS && !hay[juegos[i].sistema])
+            hay[juegos[i].sistema] = true, distintas++;
+    nPestanas = 0;
+    pestanas[nPestanas++] = {V_TODOS, -1, VISTAS[V_TODOS]};
+    if (distintas > 1)
+        for (int k = 0; k < NUM_SISTEMAS; k++)
+            if (hay[k]) pestanas[nPestanas++] = {V_TODOS, k, ConsolaDe(k).nombre};
+    for (int v = V_RECIENTES; v < NUM_VISTAS; v++) pestanas[nPestanas++] = {v, -1, VISTAS[v]};
+    vistaActual = 0;
+    for (int i = 0; i < nPestanas; i++)
+        if (pestanas[i].tipo == tipo && pestanas[i].sistema == sistema) vistaActual = i;
+}
+
 static void ArmarVista()
 {
     nVista = 0;
-    if (vistaActual == V_CONFIG) { sel = 0; return; }
-    if (vistaActual == V_RECIENTES)
+    if (!nPestanas) ArmarPestanas();
+    int filtro = Filtro();
+    if (Tipo() == V_CONFIG) { sel = 0; return; }
+    if (Tipo() == V_RECIENTES)
     {
         for (int r = 0; r < nRecientes; r++)
             for (int i = 0; i < nJuegos; i++)
@@ -215,7 +244,8 @@ static void ArmarVista()
     }
     else
         for (int i = 0; i < nJuegos; i++)
-            if (!juegos[i].copiado && (vistaActual == V_TODOS || EsFavorito(juegos[i].clave)) && Coincide(juegos[i].nombre))
+            if (!juegos[i].copiado && (Tipo() == V_TODOS || EsFavorito(juegos[i].clave)) && (filtro < 0 || juegos[i].sistema == filtro) &&
+                Coincide(juegos[i].nombre))
                 vista[nVista++] = i;
     if (sel >= nVista) sel = nVista > 0 ? nVista - 1 : 0;
 }
@@ -342,6 +372,14 @@ static void Tarjeta(const Juego& j, float x, float y, float f)
     // Dónde está: ícono de USB (ámbar) o de disco duro de la consola (turquesa), abajo a la izquierda.
     Caja(X + 12, Y + h - 46, 62, 38, 19, 0x0A0614, .85f);
     IconoLugar(j.enUsb, X + 43, Y + h - 27, 1.15f, 1);
+    // La consola del juego, abajo a la derecha (en la SNES no hace falta: es la de siempre).
+    if (j.sistema != SIS_SNES)
+    {
+        const char* n = ConsolaDe(j.sistema).nombre;
+        float tw = AnchoTexto(F_PEQUENA, n) + 28;
+        Caja(X + w - 12 - tw, Y + h - 46, tw, 38, 19, 0x0A0614, .85f);
+        Texto(F_PEQUENA, n, X + w - 12 - tw / 2, Y + h - 40, C_TEXTO, 1, 1);
+    }
     // Aro de selección en morado SNES.
     if (f > .01f) Borde(X - 6, Y - 6, w + 12, h + 12, 26, 4, C_ACENTO, .95f * f);
 }
@@ -367,19 +405,53 @@ static void DibujarBusqueda()
         Texto(F_CUERPO_M, t, derecha - w + 20, y + 10, C_TEXTO, 1);
         Pista(BM_CIRCULO, "quitar", derecha - qw - 20, y + 24);
     }
-    else if (vistaActual != V_CONFIG) Texto(F_PEQUENA, "Panel táctil: buscar por nombre", derecha, y + 14, C_TEXTO_3, 1, 2);
+    else if (Tipo() != V_CONFIG) Texto(F_PEQUENA, "Panel táctil: buscar por nombre", derecha, y + 14, C_TEXTO_3, 1, 2);
 }
 
-// Las pestañas bajo la cabecera, con L1 y R1 a los costados y una pastilla que se desliza a la elegida.
-static void DibujarPestanas()
+// Las pestañas bajo la cabecera, con L1 y R1 a los costados y una pastilla que se desliza a la elegida. Cada una mide lo
+// que su nombre; si no entran todas (muchas consolas), la tira se corre para que la elegida quede a la vista y las que
+// quedan fuera se desvanecen en los bordes.
+static void DibujarPestanas(float dt)
 {
-    float y = 160, alto = 48, ancho = 190, x0 = MARGEN + 70;
+    float y = 160, alto = 48, x0 = MARGEN + 70, separa = 10;
+    float limite = ANCHO - MARGEN - 470;   // a la derecha va la búsqueda
+    float px[NUM_VISTAS + NUM_SISTEMAS], pw[NUM_VISTAS + NUM_SISTEMAS], total = 0;
+    for (int i = 0; i < nPestanas; i++)
+    {
+        pw[i] = AnchoTexto(F_CUERPO_M, pestanas[i].nombre) + 64;
+        if (pw[i] < 150) pw[i] = 150;
+        px[i] = total;
+        total += pw[i] + separa;
+    }
+    float ventana = limite - x0 - 60;
+    float objetivo = 0;
+    if (total > ventana && nPestanas)
+    {
+        objetivo = px[vistaActual] + pw[vistaActual] / 2 - ventana / 2;
+        if (objetivo < 0) objetivo = 0;
+        if (objetivo > total - ventana) objetivo = total - ventana;
+    }
+    Suave(tiraDesde, objetivo, 14, dt);
+    if (nPestanas)
+    {
+        Suave(pastillaX, px[vistaActual], 14, dt);
+        Suave(pastillaW, pw[vistaActual], 14, dt);
+    }
     DibujarBoton(BM_L1, MARGEN + 24, y + alto / 2);
-    Caja(x0 + vistaSuave * ancho, y, ancho - 10, alto, 24, C_ACENTO, .3f);
-    Borde(x0 + vistaSuave * ancho, y, ancho - 10, alto, 24, 2, C_ACENTO, .8f);
-    for (int i = 0; i < NUM_VISTAS; i++)
-        Texto(F_CUERPO_M, VISTAS[i], x0 + i * ancho + (ancho - 10) / 2, y + 10, i == vistaActual ? C_TEXTO : C_TEXTO_2, 1, 1);
-    DibujarBoton(BM_R1, x0 + (float)NUM_VISTAS * ancho + 20, y + alto / 2);
+    float fin = total > ventana ? x0 + ventana : x0 + total;
+    Caja(x0 + pastillaX - tiraDesde, y, pastillaW, alto, 24, C_ACENTO, .3f);
+    Borde(x0 + pastillaX - tiraDesde, y, pastillaW, alto, 24, 2, C_ACENTO, .8f);
+    for (int i = 0; i < nPestanas; i++)
+    {
+        float cx = x0 + px[i] - tiraDesde + pw[i] / 2;
+        // Desvanecida si el texto se sale de la ventana de la tira (así no pisa los botones L1 y R1).
+        float tw = (pw[i] - 64) / 2, a = 1;
+        if (cx - tw < x0) a = 1 - (x0 - (cx - tw)) / 50;
+        if (cx + tw > fin) a = 1 - (cx + tw - fin) / 50;
+        if (a <= 0) continue;
+        Texto(F_CUERPO_M, pestanas[i].nombre, cx, y + 10, i == vistaActual ? C_TEXTO : C_TEXTO_2, a, 1);
+    }
+    DibujarBoton(BM_R1, fin + 20, y + alto / 2);
 }
 
 void InterfazCuadro(float t, float dt, const Mando& m)
@@ -553,7 +625,7 @@ static void VentanaEntrada(const Mando& m)
         {
         case JA_FAVORITO:
             CambiarFavorito(elegido.clave);
-            if (vistaActual == V_FAVORITOS) ArmarVista();
+            if (Tipo() == V_FAVORITOS) ArmarVista();
             Sonar(SON_ACEPTAR);
             ventana = VN_NADA;
             break;
@@ -985,6 +1057,7 @@ static void TomarListaNueva()
     char elegidoClave[96] = "";
     if (nVista > 0 && sel < nVista) snprintf(elegidoClave, sizeof elegidoClave, "%s", juegos[vista[sel]].clave);
     juegos = BibliotecaJuegos(&nJuegos);
+    ArmarPestanas();
     ArmarVista();
     for (int i = 0; i < nVista; i++)
         if (!strcmp(juegos[vista[i]].clave, elegidoClave)) { sel = i; break; }
@@ -1111,16 +1184,15 @@ static void Biblioteca(float t, float dt, const Mando& m)
     int cambio = (mb.pulsados & B_R1) ? 1 : (mb.pulsados & B_L1) ? -1 : 0;
     if (cambio)
     {
-        vistaActual = (vistaActual + NUM_VISTAS + cambio) % NUM_VISTAS;
+        vistaActual = (vistaActual + nPestanas + cambio) % nPestanas;
         viendoAcerca = false;
         sel = 0;
         scrollVis = 0;
         ArmarVista();
         Sonar(SON_SECCION);
     }
-    Suave(vistaSuave, (float)vistaActual, 14, dt);
-    DibujarPestanas();
-    if (vistaActual == V_CONFIG)
+    DibujarPestanas(dt);
+    if (Tipo() == V_CONFIG)
     {
         Configuracion(dt, mb);
         DibujarDescarga(dt);
@@ -1133,7 +1205,7 @@ static void Biblioteca(float t, float dt, const Mando& m)
         Sonar(SON_ACEPTAR);
         AnotarReciente(j.clave);
         JuegoAbrir(j.ruta, j.nombre);
-        if (vistaActual == V_RECIENTES) { ArmarVista(); sel = 0; }
+        if (Tipo() == V_RECIENTES) { ArmarVista(); sel = 0; }
     }
     if ((mb.pulsados & B_OPTIONS) && nVista > 0) { AbrirMenuJuego(juegos[vista[sel]]); Sonar(SON_SECCION); }
     if (mb.pulsados & B_TRIANGULO) { Sonar(BibliotecaBuscando(NULL) ? SON_ERROR : SON_ACEPTAR); BibliotecaBuscar(); }
@@ -1213,9 +1285,9 @@ static void Biblioteca(float t, float dt, const Mando& m)
     {
         float w = 900, h = 260, x = (ANCHO - w) / 2, y = 380;
         Caja(x, y, w, h, 30, C_PANEL, .85f);
-        const char* t = busqueda[0] ? "Ningún juego coincide" : vistaActual == V_RECIENTES ? "Todavía no jugaste nada" : "Todavía no hay favoritos";
+        const char* t = busqueda[0] ? "Ningún juego coincide" : Tipo() == V_RECIENTES ? "Todavía no jugaste nada" : "Todavía no hay favoritos";
         const char* d = busqueda[0] ? "Prueba con otra palabra (panel táctil) o pulsa círculo para ver todos."
-                        : vistaActual == V_RECIENTES ? "Los juegos que abras van a aparecer acá, el último primero."
+                        : Tipo() == V_RECIENTES ? "Los juegos que abras van a aparecer acá, el último primero."
                                                      : "Pulsa OPTIONS sobre un juego para marcarlo con una estrella.";
         Texto(F_SUBTITULO, t, x + w / 2, y + 80, C_TEXTO, 1, 1);
         Texto(F_CUERPO, d, x + w / 2, y + 150, C_TEXTO_2, 1, 1);
@@ -1275,8 +1347,12 @@ static void Biblioteca(float t, float dt, const Mando& m)
     Velo(0, ALTO - 86, ANCHO, 86, 0, 0x120A24, 0, .82f);
     const Juego& j = juegos[vista[sel]];
     char buf[120];
-    snprintf(buf, sizeof buf, "       %s   ·   %s   ·   %d KB   ·   %s%s", j.enUsb ? "En el USB" : "En la consola", j.mapeo, j.tamKB,
-             j.pal ? "PAL" : "NTSC", j.tieneRam ? "   ·   guarda partida" : "");
+    if (j.sistema == SIS_SNES)
+        snprintf(buf, sizeof buf, "       %s   ·   %s   ·   %d KB   ·   %s%s", j.enUsb ? "En el USB" : "En la consola", j.mapeo,
+                 j.tamKB, j.pal ? "PAL" : "NTSC", j.tieneRam ? "   ·   guarda partida" : "");
+    else
+        snprintf(buf, sizeof buf, "       %s   ·   %s   ·   %d KB", j.enUsb ? "En el USB" : "En la consola",
+                 ConsolaDe(j.sistema).nombreLargo, j.tamKB);
     Texto(F_CUERPO_M, j.nombre, MARGEN, ALTO - 70, C_TEXTO);
     char pos[48];
     snprintf(pos, sizeof pos, "%d de %d   ·   ", sel + 1, nVista);

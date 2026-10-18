@@ -6,7 +6,7 @@
 
 #include "../comun/plataforma.h"
 
-const char* const PROPORCIONES[NUM_PROPORCIONES] = {"4:3 (como la TV)", "8:7 (píxeles cuadrados)", "Píxel exacto", "16:9 (estirada)"};
+const char* const PROPORCIONES[NUM_PROPORCIONES] = {"Como la consola", "Píxeles cuadrados", "Píxel exacto", "16:9 (estirada)"};
 const char* const FILTROS[NUM_FILTROS] = {"Suave", "Nítido", "Nítido suavizado", "Líneas de TV", "CRT"};
 
 static AjustesGenerales ajustes = {PR_4_3, FI_SUAVE, 4, 1, 0, 1};

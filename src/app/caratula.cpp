@@ -9,6 +9,7 @@
 #include <string.h>
 
 #include "../comun/plataforma.h"
+#include "consola.h"
 
 #define STB_IMAGE_STATIC
 #define STBI_ONLY_PNG
@@ -17,8 +18,26 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb/stb_image.h>
 
-static void RutaCaratula(const char* nombre, char* ruta, int max)
+// Las claves de las consolas que no son la SNES llevan delante su carpeta ("NES/<nombre>", ver biblioteca.cpp): sus
+// carátulas van en caratulas/<carpeta>/ y se bajan de la carpeta de esa consola en el servidor.
+static const Consola& ConsolaDeClave(const char* clave, const char** nombre)
 {
+    *nombre = clave;
+    const char* barra = strchr(clave, '/');
+    if (barra)
+        for (int s = 0; s < NUM_SISTEMAS; s++)
+        {
+            const Consola& c = ConsolaDe(s);
+            size_t l = strlen(c.carpeta);
+            if (s != SIS_SNES && (size_t)(barra - clave) == l && !strncmp(clave, c.carpeta, l)) { *nombre = barra + 1; return c; }
+        }
+    return ConsolaDe(SIS_SNES);
+}
+
+static void RutaCaratula(const char* clave, char* ruta, int max)
+{
+    const char* nombre;
+    const Consola& con = ConsolaDeClave(clave, &nombre);
     // El nombre puede traer caracteres que no sirven en un archivo: se cambian por '_'.
     char limpio[128];
     int n = 0;
@@ -29,7 +48,8 @@ static void RutaCaratula(const char* nombre, char* ruta, int max)
         limpio[n++] = c;
     }
     limpio[n] = 0;
-    snprintf(ruta, max, "%s/caratulas/%s.png", CARPETA_DATOS, limpio);
+    if (con.sistema == SIS_SNES) snprintf(ruta, max, "%s/caratulas/%s.png", CARPETA_DATOS, limpio);
+    else snprintf(ruta, max, "%s/caratulas/%s/%s.png", CARPETA_DATOS, con.carpeta, limpio);
 }
 
 bool HayCaratula(const char* nombre)
@@ -182,7 +202,14 @@ Caratula ObtenerCaratula(const char* nombre)
 // Las carátulas de RetroArch: http://thumbnails.libretro.com/<sistema>/Named_Boxarts/<nombre>.png. Se pide por HTTP
 // simple (sin cifrado: la consola no necesita módulos extra) con HTTP/1.0, así la respuesta llega entera y sin trozos.
 static const char* const SERVIDOR = "thumbnails.libretro.com";
-static const char* const SISTEMA = "Nintendo - Super Nintendo Entertainment System";   // nombre de la carpeta en el servidor (no cambiar)
+// La carpeta de una consola en el servidor: el nombre del repositorio de libretro-thumbnails con espacios
+// ("Nintendo_-_Game_Boy" → "Nintendo - Game Boy").
+static void CarpetaServidor(const Consola& c, char* out, int max)
+{
+    int n = 0;
+    for (const char* p = c.caratulas; *p && n < max - 1; p++) out[n++] = *p == '_' ? ' ' : *p;
+    out[n] = 0;
+}
 static const int MAX_DESCARGAS = 10000;
 static char claves[MAX_DESCARGAS][96];
 static int nClaves;
@@ -288,7 +315,7 @@ static int Hex(int c) { return c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <=
 
 static void LeerIndice(const uint8_t* html, int largo)
 {
-    static const int MAX_INDICE = 6000;
+    static const int MAX_INDICE = 12000;
     if (!indice) indice = (char(*)[112])malloc(sizeof(*indice) * MAX_INDICE);
     nIndice = 0;
     if (!indice) return;
@@ -399,60 +426,72 @@ static void* HiloDescarga(void*)
         enCurso = false;
         return NULL;
     }
-    char carpeta[128];
-    snprintf(carpeta, sizeof carpeta, "%s/caratulas", CARPETA_DATOS);
-    CrearCarpetas(carpeta);
+    // Consola por consola: se baja el índice de su carpeta y después sus carátulas.
+    int seguidasSinRed = 0, hechas = 0;
+    for (int s = 0; s < NUM_SISTEMAS && !progreso.fallo; s++)
     {
-        snprintf(progreso.detalle, sizeof progreso.detalle, "Leyendo la lista de carátulas...");
-        char ruta[300] = "/";
-        AgregarCodificado(ruta, sizeof ruta, SISTEMA);
-        snprintf(ruta + strlen(ruta), sizeof ruta - strlen(ruta), "/Named_Boxarts/");
-        const uint8_t* cuerpo = NULL;
-        int largo = 0;
-        nIndice = 0;
-        if (PedirHttp(ruta, buf, MAXIMO, &cuerpo, &largo) == 200) LeerIndice(cuerpo, largo);
-    }
-    int seguidasSinRed = 0;
-    for (int i = 0; i < nClaves; i++)
-    {
-        progreso.hechas = i;
-        if (HayCaratula(claves[i])) { progreso.hechas = i + 1; continue; }
-        snprintf(progreso.detalle, sizeof progreso.detalle, "%s", claves[i]);
-        char cand[12][96];
-        int nc;
-        int k0 = nIndice ? BuscarEnIndice(claves[i]) : -1;
-        if (nIndice) { nc = k0 >= 0 ? 1 : 0; if (k0 >= 0) snprintf(cand[0], 96, "%s", indice[k0]); }   // con índice: solo la elegida
-        else nc = Candidatos(claves[i], cand, 12);                                                       // sin índice: probar nombres
-        bool hecha = false, sinRed = false;
-        for (int k = 0; k < nc && !hecha; k++)
+        const Consola& con = ConsolaDe(s);
+        int deEsta = 0;
+        for (int i = 0; i < nClaves; i++) { const char* nom; if (ConsolaDeClave(claves[i], &nom).sistema == s) deEsta++; }
+        if (!deEsta) continue;
+        char sistema[96], carpeta[160];
+        CarpetaServidor(con, sistema, sizeof sistema);
+        if (s == SIS_SNES) snprintf(carpeta, sizeof carpeta, "%s/caratulas", CARPETA_DATOS);
+        else snprintf(carpeta, sizeof carpeta, "%s/caratulas/%s", CARPETA_DATOS, con.carpeta);
+        CrearCarpetas(carpeta);
         {
-            char ruta[700] = "/";
-            AgregarCodificado(ruta, sizeof ruta, SISTEMA);
+            snprintf(progreso.detalle, sizeof progreso.detalle, "Leyendo la lista de carátulas de %s...", con.nombre);
+            char ruta[300] = "/";
+            AgregarCodificado(ruta, sizeof ruta, sistema);
             snprintf(ruta + strlen(ruta), sizeof ruta - strlen(ruta), "/Named_Boxarts/");
-            AgregarCodificado(ruta, sizeof ruta, cand[k]);
-            snprintf(ruta + strlen(ruta), sizeof ruta - strlen(ruta), ".png");
             const uint8_t* cuerpo = NULL;
             int largo = 0;
-            int codigo = PedirHttp(ruta, buf, MAXIMO, &cuerpo, &largo);
-            if (codigo < 0) { sinRed = true; break; }
-            if (codigo == 200 && largo > 8 && cuerpo[0] == 0x89 && cuerpo[1] == 'P' && cuerpo[2] == 'N' && cuerpo[3] == 'G')
-            {
-                char destino[600];
-                RutaCaratula(claves[i], destino, sizeof destino);
-                FILE* f = AbrirArchivo(destino, "wb");
-                if (f) { hecha = fwrite(cuerpo, 1, largo, f) == (size_t)largo; fclose(f); }
-            }
+            nIndice = 0;
+            if (PedirHttp(ruta, buf, MAXIMO, &cuerpo, &largo) == 200) LeerIndice(cuerpo, largo);
         }
-        if (hecha) progreso.bajadas++;
-        else progreso.sinCaratula++;
-        progreso.hechas = i + 1;
-        // Sin conexión: se corta después de 2 seguidas (no tiene sentido esperar el tiempo de cada una).
-        seguidasSinRed = sinRed ? seguidasSinRed + 1 : 0;
-        if (seguidasSinRed >= 2)
+        for (int i = 0; i < nClaves; i++)
         {
-            progreso.fallo = true;
-            snprintf(progreso.detalle, sizeof progreso.detalle, "No hay conexión con el servidor de carátulas.");
-            break;
+            const char* nombre;
+            if (ConsolaDeClave(claves[i], &nombre).sistema != s) continue;
+            progreso.hechas = hechas;
+            if (HayCaratula(claves[i])) { progreso.hechas = ++hechas; continue; }
+            snprintf(progreso.detalle, sizeof progreso.detalle, "%s", nombre);
+            char cand[12][96];
+            int nc;
+            int k0 = nIndice ? BuscarEnIndice(nombre) : -1;
+            if (nIndice) { nc = k0 >= 0 ? 1 : 0; if (k0 >= 0) snprintf(cand[0], 96, "%s", indice[k0]); }   // con índice: solo la elegida
+            else nc = Candidatos(nombre, cand, 12);                                                          // sin índice: probar nombres
+            bool hecha = false, sinRed = false;
+            for (int k = 0; k < nc && !hecha; k++)
+            {
+                char ruta[700] = "/";
+                AgregarCodificado(ruta, sizeof ruta, sistema);
+                snprintf(ruta + strlen(ruta), sizeof ruta - strlen(ruta), "/Named_Boxarts/");
+                AgregarCodificado(ruta, sizeof ruta, cand[k]);
+                snprintf(ruta + strlen(ruta), sizeof ruta - strlen(ruta), ".png");
+                const uint8_t* cuerpo = NULL;
+                int largo = 0;
+                int codigo = PedirHttp(ruta, buf, MAXIMO, &cuerpo, &largo);
+                if (codigo < 0) { sinRed = true; break; }
+                if (codigo == 200 && largo > 8 && cuerpo[0] == 0x89 && cuerpo[1] == 'P' && cuerpo[2] == 'N' && cuerpo[3] == 'G')
+                {
+                    char destino[600];
+                    RutaCaratula(claves[i], destino, sizeof destino);
+                    FILE* f = AbrirArchivo(destino, "wb");
+                    if (f) { hecha = fwrite(cuerpo, 1, largo, f) == (size_t)largo; fclose(f); }
+                }
+            }
+            if (hecha) progreso.bajadas++;
+            else progreso.sinCaratula++;
+            progreso.hechas = ++hechas;
+            // Sin conexión: se corta después de 2 seguidas (no tiene sentido esperar el tiempo de cada una).
+            seguidasSinRed = sinRed ? seguidasSinRed + 1 : 0;
+            if (seguidasSinRed >= 2)
+            {
+                progreso.fallo = true;
+                snprintf(progreso.detalle, sizeof progreso.detalle, "No hay conexión con el servidor de carátulas.");
+                break;
+            }
         }
     }
     if (!progreso.fallo) snprintf(progreso.detalle, sizeof progreso.detalle, "Listo.");

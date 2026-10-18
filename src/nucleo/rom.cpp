@@ -102,6 +102,14 @@ bool RomCargar(const char* ruta, InfoRom& info)
         return false;
     }
     fclose(f);
+    return RomCargarDatos(d, tam, info);
+}
+
+bool RomCargarDatos(uint8_t* d, uint32_t tam, InfoRom& info)
+{
+    memset(&info, 0, sizeof info);
+    if (!d || tam < 0x8000) { free(d); snprintf(info.error, sizeof info.error, "La rom es demasiado chica."); return false; }
+    if (tam > 8u * 1024 * 1024 + 512) { free(d); snprintf(info.error, sizeof info.error, "La rom es demasiado grande (más de 8 MB)."); return false; }
     // Quitar la cabecera de copiadora (512 bytes) si la hay.
     if ((tam & 0x3FF) == 512) { memmove(d, d + 512, tam - 512); tam -= 512; }
 

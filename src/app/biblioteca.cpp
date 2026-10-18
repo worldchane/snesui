@@ -1,5 +1,6 @@
-// Ver biblioteca.h. Recorre los USB y /data buscando roms de SNES (.smc/.sfc/.fig/.swc) en todas sus carpetas, lee la
-// cabecera de cada una (solo las nuevas o cambiadas) y guarda la lista en un índice.
+// Ver biblioteca.h. Recorre los USB y /data buscando roms de las consolas que trae el programa (por extensión, ver
+// consola.h) en todas sus carpetas, lee la cabecera de cada una (solo las nuevas o cambiadas) y guarda la lista en un
+// índice.
 #include "biblioteca.h"
 
 #include <atomic>
@@ -11,6 +12,7 @@
 
 #include "../comun/plataforma.h"
 #include "../nucleo/snes.h"
+#include "consola.h"
 
 static const char* const RAICES[] = {
     "/mnt/usb0", "/mnt/usb1", "/mnt/usb2", "/mnt/usb3", "/data/snes-ps4/juegos",
@@ -20,7 +22,12 @@ static const int MAX_PROFUNDIDAD = 8, MAX_CARPETAS = 4000;
 const char* CarpetasDeJuegos() { return "Busco en todos los USB (en la raíz y en todas sus carpetas) y en /data/snes-ps4/juegos"; }
 
 static const char* Ext(const char* n) { const char* p = strrchr(n, '.'); return p ? p + 1 : ""; }
-static bool EsRom(const char* n) { const char* e = Ext(n); return !strcasecmp(e, "smc") || !strcasecmp(e, "sfc") || !strcasecmp(e, "fig") || !strcasecmp(e, "swc"); }
+// La consola de la rom, o -1 si no es una rom de una consola que el programa pueda abrir.
+static int SistemaDe(const char* n)
+{
+    const Consola* c = ConsolaParaRuta(n);
+    return c && c->presente ? c->sistema : -1;
+}
 
 static uint32_t Hsv(float h, float s, float v)
 {
@@ -130,7 +137,10 @@ static void Completar(Juego& j)
 {
     const char* barra = strrchr(j.ruta, '/');
     snprintf(j.archivo, sizeof j.archivo, "%s", barra ? barra + 1 : j.ruta);
-    snprintf(j.clave, sizeof j.clave, "%s", j.archivo);
+    // La clave (carátula, favoritos, recientes) es el nombre del archivo sin extensión; en las consolas que no son la SNES,
+    // con su carpeta delante ("NES/<nombre>"), porque dos consolas pueden tener juegos con el mismo nombre.
+    if (j.sistema == SIS_SNES) snprintf(j.clave, sizeof j.clave, "%s", j.archivo);
+    else snprintf(j.clave, sizeof j.clave, "%s/%s", ConsolaDe(j.sistema).carpeta, j.archivo);
     char* ext = strrchr(j.clave, '.');
     if (ext) *ext = 0;
     Iniciales(j);
@@ -187,9 +197,12 @@ static void AlEncontrar(const char* nombre, bool carpeta, void* u)
         b.prof--; b.carpeta[l] = 0;
         return;
     }
-    if (!EsRom(nombre) || !Crecer(nueva)) return;
+    bool comprimido = EsComprimido(nombre);
+    int sistema = comprimido ? 0 : SistemaDe(nombre);
+    if (sistema < 0 || !Crecer(nueva)) return;
     Juego& j = nueva.j[nueva.n];
     memset(&j, 0, sizeof j);
+    j.sistema = sistema;
     snprintf(j.ruta, sizeof j.ruta, "%s/%s", b.carpeta, nombre);
     uint64_t bytes = 0;
     if (!ExisteArchivo(j.ruta, &bytes)) return;
@@ -199,7 +212,19 @@ static void AlEncontrar(const char* nombre, bool carpeta, void* u)
     else
     {
         InfoRom info;
-        SnesAnalizar(j.ruta, info);
+        memset(&info, 0, sizeof info);
+        if (comprimido)
+        {
+            // Comprimido: la consola es la de la rom de adentro (si no hay ninguna, no es un juego).
+            uint64_t tam = 0;
+            sistema = ConsolaDeComprimido(j.ruta, NULL, 0, &tam);
+            if (sistema < 0) return;
+            j.sistema = sistema;
+            info.valida = true;
+            info.tamKB = (int)(tam / 1024);
+        }
+        else if (sistema == SIS_SNES) SnesAnalizar(j.ruta, info);
+        else { info.valida = true; info.tamKB = (int)(bytes / 1024); }   // las otras consolas no se analizan
         // El nombre del archivo es más legible que el interno (que viene en mayúsculas y cortado a 21 letras).
         NombreLimpio(nombre, j.nombre, sizeof j.nombre);
         if (!j.nombre[0] && info.valida) snprintf(j.nombre, sizeof j.nombre, "%s", info.titulo);
@@ -215,8 +240,9 @@ static void AlEncontrar(const char* nombre, bool carpeta, void* u)
 static int PorNombre(const void* a, const void* b) { return strcasecmp(((const Juego*)a)->nombre, ((const Juego*)b)->nombre); }
 
 // ---------- índice guardado ----------
-// Una línea por juego, separada por tabuladores: bytes, válida, PAL, SRAM, KB, mapeo, nombre, ruta.
-static const char* const CABECERA = "SNESUI-BIBLIOTECA 1";
+// Una línea por juego, separada por tabuladores: consola, bytes, válida, PAL, SRAM, KB, mapeo, nombre, ruta. El índice
+// de la versión 1 (solo SNES) no tenía la consola.
+static const char* const CABECERA = "SNESUI-BIBLIOTECA 2", *const CABECERA_1 = "SNESUI-BIBLIOTECA 1";
 
 static void RutaIndice(char* r, int max) { snprintf(r, max, "%s/biblioteca.txt", CARPETA_DATOS); }
 
@@ -229,8 +255,8 @@ static void GuardarIndice(const Lista& l)
     for (int i = 0; i < l.n; i++)
     {
         const Juego& j = l.j[i];
-        k += (size_t)snprintf(txt + k, cap - k, "%llu\t%d\t%d\t%d\t%d\t%s\t%s\t%s\n", (unsigned long long)j.bytes, j.valida,
-                              j.pal, j.tieneRam, j.tamKB, j.mapeo, j.nombre, j.ruta);
+        k += (size_t)snprintf(txt + k, cap - k, "%d\t%llu\t%d\t%d\t%d\t%d\t%s\t%s\t%s\n", j.sistema,
+                              (unsigned long long)j.bytes, j.valida, j.pal, j.tieneRam, j.tamKB, j.mapeo, j.nombre, j.ruta);
     }
     char r[160];
     RutaIndice(r, sizeof r);
@@ -247,21 +273,28 @@ static void LeerIndice()
     if (!ExisteArchivo(r, &tam) || tam == 0 || tam > 32u * 1024 * 1024) return;
     char* txt = (char*)malloc((size_t)tam + 1);
     if (!txt) return;
-    if (LeerTexto(r, txt, (int)tam + 1) <= 0 || strncmp(txt, CABECERA, strlen(CABECERA))) { free(txt); return; }
+    if (LeerTexto(r, txt, (int)tam + 1) <= 0) { free(txt); return; }
+    int campos;
+    if (!strncmp(txt, CABECERA, strlen(CABECERA))) campos = 9;
+    else if (!strncmp(txt, CABECERA_1, strlen(CABECERA_1))) campos = 8;
+    else { free(txt); return; }
     char* p = strchr(txt, '\n');
     while (p && *++p)
     {
         char* fin = strchr(p, '\n');
         if (fin) *fin = 0;
-        // Partir la línea en sus 8 campos.
-        char* c[8];
+        // Partir la línea en sus campos (la versión 1 no tiene el primero, la consola: es SNES).
+        char* c0[9];
         int n = 0;
-        c[n++] = p;
-        for (char* q = p; *q && n < 8; q++) if (*q == '\t') { *q = 0; c[n++] = q + 1; }
-        if (n == 8 && Crecer(activa))
+        c0[n++] = p;
+        for (char* q = p; *q && n < campos; q++) if (*q == '\t') { *q = 0; c0[n++] = q + 1; }
+        char** c = campos == 9 ? c0 + 1 : c0;
+        int sistema = campos == 9 ? atoi(c0[0]) : SIS_SNES;
+        if (n == campos && sistema >= 0 && sistema < NUM_SISTEMAS && ConsolaDe(sistema).presente && Crecer(activa))
         {
             Juego& j = activa.j[activa.n];
             memset(&j, 0, sizeof j);
+            j.sistema = sistema;
             j.bytes = strtoull(c[0], NULL, 10);
             j.valida = atoi(c[1]); j.pal = atoi(c[2]); j.tieneRam = atoi(c[3]); j.tamKB = atoi(c[4]);
             snprintf(j.mapeo, sizeof j.mapeo, "%s", c[5]);
