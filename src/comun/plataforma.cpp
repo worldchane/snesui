@@ -1,4 +1,5 @@
 // Ver plataforma.h. Sin variables globales con constructores (.init_array debe quedar vacío): solo arreglos y tipos simples.
+#include "musica.h"
 #include "plataforma.h"
 
 #include <atomic>
@@ -238,10 +239,14 @@ void AudioJuegoFrecuencia(int hz) { frecJuego.store(hz > 1000 && hz <= 192000 ? 
 
 void AudioJuegoVaciar() { anilloLee.store(anilloEsc.load(std::memory_order_acquire), std::memory_order_release); }
 
+// Muestras por bloque que se entregan a la consola. Con 256 (5 ms) el sonido se cortaba cuando la búsqueda de juegos o
+// las carátulas ocupaban los núcleos y el hilo de sonido llegaba tarde; con 1024 (21 ms) aguanta cuatro veces más.
+static const int BLOQUE_AUDIO = 1024;
+
 static void* HiloAudio(void*)
 {
     double posJuego = 0;   // parte fraccionaria entre la muestra de 32 kHz actual y la siguiente
-    static int16_t buf[256 * 2];
+    static int16_t buf[BLOQUE_AUDIO * 2];
     static Voz voces[8];
     unsigned leidos = 0;
     const float SR = 48000.f;
@@ -274,7 +279,12 @@ static void* HiloAudio(void*)
                 voces[libre] = nuevas[k];
             }
         }
-        for (int i = 0; i < 256; i++)
+        // La música de la biblioteca (se apaga sola durante los juegos: ver MusicaActiva).
+        static float musL[BLOQUE_AUDIO], musR[BLOQUE_AUDIO];
+        memset(musL, 0, sizeof musL);
+        memset(musR, 0, sizeof musR);
+        MusicaMezclar(musL, musR, BLOQUE_AUDIO);
+        for (int i = 0; i < BLOQUE_AUDIO; i++)
         {
             float s = 0;
             for (int v = 0; v < 8; v++)
@@ -315,7 +325,7 @@ static void* HiloAudio(void*)
                 if (avanza > lleno - 1) avanza = lleno - 1;
                 anilloLee.store(l + avanza, std::memory_order_release);
             }
-            float L = s + jl, R = s + jr;
+            float L = s + jl + musL[i], R = s + jr + musR[i];
             if (L > 1) L = 1;
             if (L < -1) L = -1;
             if (R > 1) R = 1;
@@ -331,7 +341,7 @@ static void* HiloAudio(void*)
 void IniciarAudio()
 {
     sceAudioOutInit();
-    puertoAudio = sceAudioOutOpen(ORBIS_USER_SERVICE_USER_ID_SYSTEM, ORBIS_AUDIO_OUT_PORT_TYPE_MAIN, 0, 256, 48000,
+    puertoAudio = sceAudioOutOpen(ORBIS_USER_SERVICE_USER_ID_SYSTEM, ORBIS_AUDIO_OUT_PORT_TYPE_MAIN, 0, BLOQUE_AUDIO, 48000,
                                   ORBIS_AUDIO_OUT_PARAM_FORMAT_S16_STEREO);
     if (puertoAudio >= 0 && !Lanzar(HiloAudio, NULL, "sonido")) puertoAudio = -1;
 }

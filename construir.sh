@@ -25,7 +25,7 @@ FLAGS="--target=x86_64-pc-freebsd12-elf -fPIC -funwind-tables -fno-exceptions -f
 AUTH_PIGLET=000000000000000000000000001C004000FF000000000080000000000000000000000000000000000000008000400040000000000000008000000000000000080040FFFF000000F000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 
 construir() {
-  BIOS=; NUCLEOS=; LDEXTRA=
+  BIOS=; NUCLEOS=; LDEXTRA=; GUION=   # GUION: guion del enlazador (vacío = el de OpenOrbis)
   variante "$1" || { echo "variante desconocida: $1 (hay: $TODAS personal)"; exit 1; }
   # Los núcleos libretro de las otras consolas (solo recompila lo que cambió); la app sabe cuáles hay por -DCON_NUCLEO_<X>.
   sh "$AQUI/src/nucleos/nucleos.sh" ps4 $NUCLEOS >/dev/null   # NUCLEOS: solo esos (pruebas); vacío = todos
@@ -44,7 +44,7 @@ construir() {
         -c -o "$OBJ/${c}_$(basename "${f%.cpp}").o" "$f"
     done
   done
-  "$LLVM/ld.lld" -m elf_x86_64 -pie --script "$TCW\\link.x" --eh-frame-hdr -Map "$OBJ/eboot.map" -o "$OBJ/eboot.elf" "-L$TCW\\lib" "$TCW\\lib\\crt1.o" "$OBJ"/*.o @$(cd "$AQUI/obj/nucleos/ps4" && pwd -W)/enlazar.rsp $LIBS $LDEXTRA
+  "$LLVM/ld.lld" -m elf_x86_64 -pie --script "${GUION:-$TCW\\link.x}" --eh-frame-hdr -Map "$OBJ/eboot.map" -o "$OBJ/eboot.elf" "-L$TCW\\lib" "$TCW\\lib\\crt1.o" "$OBJ"/*.o @$(cd "$AQUI/obj/nucleos/ps4" && pwd -W)/enlazar.rsp $LIBS $LDEXTRA
   "$BIN/create-fself.exe" -in "$OBJ/eboot.elf" --out "$OBJ/eboot.oelf" --eboot "$PAQ/eboot.bin" --paid 0x3800000000000011 >/dev/null
 
   # Archivos fijos del paquete: los módulos y right.sprx que trae el propio OpenOrbis, el ícono (512 × 512) y assets/. Sin pic1.png: la pantalla de

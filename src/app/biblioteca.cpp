@@ -12,6 +12,7 @@
 
 #include "../comun/plataforma.h"
 #include "../nucleo/snes.h"
+#include "arcade.h"
 #include "consola.h"
 #include "registro.h"
 
@@ -197,6 +198,59 @@ static void MarcarCopiados(Lista& l)
     free(h);
 }
 
+// Cada juego, una sola vez: los que son de la misma consola y se llaman igual (sin la extensión) son el mismo juego,
+// aunque estén en dos USB, en el USB y en la consola, en dos carpetas o uno comprimido y otro no. Se muestra el mejor:
+// el de la consola antes que el del USB, y el suelto antes que el comprimido. Las regiones distintas ("(USA)",
+// "(Europe)") se llaman distinto y siguen apareciendo por separado. Devuelve cuántos ocultó por cada causa.
+struct Repetidos { int variosUsb, usbYConsola, otraCarpeta; };
+static int PuntosCopia(const Juego& j) { return (!j.enUsb ? 4 : 0) + (!EsComprimido(j.archivo) ? 2 : 0); }
+static uint32_t HashJuego(const Juego& j)
+{
+    uint32_t h = 2166136261u ^ (uint32_t)j.sistema;
+    const char* fin = strrchr(j.archivo, '.');
+    for (const char* p = j.archivo; *p && p != fin; p++) h = (h ^ (unsigned char)tolower((unsigned char)*p)) * 16777619u;
+    return h;
+}
+static bool MismoJuego(const Juego& a, const Juego& b)
+{
+    if (a.sistema != b.sistema) return false;
+    const char* fa = strrchr(a.archivo, '.');
+    const char* fb = strrchr(b.archivo, '.');
+    size_t la = fa ? (size_t)(fa - a.archivo) : strlen(a.archivo), lb = fb ? (size_t)(fb - b.archivo) : strlen(b.archivo);
+    return la == lb && !strncasecmp(a.archivo, b.archivo, la);
+}
+// La ruta sin el "/mnt/usbN" del principio (el mismo USB puede aparecer montado dos veces).
+static const char* RutaEnUsb(const char* r) { return !strncmp(r, "/mnt/usb", 8) && r[8] && r[9] == '/' ? r + 9 : r; }
+
+static Repetidos MarcarRepetidos(Lista& l)
+{
+    Repetidos cuenta = {0, 0, 0};
+    int t = 1;
+    while (t < l.n * 2 + 16) t <<= 1;
+    int* h = (int*)malloc(sizeof(int) * t);   // la copia elegida de cada juego
+    if (!h) return cuenta;
+    for (int i = 0; i < t; i++) h[i] = -1;
+    for (int i = 0; i < l.n; i++) l.j[i].repetido = false;
+    for (int i = 0; i < l.n; i++)
+    {
+        Juego& j = l.j[i];
+        uint32_t k = HashJuego(j) & (t - 1);
+        while (h[k] >= 0 && !MismoJuego(l.j[h[k]], j)) k = (k + 1) & (t - 1);
+        if (h[k] < 0) { h[k] = i; continue; }
+        // Ya había otra copia: queda la mejor y la otra se oculta.
+        Juego& otra = l.j[h[k]];
+        Juego* oculto = &j;
+        if (PuntosCopia(j) > PuntosCopia(otra)) { oculto = &otra; h[k] = i; }
+        Juego& quedo = oculto == &j ? otra : j;
+        oculto->repetido = true;
+        if (oculto->enUsb && quedo.enUsb && !strcmp(RutaEnUsb(oculto->ruta), RutaEnUsb(quedo.ruta))) cuenta.variosUsb++;
+        else if (oculto->enUsb != quedo.enUsb) cuenta.usbYConsola++;
+        else cuenta.otraCarpeta++;
+    }
+    free(h);
+    return cuenta;
+}
+
 // ---------- recorrido del USB ----------
 struct Busq { int prof, vistas, nuevos; bool rapida; char carpeta[1024]; };
 
@@ -219,6 +273,7 @@ static void Entregar(bool final)
     if (!Copiar(entrega, nueva)) return;
     if (entrega.n > 1) qsort(entrega.j, entrega.n, sizeof(Juego), PorNombre);
     MarcarCopiados(entrega);
+    MarcarRepetidos(entrega);
     ultimaEntrega = Segundos();
     hayNueva.store(true, std::memory_order_release);
 }
@@ -237,6 +292,8 @@ static void AlEncontrar(const char* nombre, bool carpeta, void* u)
         b.prof--; b.carpeta[l] = 0;
         return;
     }
+    // Las BIOS de las colecciones ("[BIOS] SNK Neo Geo Pocket Color (World).zip") no son juegos: abiertas, pantalla negra.
+    if (!strncmp(nombre, "[BIOS]", 6)) return;
     bool comprimido = EsComprimido(nombre);
     int sistema = comprimido ? 0 : SistemaDe(nombre);
     // ".bin" es muy común: suelto, solo cuenta como Mega Drive en una carpeta de Mega Drive o si trae la firma "SEGA" de
@@ -258,6 +315,14 @@ static void AlEncontrar(const char* nombre, bool carpeta, void* u)
     // Búsqueda rápida (al abrir la app): lo que ya está en el índice con la misma ruta se reusa sin preguntarle nada al
     // USB (cada consulta allá es lenta). La completa (triángulo) revisa además que no haya cambiado de tamaño.
     const Juego* antes = BuscarAnterior(j.ruta);
+    // Un arcade que quedó sin reconocer (en "Arcade" con el nombre del zip) pero cuyo nombre la tabla sí conoce: se vuelve
+    // a revisar (pasaba cuando la tabla todavía no estaba cargada; ver ArcadeIniciar en main.cpp).
+    if (antes && antes->sistema == SIS_ARCADE && antes->estado == ARC_DESCONOCIDO && ArcadeBuscar(ArcadeNombreDeRuta(antes->ruta)) >= 0)
+        antes = NULL;
+    // Un comprimido copiado a la consola que quedó como SNES: la carpeta de la app contaba como carpeta "de SNES" (ver
+    // ConsolaPorCarpeta). Se vuelve a revisar (está en el disco de la consola: es rápido).
+    if (antes && antes->sistema == SIS_SNES && comprimido && !strncmp(antes->ruta, CARPETA_DATOS, strlen(CARPETA_DATOS)))
+        antes = NULL;
     uint64_t bytes = 0;
     if (antes && b.rapida) j = *antes;
     else if (!ExisteArchivo(j.ruta, &bytes)) return;
@@ -268,7 +333,30 @@ static void AlEncontrar(const char* nombre, bool carpeta, void* u)
         InfoRom info;
         memset(&info, 0, sizeof info);
         int deCarpeta = comprimido ? ConsolaPorCarpeta(b.carpeta) : -1;
-        if (deCarpeta >= 0 && ConsolaDe(deCarpeta).presente)
+        // Arcade: un comprimido en una carpeta de arcade, o cuyo nombre es el de un juego arcade conocido (y sus archivos
+        // lo confirman). Las BIOS (neogeo.zip, pgm.zip...) no son juegos: no se listan.
+        char base[128];
+        snprintf(base, sizeof base, "%s", nombre);
+        if (strrchr(base, '.')) *strrchr(base, '.') = 0;
+        int arc = comprimido && ConsolaDe(SIS_ARCADE).presente && (deCarpeta == SIS_ARCADE || deCarpeta < 0) ? ArcadeBuscar(base) : -1;
+        int estado = ARC_SIN_REVISAR;
+        if (arc >= 0)
+        {
+            char explicacion[160];
+            estado = ArcadeRevisar(j.ruta, explicacion);
+            if (deCarpeta != SIS_ARCADE && estado == ARC_OTRA_VERSION) arc = -1;   // casi nada coincide: no era arcade
+        }
+        if (arc >= 0 || (deCarpeta == SIS_ARCADE && ConsolaDe(SIS_ARCADE).presente))
+        {
+            if (arc >= 0 && ArcadeEsBios(arc)) return;
+            sistema = arc >= 0 ? ArcadePlaca(arc) : SIS_ARCADE;   // Neo Geo, CPS1, CPS2 y CPS3 tienen pestaña propia
+            j.sistema = sistema;
+            j.estado = (int8_t)(arc >= 0 ? estado : ARC_DESCONOCIDO);
+            info.valida = true;
+            info.tamKB = (int)(bytes / 1024);
+            if (arc >= 0) snprintf(info.titulo, sizeof info.titulo, "%s", ArcadeNombre(arc));
+        }
+        else if (deCarpeta >= 0 && ConsolaDe(deCarpeta).presente)
         {
             // Comprimido en una carpeta que ya dice la consola ("GBA", "roms-gba", "Game Boy Advance"...): no se abre
             // (abrir cientos en el USB es lento). La rom de adentro se busca al jugar.
@@ -291,6 +379,9 @@ static void AlEncontrar(const char* nombre, bool carpeta, void* u)
         else { info.valida = true; info.tamKB = (int)(bytes / 1024); }   // las otras consolas no se analizan
         // El nombre del archivo es más legible que el interno (que viene en mayúsculas y cortado a 21 letras).
         NombreLimpio(nombre, j.nombre, sizeof j.nombre);
+        // Arcade: el título real del juego en vez del nombre corto del zip.
+        int ja = EsArcade(sistema) ? ArcadeBuscar(info.titulo) : -1;
+        if (ja >= 0) snprintf(j.nombre, sizeof j.nombre, "%s", ArcadeTitulo(ja));
         if (!j.nombre[0] && info.valida) snprintf(j.nombre, sizeof j.nombre, "%s", info.titulo);
         snprintf(j.mapeo, sizeof j.mapeo, "%s", info.mapeo);
         j.bytes = bytes;
@@ -307,7 +398,8 @@ static int PorNombre(const void* a, const void* b) { return strcasecmp(((const J
 // ---------- índice guardado ----------
 // Una línea por juego, separada por tabuladores: consola, bytes, válida, PAL, SRAM, KB, mapeo, nombre, ruta. El índice
 // de la versión 1 (solo SNES) no tenía la consola.
-static const char* const CABECERA = "SNESUI-BIBLIOTECA 2", *const CABECERA_1 = "SNESUI-BIBLIOTECA 1";
+static const char* const CABECERA = "SNESUI-BIBLIOTECA 3", *const CABECERA_2 = "SNESUI-BIBLIOTECA 2",
+                         *const CABECERA_1 = "SNESUI-BIBLIOTECA 1";
 
 static void RutaIndice(char* r, int max) { snprintf(r, max, "%s/biblioteca.txt", CARPETA_DATOS); }
 
@@ -320,7 +412,7 @@ static void GuardarIndice(const Lista& l)
     for (int i = 0; i < l.n; i++)
     {
         const Juego& j = l.j[i];
-        k += (size_t)snprintf(txt + k, cap - k, "%d\t%llu\t%d\t%d\t%d\t%d\t%s\t%s\t%s\n", j.sistema,
+        k += (size_t)snprintf(txt + k, cap - k, "%d\t%d\t%llu\t%d\t%d\t%d\t%d\t%s\t%s\t%s\n", j.sistema, j.estado,
                               (unsigned long long)j.bytes, j.valida, j.pal, j.tieneRam, j.tamKB, j.mapeo, j.nombre, j.ruta);
     }
     char r[160];
@@ -340,7 +432,8 @@ static void LeerIndice()
     if (!txt) return;
     if (LeerTexto(r, txt, (int)tam + 1) <= 0) { free(txt); return; }
     int campos;
-    if (!strncmp(txt, CABECERA, strlen(CABECERA))) campos = 9;
+    if (!strncmp(txt, CABECERA, strlen(CABECERA))) campos = 10;
+    else if (!strncmp(txt, CABECERA_2, strlen(CABECERA_2))) campos = 9;
     else if (!strncmp(txt, CABECERA_1, strlen(CABECERA_1))) campos = 8;
     else { free(txt); return; }
     char* p = strchr(txt, '\n');
@@ -349,17 +442,19 @@ static void LeerIndice()
         char* fin = strchr(p, '\n');
         if (fin) *fin = 0;
         // Partir la línea en sus campos (la versión 1 no tiene el primero, la consola: es SNES).
-        char* c0[9];
+        char* c0[10];
         int n = 0;
         c0[n++] = p;
         for (char* q = p; *q && n < campos; q++) if (*q == '\t') { *q = 0; c0[n++] = q + 1; }
-        char** c = campos == 9 ? c0 + 1 : c0;
-        int sistema = campos == 9 ? atoi(c0[0]) : SIS_SNES;
+        char** c = c0 + (campos - 8);   // los 8 campos de siempre, después de la consola y el estado
+        int sistema = campos >= 9 ? atoi(c0[0]) : SIS_SNES;
+        int estado = campos == 10 ? atoi(c0[1]) : 0;
         if (n == campos && sistema >= 0 && sistema < NUM_SISTEMAS && ConsolaDe(sistema).presente && Crecer(activa))
         {
             Juego& j = activa.j[activa.n];
             memset(&j, 0, sizeof j);
             j.sistema = sistema;
+            j.estado = (int8_t)estado;
             j.bytes = strtoull(c[0], NULL, 10);
             j.valida = atoi(c[1]); j.pal = atoi(c[2]); j.tieneRam = atoi(c[3]); j.tamKB = atoi(c[4]);
             snprintf(j.mapeo, sizeof j.mapeo, "%s", c[5]);
@@ -401,6 +496,10 @@ static void* HiloBusqueda(void*)
     Registrar("Búsqueda %s: %d carpetas, %d juegos (%d nuevos o cambiados), %.1f s", b.rapida ? "rápida" : "completa",
               b.vistas, nueva.n, b.nuevos, Segundos() - t0);
     MarcarCopiados(nueva);
+    Repetidos rep = MarcarRepetidos(nueva);
+    if (rep.variosUsb + rep.usbYConsola + rep.otraCarpeta)
+        Registrar("Juegos repetidos ocultos: %d por el mismo USB montado dos veces, %d en el USB y en la consola, %d en otra "
+                  "carpeta o formato", rep.variosUsb, rep.usbYConsola, rep.otraCarpeta);
     // Si no se pudo abrir ninguna carpeta (sin acceso, o la variante sin listado), se conserva la lista anterior (y se
     // espera a que la interfaz tome una entrega parcial que haya quedado, para que no quede a medias).
     if (algo)
@@ -428,6 +527,7 @@ void BibliotecaIniciar()
     iniciada = true;
     LeerIndice();
     MarcarCopiados(activa);
+    MarcarRepetidos(activa);
     BibliotecaBuscarDe(true);   // al abrir: la rápida (el índice ya tiene casi todo)
 }
 

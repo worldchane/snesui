@@ -24,10 +24,15 @@ struct Juego
     bool enUsb;            // está en un USB (si no, en la consola: /data/snes-ps4/juegos)
     bool copiado;          // está en el USB y también hay una copia igual en la consola (se muestra solo la copia)
     bool tambienEnUsb;     // está en la consola y también hay una copia igual en un USB
+    int8_t estado;         // arcade: si el zip está completo (EstadoArcade de arcade.h); 0 en las demás consolas
+    bool repetido;         // hay otra copia del mismo juego (misma consola y mismo nombre) que se muestra en su lugar
     uint32_t color1, color2;
 };
 
 static const int MAX_JUEGOS = 30000;
+
+// Si el juego se muestra en la biblioteca (de cada juego repetido se muestra una sola copia).
+inline bool Visible(const Juego& j) { return !j.copiado && !j.repetido; }
 
 void BibliotecaIniciar();                  // carga el índice guardado y empieza a buscar en segundo plano
 void BibliotecaBuscar();                   // vuelve a buscar, revisando todo (si ya está buscando, no hace nada)

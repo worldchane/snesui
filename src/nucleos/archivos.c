@@ -209,6 +209,21 @@ const char* path_basename(const char* path)
     return a ? a + 1 : path;
 }
 
+void path_vfs_init(const struct retro_vfs_interface_info* vfs_info) { (void)vfs_info; }
+
+char* find_last_slash(const char* str)
+{
+    const char* a = strrchr(str, '/');
+    const char* b = strrchr(str, 0x5C);
+    return (char*)(b > a ? b : a);
+}
+
+const char* path_get_extension(const char* path)
+{
+    const char* punto = path && *path ? strrchr(path_basename(path), '.') : NULL;
+    return punto ? punto + 1 : "";
+}
+
 char* path_remove_extension(char* path)
 {
     char* punto = path && *path ? strrchr(path_basename(path), '.') : NULL;
@@ -355,3 +370,16 @@ size_t fill_pathname_join_special_ext(char* out_path, const char* dir, const cha
     if (n < size) n += (size_t)snprintf(out_path + n, size - n, "%s%s", last ? last : "", ext ? ext : "");
     return n;
 }
+
+/* De file/retro_dirent.c: listar carpetas. Los núcleos que lo usan (FinalBurn Neo, para parches IPS y tarjetas de
+ * PGM2) funcionan sin eso: se responde que no hay nada (listar pediría funciones del sistema a cada núcleo). */
+struct RDIR;
+struct retro_vfs_interface_info;
+void dirent_vfs_init(const struct retro_vfs_interface_info* vfs_info) { (void)vfs_info; }
+struct RDIR* retro_opendir(const char* name) { (void)name; return NULL; }
+struct RDIR* retro_opendir_include_hidden(const char* name, bool include_hidden) { (void)name; (void)include_hidden; return NULL; }
+int retro_readdir(struct RDIR* rdir) { (void)rdir; return 0; }
+bool retro_dirent_error(struct RDIR* rdir) { (void)rdir; return true; }
+const char* retro_dirent_get_name(struct RDIR* rdir) { (void)rdir; return NULL; }
+bool retro_dirent_is_dir(struct RDIR* rdir, const char* unused) { (void)rdir; (void)unused; return false; }
+void retro_closedir(struct RDIR* rdir) { (void)rdir; }

@@ -10,6 +10,7 @@
 #include "../comun/pantalla.h"
 #include "../comun/plataforma.h"
 #include "../comun/texto.h"
+#include "arcade.h"
 #include "consola.h"
 #include "interfaz.h"
 
@@ -35,11 +36,39 @@ static void IniciarNucleos()
 static char lastre[PRUEBA_BSS_MB * 1024 * 1024];
 #endif
 
+#ifdef PRUEBA_CODIGO_MB
+// Prueba de arranque: relleno en el código y en los datos constantes, para ver si hay un tope de tamaño del programa
+// (con FinalBurn Neo el código pasa de 5,6 a 22 MB y los datos constantes de 0,1 a 8 MB).
+#define PRUEBA_TEXTO2(x) #x
+#define PRUEBA_TEXTO(x) PRUEBA_TEXTO2(x)
+__asm__(".section .text.relleno,\"ax\",@progbits\n.globl RellenoDeCodigo\nRellenoDeCodigo:\n.fill " PRUEBA_TEXTO(PRUEBA_CODIGO_MB) "*1048576,1,0xcc\n"
+        ".section .rodata.relleno,\"a\",@progbits\n.globl RellenoDeDatos\nRellenoDeDatos:\n.fill 8*1048576,1,0x5a\n.text\n");
+extern "C" const char RellenoDeCodigo[], RellenoDeDatos[];
+#endif
+
+#ifdef PRUEBA_PUNTEROS
+// Prueba de arranque: una tabla de punteros que la PS4 tiene que corregir al cargar (una reubicación por cada uno),
+// para ver si hay un tope de reubicaciones. Escribible (no va a la zona RELRO) y armada en compilación (sin constructor).
+static void PunteroDePrueba() {}
+struct TablaDePrueba
+{
+    void (*p[PRUEBA_PUNTEROS])();
+    constexpr TablaDePrueba() : p() { for (int i = 0; i < PRUEBA_PUNTEROS; i++) p[i] = PunteroDePrueba; }
+};
+static TablaDePrueba tablaDePrueba;
+#endif
+
 int main()
 {
 #ifdef PRUEBA_BSS_MB
     ((volatile char*)lastre)[0] = 1;
     ((volatile char*)lastre)[sizeof lastre - 1] = 1;
+#endif
+#ifdef PRUEBA_CODIGO_MB
+    if (((volatile const char*)RellenoDeDatos)[5] != 0x5a || ((volatile const char*)RellenoDeCodigo)[0] != (char)0xcc) printf("relleno mal\n");
+#endif
+#ifdef PRUEBA_PUNTEROS
+    if (((void (*volatile*)())tablaDePrueba.p)[PRUEBA_PUNTEROS - 1] != PunteroDePrueba) printf("tabla de prueba mal\n");
 #endif
 #ifndef SIN_INICIAR_NUCLEOS
     IniciarNucleos();
@@ -50,6 +79,9 @@ int main()
     IniciarAudio();
     CrearCarpetas(CARPETA_DATOS);   // /data/snes-ps4 (guardados, carátulas, ajustes)
     CopiarBiosIncluidas();          // solo en la variante personal
+    // La tabla de juegos arcade se carga acá, antes de los hilos: la búsqueda y las carátulas la consultan a la vez y,
+    // cargada al vuelo, el que llegaba segundo la veía vacía (juegos en "Arcade" con el nombre del zip).
+    ArcadeIniciar();
     IniciarTrabajadores(4);
     if (!PantallaIniciar()) for (;;) sceKernelUsleep(1000000);
     bool fuentes = CargarFuentes();

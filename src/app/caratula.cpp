@@ -9,6 +9,7 @@
 #include <string.h>
 
 #include "../comun/plataforma.h"
+#include "arcade.h"
 #include "consola.h"
 
 #define STB_IMAGE_STATIC
@@ -512,6 +513,12 @@ static void* HiloDescarga(void*)
         {
             const char* nombre;
             if (ConsolaDeClave(claves[i], &nombre).sistema != s) continue;
+            // Arcade: la clave es el nombre corto del zip; en el servidor están por el título.
+            if (EsArcade(s))
+            {
+                int ja = ArcadeBuscar(nombre);
+                if (ja >= 0) nombre = ArcadeTitulo(ja);
+            }
             progreso.hechas = hechas;
             if (HayCaratula(claves[i]) || YaNoEncontrada(claves[i])) { progreso.hechas = ++hechas; continue; }
             snprintf(progreso.detalle, sizeof progreso.detalle, "%s", nombre);

@@ -9,15 +9,19 @@ set -e
 AQUI=$(cd "$(dirname "$0")/.." && pwd)
 CXX=${CXX:-/c/ps4dev/llvm/bin/clang++}
 mkdir -p "$AQUI/pc/salida" "$AQUI/pc/data"
+# Con FinalBurn Neo son tantos objetos que link.exe no acepta la lista (LNK1170): se enlaza con lld-link, que es el
+# mismo ld.lld de LLVM con otro nombre (una copia en pc/salida).
+[ -f "$AQUI/pc/salida/lld-link.exe" ] || cp "$(dirname "$CXX")/ld.lld.exe" "$AQUI/pc/salida/lld-link.exe"
+ENLAZADOR="-fuse-ld=lld -B$(cd "$AQUI/pc/salida" && pwd -W)/"
 OPC="-std=gnu++20 -O2 -D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH -D_USE_MATH_DEFINES -D_CRT_SECURE_NO_WARNINGS -isystem $AQUI/pc/incluir"
 NUCLEO="$AQUI/src/nucleo/snes.cpp $AQUI/src/nucleo/cpu.cpp $AQUI/src/nucleo/bus.cpp $AQUI/src/nucleo/ppu.cpp $AQUI/src/nucleo/apu.cpp $AQUI/src/nucleo/rom.cpp $AQUI/src/nucleo/superfx.cpp $AQUI/src/nucleo/dsp1.cpp $AQUI/src/nucleo/dsp2.cpp $AQUI/src/nucleo/obc1.cpp $AQUI/src/nucleo/sa1cpu.cpp $AQUI/src/nucleo/cx4.cpp $AQUI/src/nucleo/sdd1.cpp $AQUI/src/nucleo/spc7110.cpp $AQUI/src/nucleo/st010.cpp"
-INTERFAZ="$AQUI/src/comun/lienzo.cpp $AQUI/src/comun/texto.cpp $AQUI/src/comun/estilo.cpp $AQUI/src/app/interfaz.cpp $AQUI/src/app/biblioteca.cpp $AQUI/src/app/caratula.cpp $AQUI/src/app/copiar.cpp $AQUI/src/app/ajustes.cpp $AQUI/src/app/fondo.cpp $AQUI/src/app/rebobinar.cpp $AQUI/src/app/juego.cpp $AQUI/src/app/registro.cpp $AQUI/src/app/consola.cpp $AQUI/src/app/nucleo_libretro.cpp"
+INTERFAZ="$AQUI/src/comun/musica.cpp $AQUI/src/comun/lienzo.cpp $AQUI/src/comun/texto.cpp $AQUI/src/comun/estilo.cpp $AQUI/src/app/interfaz.cpp $AQUI/src/app/biblioteca.cpp $AQUI/src/app/caratula.cpp $AQUI/src/app/copiar.cpp $AQUI/src/app/ajustes.cpp $AQUI/src/app/fondo.cpp $AQUI/src/app/rebobinar.cpp $AQUI/src/app/juego.cpp $AQUI/src/app/registro.cpp $AQUI/src/app/consola.cpp $AQUI/src/app/nucleo_libretro.cpp $AQUI/src/app/arcade.cpp"
 # Los núcleos libretro de las otras consolas (ver src/nucleos/nucleos.sh).
-sh "$AQUI/src/nucleos/nucleos.sh" pc >/dev/null
+sh "$AQUI/src/nucleos/nucleos.sh" pc $NUCLEOS >/dev/null   # NUCLEOS: cuáles (vacío = los de siempre)
 NUCLEOS_DEF=$(tr '\n' ' ' < "$AQUI/obj/nucleos/pc/definiciones.txt")
 NUCLEOS_OBJ=@$(cd "$AQUI/obj/nucleos/pc" && pwd -W)/enlazar.rsp
-"$CXX" $OPC -DRUTA_ASSETS=\"assets\" $NUCLEOS_DEF -Dfseeko=_fseeki64 -Dftello=_ftelli64 "$AQUI/pc/simular.cpp" "$AQUI/pc/plataforma_pc.cpp" $INTERFAZ $NUCLEO $NUCLEOS_OBJ -lws2_32 -lshell32 -lshlwapi -lole32 -o "$AQUI/pc/salida/simular.exe"
+"$CXX" $OPC -DRUTA_ASSETS=\"assets\" $NUCLEOS_DEF -Dfseeko=_fseeki64 -Dftello=_ftelli64 "$AQUI/pc/simular.cpp" "$AQUI/pc/plataforma_pc.cpp" $INTERFAZ $NUCLEO $NUCLEOS_OBJ -lws2_32 -lshell32 -lshlwapi -lole32 $ENLAZADOR -o "$AQUI/pc/salida/simular.exe"
 "$CXX" $OPC "$AQUI/pc/probar_snes.cpp" $NUCLEO -o "$AQUI/pc/salida/probar_snes.exe"
-"$CXX" $OPC $NUCLEOS_DEF -Dfseeko=_fseeki64 -Dftello=_ftelli64 "$AQUI/pc/probar_consola.cpp" "$AQUI/pc/plataforma_pc.cpp" "$AQUI/src/app/consola.cpp" "$AQUI/src/app/nucleo_libretro.cpp" "$AQUI/src/app/registro.cpp" "$AQUI/src/app/copiar.cpp" $NUCLEO $NUCLEOS_OBJ -lws2_32 -lshell32 -lshlwapi -lole32 -o "$AQUI/pc/salida/probar_consola.exe"
+"$CXX" $OPC -DRUTA_ASSETS=\"assets\" $NUCLEOS_DEF -Dfseeko=_fseeki64 -Dftello=_ftelli64 "$AQUI/pc/probar_consola.cpp" "$AQUI/pc/plataforma_pc.cpp" "$AQUI/src/app/consola.cpp" "$AQUI/src/app/nucleo_libretro.cpp" "$AQUI/src/app/arcade.cpp" "$AQUI/src/app/registro.cpp" "$AQUI/src/app/copiar.cpp" $NUCLEO $NUCLEOS_OBJ -lws2_32 -lshell32 -lshlwapi -lole32 $ENLAZADOR -o "$AQUI/pc/salida/probar_consola.exe"
 "$CXX" $OPC "$AQUI/pc/probar_estado.cpp" $NUCLEO -o "$AQUI/pc/salida/probar_estado.exe"
 echo "listo: pc/salida/simular.exe, probar_snes.exe, probar_estado.exe, probar_consola.exe"

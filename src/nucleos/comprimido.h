@@ -15,6 +15,7 @@ typedef struct
 {
     char nombre[256];   /* con las carpetas de adentro, separadas por '/' */
     uint64_t tam;       /* descomprimido */
+    uint32_t crc;       /* CRC-32 del archivo (0 si el comprimido no lo trae) */
     int indice;         /* para ComprimidoSacar */
 } EntradaComprimido;
 

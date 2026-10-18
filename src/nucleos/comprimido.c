@@ -42,6 +42,7 @@ static int ZipListarAbierto(mz_zip_archive* z, EntradaComprimido* out, int max)
         if (!mz_zip_reader_file_stat(z, i, &st) || st.m_is_directory) continue;
         Copiar(out[k].nombre, st.m_filename);
         out[k].tam = st.m_uncomp_size;
+        out[k].crc = (uint32_t)st.m_crc32;
         out[k].indice = (int)i;
         k++;
     }
@@ -169,6 +170,7 @@ static int SieteListarAbierto(Abierto7z* a, EntradaComprimido* out, int max)
         t[o] = 0;
         Copiar(out[k].nombre, t);
         out[k].tam = SzArEx_GetFileSize(&a->db, i);
+        out[k].crc = SzBitWithVals_Check(&a->db.CRCs, i) ? a->db.CRCs.Vals[i] : 0;
         out[k].indice = (int)i;
         k++;
     }
@@ -216,6 +218,7 @@ static int RarListarAbierto(dmc_unrar_archive* a, EntradaComprimido* out, int ma
         const dmc_unrar_file* st = dmc_unrar_get_file_stat(a, i);
         Copiar(out[k].nombre, t);
         out[k].tam = st ? st->uncompressed_size : 0;
+        out[k].crc = st ? (uint32_t)st->crc : 0;
         out[k].indice = (int)i;
         k++;
     }

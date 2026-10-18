@@ -11,8 +11,9 @@ for a in sys.argv[3:]:
     else:
         objetos += open(a[1:]).read().splitlines() if a.startswith('@') else [a]
 
-# Los nombres que el propio núcleo borra con #undef (por ejemplo "#define RefreshAddr otra ... #undef RefreshAddr") no se
-# pueden renombrar con un #define: el #undef se lo llevaría. Se dejan como están.
+# Los nombres que el propio núcleo borra con #undef (por ejemplo "#define RefreshAddr otra ... #undef RefreshAddr") o
+# pregunta con #ifdef / #ifndef / defined() (por ejemplo "#ifndef bprintf") no se pueden renombrar con un #define: el
+# #undef se lo llevaría, o la pregunta cambiaría de respuesta. Se dejan como están.
 import os, re
 redefinidos = set()
 for raiz in fuentes:
@@ -23,7 +24,8 @@ for raiz in fuentes:
                     texto = open(os.path.join(carpeta, f), encoding='latin-1').read()
                 except OSError:
                     continue
-                redefinidos.update(re.findall(r'^\s*#\s*undef\s+([A-Za-z_]\w*)', texto, re.M))
+                redefinidos.update(re.findall(r'^\s*#\s*(?:undef|ifdef|ifndef)\s+([A-Za-z_]\w*)', texto, re.M))
+                redefinidos.update(re.findall(r'defined\s*\(?\s*([A-Za-z_]\w*)', texto))
 objetos = [o for o in objetos if o.strip()]
 NO_TOCAR = ('SameBoyIniciar_',)   # los llama la app con su nombre (consola.cpp)
 

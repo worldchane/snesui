@@ -69,6 +69,24 @@ NUCLEO(a78, "ProSystem")
 static void Iniciar_lynx() {}
 NUCLEO(lynx, "Handy")
 #endif
+#ifdef CON_NUCLEO_ARC
+// El arcade se abre por la ruta: FinalBurn Neo lee el zip (y los del juego padre y la BIOS) por su cuenta, y algunos
+// sets pasan de los 64 MB que se cargan a memoria en las demás consolas.
+API_LIBRETRO_DECLARAR(arc_)
+static const ApiLibretro api_arc = API_LIBRETRO_TABLA(arc_);
+// Agregada a la copia de su libretro.cpp (nucleos.sh): si al cargar se quedó en su pantalla de error (le faltan archivos
+// al set), que la app no deja correr: pierde memoria cada vez y, tras varias, el núcleo se cae.
+extern "C" bool arc_ALLESIU_ErrorFBNeo(void);
+static bool Cargar_arc(const char* r, char* e)
+{
+    if (!LibretroCargarRuta(&api_arc, "FinalBurn Neo", r, e)) return false;
+    if (!arc_ALLESIU_ErrorFBNeo()) return true;
+    ConsolaDe(SIS_ARCADE).Descargar();
+    snprintf(e, 160, "FinalBurn Neo no pudo abrir este juego: a sus zips les faltan archivos para esta versión del emulador.");
+    return false;
+}
+static bool CargarMemoria_arc(const char* r, const char*, uint8_t* d, uint32_t, char* e) { free(d); return Cargar_arc(r, e); }
+#endif
 
 static Consola consolas[NUM_SISTEMAS] = {
     {SIS_SNES, "SNES", "SNES", "SNES", "sfc|smc|fig|swc", "Nintendo_-_Super_Nintendo_Entertainment_System", 4.f / 3},
@@ -84,7 +102,11 @@ static Consola consolas[NUM_SISTEMAS] = {
     {SIS_LYNX, "LYNX", "Atari Lynx", "LYNX", "lnx", "Atari_-_Lynx", 160.f / 102},
     {SIS_SMS, "SMS", "Master System", "SMS", "sms", "Sega_-_Master_System_-_Mark_III", 4.f / 3},
     {SIS_GG, "GG", "Game Gear", "GG", "gg", "Sega_-_Game_Gear", 10.f / 9},
-    {SIS_ARCADE, "ARCADE", "Arcade (MAME 2003-Plus)", "ARCADE", "", "MAME", 4.f / 3},
+    {SIS_ARCADE, "ARCADE", "Arcade", "ARCADE", "", "FBNeo_-_Arcade_Games", 4.f / 3},
+    {SIS_NEOGEO, "NEO GEO", "Neo Geo", "NEOGEO", "", "FBNeo_-_Arcade_Games", 4.f / 3},
+    {SIS_CPS1, "CPS1", "Capcom CPS1", "CPS1", "", "FBNeo_-_Arcade_Games", 4.f / 3},
+    {SIS_CPS2, "CPS2", "Capcom CPS2", "CPS2", "", "FBNeo_-_Arcade_Games", 4.f / 3},
+    {SIS_CPS3, "CPS3", "Capcom CPS3", "CPS3", "", "FBNeo_-_Arcade_Games", 4.f / 3},
 };
 static bool armadas;
 
@@ -135,6 +157,9 @@ static void Armar()
 #endif
 #ifdef CON_NUCLEO_LYNX
     USAR(lynx, SIS_LYNX)
+#endif
+#ifdef CON_NUCLEO_ARC
+    USAR(arc, SIS_ARCADE, SIS_NEOGEO, SIS_CPS1, SIS_CPS2, SIS_CPS3)
 #endif
 }
 
@@ -257,7 +282,7 @@ int CopiarBiosIncluidas()
     // Las que usan los núcleos, con el nombre que buscan. En el paquete van sin espacios ni paréntesis (construir.sh).
     static const char* const BIOS[] = {
         "disksys.rom", "gba_bios.bin", "gb_bios.bin", "gbc_bios.bin", "bios_U.sms", "bios_E.sms", "bios_J.sms", "bios.gg",
-        "bios_CD_U.bin", "bios_CD_E.bin", "bios_CD_J.bin", "7800 BIOS (U).rom", "lynxboot.img", "neogeo.zip",
+        "bios_CD_U.bin", "bios_CD_E.bin", "bios_CD_J.bin", "7800 BIOS (U).rom", "7800 BIOS (E).rom", "lynxboot.img", "neogeo.zip",
     };
     char carpeta[160];
     snprintf(carpeta, sizeof carpeta, "%s/bios", CARPETA_DATOS);
@@ -303,6 +328,8 @@ static const Alias ALIAS[] = {
     {SIS_A2600, "2600"}, {SIS_A2600, "a2600"}, {SIS_A2600, "atari2600"},
     {SIS_A7800, "7800"}, {SIS_A7800, "a7800"}, {SIS_A7800, "atari7800"},
     {SIS_LYNX, "lynx"}, {SIS_LYNX, "atarilynx"},
+    {SIS_ARCADE, "arcade"}, {SIS_ARCADE, "mame"}, {SIS_ARCADE, "fbneo"}, {SIS_ARCADE, "fba"}, {SIS_ARCADE, "finalburn"},
+    {SIS_ARCADE, "finalburnneo"}, {SIS_ARCADE, "neogeo"}, {SIS_ARCADE, "cps1"}, {SIS_ARCADE, "cps2"}, {SIS_ARCADE, "cps3"},
 };
 
 // La consola que dice un nombre de carpeta: alguna palabra igual a un nombre corto ("roms-gba" → gba), o el nombre
@@ -342,15 +369,19 @@ static int ConsolaDeNombre(const char* nombre, size_t largo)
 
 int ConsolaPorCarpeta(const char* carpeta)
 {
-    // De la carpeta más honda hacia arriba: "USB/roms/GBA/Acción" → GBA.
+    // De la carpeta más honda hacia arriba: "USB/roms/GBA/Acción" → GBA. La carpeta de la app (/data/snes-ps4) no
+    // cuenta: su nombre dice "snes" y todo lo copiado a la consola quedaba como juego de SNES.
+    const char* tope = carpeta;
+    size_t nd = strlen(CARPETA_DATOS);
+    if (!strncmp(carpeta, CARPETA_DATOS, nd) && (carpeta[nd] == '/' || !carpeta[nd])) tope = carpeta + nd + (carpeta[nd] ? 1 : 0);
     const char* fin = carpeta + strlen(carpeta);
-    while (fin > carpeta)
+    while (fin > tope)
     {
         const char* ini = fin;
-        while (ini > carpeta && ini[-1] != '/') ini--;
+        while (ini > tope && ini[-1] != '/') ini--;
         int s = ConsolaDeNombre(ini, (size_t)(fin - ini));
         if (s >= 0) return s;
-        fin = ini > carpeta ? ini - 1 : carpeta;
+        fin = ini > tope ? ini - 1 : tope;
     }
     return -1;
 }

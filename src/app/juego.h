@@ -3,6 +3,7 @@
 #pragma once
 #include "../comun/plataforma.h"
 
-bool JuegoAbrir(const char* ruta, const char* nombre);
+// 'sistema': la consola que eligió la biblioteca (SIS_*), o -1 para deducirla de la extensión.
+bool JuegoAbrir(const char* ruta, const char* nombre, int sistema = -1);
 bool JuegoActivo();
 void JuegoCuadro(float t, float dt, const Mando& m);

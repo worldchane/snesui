@@ -158,6 +158,15 @@ prosystem() {
   ARCH="$D/core/libretro.c"
   for f in Bios BupChip Cartridge Database Hash Maria Memory Palette Pokey ProSystem Region Riot Sally Tia; do ARCH="$ARCH $D/core/$f.c"; done
   for f in channel coretone music sample; do ARCH="$ARCH $D/bupboop/coretone/$f.c"; done
+  # bios_enabled queda en true para siempre una vez cargada una BIOS: un juego europeo después de uno americano (sin la
+  # BIOS PAL) arrancaba "con BIOS" sin tenerla y quedaba en negro. Copia que lo apaga antes de cada carga.
+  mkdir -p "$OBJ/prosystem/fuente"
+  c="$OBJ/prosystem/fuente/libretro.c"
+  if [ ! -f "$c" ] || [ "$D/core/libretro.c" -nt "$c" ]; then
+    sed 's/^   if (bios_Load(biospath))$/   bios_enabled = false;   \/* ALLESIU: ver nucleos.sh *\/\n   if (bios_Load(biospath))/' "$D/core/libretro.c" > "$c"
+    grep -q "ALLESIU: ver nucleos.sh" "$c" || { echo "prosystem: no se pudo corregir libretro.c"; rm -f "$c"; exit 1; }
+  fi
+  ARCH=$(echo "$ARCH" | sed "s|$D/core/libretro.c|$c|")
   # En Windows su boolean.h define bool como unsigned char (truco viejo de MSVC) y choca con stdbool: SN_TARGET_PS3 lo saltea.
   OPC="-I$D/core -I$D/bupboop -I$LC/include"
   [ "$DESTINO" = pc ] && OPC="$OPC -DSN_TARGET_PS3"
@@ -228,10 +237,12 @@ fbneo() {
   LISTA=$OBJ/fbneo/lista_fuentes.txt
   INC=$OBJ/fbneo/cabeceras.txt
   mkdir -p "$OBJ/fbneo/fuente"
-  if [ ! -f "$LISTA" ] || [ "$AQUI/herramientas/lista_fbneo.py" -nt "$LISTA" ]; then
-    python "$AQUI/herramientas/lista_fbneo.py" "$(cygpath -m "$EXT/FBNeo")" "$(cygpath -m "$LISTA")" "$(cygpath -m "$INC")" || exit 1
-  fi
   F=$OBJ/fbneo/fuente
+  # La lista, sin los drivers de consolas (con su driverlist.h, en $F: tiene prioridad sobre la original).
+  if [ ! -f "$LISTA" ] || [ ! -f "$F/driverlist.h" ] || [ "$AQUI/herramientas/lista_fbneo.py" -nt "$LISTA" ]; then
+    python "$AQUI/herramientas/lista_fbneo.py" "$(cygpath -m "$EXT/FBNeo")" "$(cygpath -m "$LISTA")" "$(cygpath -m "$INC")" \
+      "$(cygpath -m "$F/driverlist.h")" || exit 1
+  fi
   S=$D/burn/snd
   if [ ! -f "$F/mpeg_audio.h" ] || [ "$S/mpeg_audio.h" -nt "$F/mpeg_audio.h" ]; then
     sed -e 's/int current_pos, current_limit;/int current_pos, current_limit; bool limite_superado;/' \
@@ -239,9 +250,48 @@ fbneo() {
     sed -e 's/try {/{ limite_superado = false;/' -e 's/} catch(limit_hit) {/} if (limite_superado) {/' "$S/mpeg_audio.cpp" > "$F/mpeg_audio.cpp"
     cp "$S/ymz770.cpp" "$F/ymz770.cpp"
   fi
-  ARCH=$(sed 's|^C:/ps4dev/externos|'"$EXT"'|' "$LISTA" | sed "s|$S/mpeg_audio.cpp|$F/mpeg_audio.cpp|; s|$S/ymz770.cpp|$F/ymz770.cpp|" | tr '\n' ' ')
+  # burn.cpp: BurnLibExit (retro_deinit) libera la copia de los nombres de los juegos pero deja los punteros de los
+  # drivers apuntando ahí, y no la marca como liberada: el siguiente retro_init la libera de nuevo y copia nombres de
+  # memoria ya liberada (la app se caía al abrir el segundo juego de arcade). La copia se arma una sola vez y queda.
+  if [ ! -f "$F/burn.cpp" ] || [ "$D/burn/burn.cpp" -nt "$F/burn.cpp" ]; then
+    sed -e 's/^	if (0 == nBurnDrvCount) return;$/	static bool listaHecha = false; if (0 == nBurnDrvCount || listaHecha) return; listaHecha = true;/' \
+        -e '/^static void BurnGameListExit()$/{n;s/^{$/{ if (1) return;   \/\/ ALLESIU: ver nucleos.sh/;}' "$D/burn/burn.cpp" > "$F/burn.cpp"
+    grep -q "listaHecha = true" "$F/burn.cpp" && grep -q "ALLESIU: ver nucleos.sh" "$F/burn.cpp" || { echo "fbneo: no se pudo corregir burn.cpp"; rm -f "$F/burn.cpp"; exit 1; }
+  fi
+  # libretro.cpp y retro_input.cpp arman textos con std::ostringstream (macro SSTR): eso trae iostream, locales y el
+  # runtime de excepciones de C++ (CE-41839-5). Copias con SSTR_ALLESIU (incluir/sstr_allesiu.h), que concatena sin eso.
+  R=$D/burner/libretro
+  # En retro_input.cpp además: al configurar los mandos sin un juego andando (el anterior se cerró y el nuevo quedó en la
+  # pantalla de error por romset incompleto) refrescaba los controles del driver activo, que no hay: la app se caía.
+  for f in libretro retro_input; do
+    if [ ! -f "$F/$f.cpp" ] || [ "$R/$f.cpp" -nt "$F/$f.cpp" ] || ! grep -q "ALLESIU" "$F/$f.cpp"; then
+      sed -e 's/SSTR(/SSTR_ALLESIU(/g' \
+          -e 's/^		if (bControllersSetOnce)$/		if (bControllersSetOnce \&\& nBurnDrvActive != ~0U)   \/\/ ALLESIU: ver nucleos.sh/' "$R/$f.cpp" > "$F/$f.cpp"
+    fi
+  done
+  # Y a libretro.cpp una función para que la app sepa si la carga terminó en su pantalla de error (consola.cpp).
+  grep -q "ALLESIU_ErrorFBNeo" "$F/libretro.cpp" || echo 'extern "C" bool arc_ALLESIU_ErrorFBNeo(void) { return gui_show; }   /* ya con el prefijo: ver simbolos_nucleo.py */' >> "$F/libretro.cpp"
+  grep -q "ALLESIU: ver nucleos.sh" "$F/retro_input.cpp" || { echo "fbneo: no se pudo corregir retro_input.cpp"; rm -f "$F/retro_input.cpp"; exit 1; }
+  # vdc.cpp (video de PC Engine, que usan también algunas placas arcade) lee las DIP del driver de PC Engine, que no va.
+  [ -f "$F/pce_dips.cpp" ] || echo "unsigned char PCEDips[4];" > "$F/pce_dips.cpp"
+  ARCH=$(sed 's|^C:/ps4dev/externos|'"$EXT"'|' "$LISTA" | sed "s|$S/mpeg_audio.cpp|$F/mpeg_audio.cpp|; s|$S/ymz770.cpp|$F/ymz770.cpp|; s|$R/libretro.cpp|$F/libretro.cpp|; s|$R/retro_input.cpp|$F/retro_input.cpp|; s|$D/burn/burn.cpp|$F/burn.cpp|" | tr '\n' ' ')
+  ARCH="$ARCH $F/pce_dips.cpp"
+  # Lo que en su Makefile va en bloques opcionales (la lista no los trae): su zlib, los sets en .7z y las imágenes CHD
+  # (su código de CD las usa siempre; también sirven para Neo Geo CD).
+  L=$D/dep/libs
+  for f in inflate zutil inffast crc32 adler32 inftrees deflate trees; do ARCH="$ARCH $L/zlib/$f.c"; done
+  ARCH="$ARCH $D/burner/un7z.cpp"
+  for f in 7zArcIn 7zBuf 7zCrc 7zCrcOpt 7zDec 7zStream Bcj2 Bra Bra86 BraIA64 CpuArch Delta Lzma2Dec LzmaDec Ppmd7 Ppmd7Dec; do
+    ARCH="$ARCH $L/lib7z/$f.c"
+  done
+  ARCH="$ARCH $D/intf/cd/cd_chd.cpp $L/lzma/libchdr_lzma.c $L/zstd/zstddeclib.c"
+  for f in chd codec_zlib codec_cdzl bitstream huffman codec_huff codec_flac codec_lzma codec_zstd codec_cdlz codec_cdfl codec_cdzs cdrom; do
+    ARCH="$ARCH $L/libchdr/libchdr_$f.c"
+  done
   OPC="-I$F $(sed 's|^C:/ps4dev/externos|'"$EXT"'|; s|^|-I|' "$INC" | grep -v libretro-common | tr '\n' ' ') -I$LC/include
-       -DLSB_FIRST -DUSE_SPEEDHACKS -DHAVE_UNISTD_H -Wno-register"
+       -I$L/libchdr/include -I$L/lzma -I$L/lzma/include -I$L/zstd -idirafter $D/burner/libretro/libretro-common/include
+       -DLSB_FIRST -DUSE_SPEEDHACKS -DHAVE_UNISTD_H -DINCLUDE_7Z_SUPPORT -DZ7_PPMD_SUPPORT -DZ7_ST -DINCLUDE_CHD_SUPPORT
+       -DUSE_LIBRETRO_VFS -DCHDR_SYSTEM_ZLIB -Wno-register -Wno-c++11-narrowing -include $AQUI/src/nucleos/incluir/sstr_allesiu.h"
   compilar fbneo arc "$OPC" $ARCH
 }
 

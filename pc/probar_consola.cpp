@@ -12,6 +12,7 @@
 #include <string>
 #include <vector>
 
+#include "../src/app/arcade.h"
 #include "../src/app/consola.h"
 #include "../src/comun/plataforma.h"
 #include "../src/nucleo/snes.h"   // los bits del mando (SB_*), iguales para todas las consolas
@@ -49,7 +50,26 @@ static Resultado Probar(const char* ruta, int cuadros, const char* png)
 {
     Resultado r = {};
     const Consola* c = NULL;
-    if (EsComprimido(ruta))
+    // Arcade: el nombre del zip es el de un juego conocido (FinalBurn Neo lo abre por la ruta).
+    int ja = EsComprimido(ruta) ? ArcadeBuscar(ArcadeNombreDeRuta(ruta)) : -1;
+    if (ja >= 0 && ConsolaDe(ArcadePlaca(ja)).presente)
+    {
+        c = &ConsolaDe(ArcadePlaca(ja));
+        char explicacion[160];
+        int estado = ArcadeRevisar(ruta, explicacion);
+        // Como la app (juego.cpp): los sets con archivos propios que faltan, de otra versión o sin BIOS no se abren.
+        // TODOS_ARCADE=1 los abre igual (para probar el núcleo con sets rotos).
+        if (!getenv("TODOS_ARCADE") && (estado == ARC_FALTAN_ARCHIVOS || estado == ARC_OTRA_VERSION || estado == ARC_FALTA_BIOS))
+        {
+            snprintf(r.error, sizeof r.error, "%s", explicacion);
+            snprintf(r.consola, sizeof r.consola, "%s", c->nombre);
+            return r;
+        }
+        r.cargo = c->Cargar(ruta, r.error);
+        if (!r.cargo && estado != ARC_COMPLETO) snprintf(r.error, sizeof r.error, "%s", explicacion);
+        else if (estado != ARC_COMPLETO) snprintf(r.error, sizeof r.error, "revision %d: %s", estado, explicacion);
+    }
+    else if (EsComprimido(ruta))
     {
         char interno[256];
         uint32_t tam = 0;
@@ -96,8 +116,18 @@ static Resultado Probar(const char* ruta, int cuadros, const char* png)
     return r;
 }
 
+#include <windows.h>
+static LONG WINAPI AlCaer(EXCEPTION_POINTERS* e)
+{
+    fprintf(stderr, "CAIDA codigo %08lx en %p (base %p, desplazamiento %llx)\n", e->ExceptionRecord->ExceptionCode,
+            e->ExceptionRecord->ExceptionAddress, (void*)GetModuleHandleA(NULL),
+            (unsigned long long)((char*)e->ExceptionRecord->ExceptionAddress - (char*)GetModuleHandleA(NULL)));
+    return EXCEPTION_EXECUTE_HANDLER;
+}
+
 int main(int argc, char** argv)
 {
+    SetUnhandledExceptionFilter(AlCaer);
     if (argc < 3) { printf("uso: probar_consola <rom | @lista.txt> <cuadros> [carpeta]\n"); return 1; }
     // probar_consola reconocer @lista.txt: cuánto tarda la biblioteca en saber la consola de cada comprimido.
     if (!strcmp(argv[1], "reconocer"))

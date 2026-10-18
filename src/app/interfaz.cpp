@@ -4,14 +4,17 @@
 #include "interfaz.h"
 
 #include <math.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 
+#include "../comun/musica.h"
 #include "../comun/estilo.h"
 #include "../comun/lienzo.h"
 #include "../comun/texto.h"
 #include "biblioteca.h"
 #include "ajustes.h"
+#include "arcade.h"
 #include "caratula.h"
 #include "consola.h"
 #include "copiar.h"
@@ -219,7 +222,7 @@ static void ArmarPestanas()
     bool hay[NUM_SISTEMAS] = {};
     int distintas = 0;
     for (int i = 0; i < nJuegos; i++)
-        if (!juegos[i].copiado && juegos[i].sistema >= 0 && juegos[i].sistema < NUM_SISTEMAS && !hay[juegos[i].sistema])
+        if (Visible(juegos[i]) && juegos[i].sistema >= 0 && juegos[i].sistema < NUM_SISTEMAS && !hay[juegos[i].sistema])
             hay[juegos[i].sistema] = true, distintas++;
     nPestanas = 0;
     pestanas[nPestanas++] = {V_TODOS, -1, VISTAS[V_TODOS]};
@@ -242,11 +245,11 @@ static void ArmarVista()
     {
         for (int r = 0; r < nRecientes; r++)
             for (int i = 0; i < nJuegos; i++)
-                if (!juegos[i].copiado && !strcmp(juegos[i].clave, recientes[r])) { if (Coincide(juegos[i].nombre)) vista[nVista++] = i; break; }
+                if (Visible(juegos[i]) && !strcmp(juegos[i].clave, recientes[r])) { if (Coincide(juegos[i].nombre)) vista[nVista++] = i; break; }
     }
     else
         for (int i = 0; i < nJuegos; i++)
-            if (!juegos[i].copiado && (Tipo() == V_TODOS || EsFavorito(juegos[i].clave)) && (filtro < 0 || juegos[i].sistema == filtro) &&
+            if (Visible(juegos[i]) && (Tipo() == V_TODOS || EsFavorito(juegos[i].clave)) && (filtro < 0 || juegos[i].sistema == filtro) &&
                 Coincide(juegos[i].nombre))
                 vista[nVista++] = i;
     if (sel >= nVista) sel = nVista > 0 ? nVista - 1 : 0;
@@ -264,6 +267,8 @@ void InterfazIniciar()
     nFavoritos = LeerLista("favoritos.txt", favoritos, MAX_FAVORITOS);
     AjustesLeer();
     ArmarVista();
+    // La música de la biblioteca: todas las canciones en orden aleatorio (distinto cada vez que se abre la app).
+    MusicaEncender(General().musica != 0, (unsigned)(Segundos() * 1000));
 }
 
 // Íconos de dónde está un juego, centrados en (cx, cy); s = escala (1 ≈ 30 px de ancho).
@@ -378,9 +383,11 @@ static void Tarjeta(const Juego& j, float x, float y, float f)
     if (j.sistema != SIS_SNES)
     {
         const char* n = ConsolaDe(j.sistema).nombre;
+        // Arcade con el set incompleto (le faltan archivos, el juego padre o la BIOS): la etiqueta en ámbar.
+        bool aviso = EsArcade(j.sistema) && j.estado > ARC_COMPLETO;
         float tw = AnchoTexto(F_PEQUENA, n) + 28;
-        Caja(X + w - 12 - tw, Y + h - 46, tw, 38, 19, 0x0A0614, .85f);
-        Texto(F_PEQUENA, n, X + w - 12 - tw / 2, Y + h - 40, C_TEXTO, 1, 1);
+        Caja(X + w - 12 - tw, Y + h - 46, tw, 38, 19, aviso ? C_AVISO : 0x0A0614, aviso ? .9f : .85f);
+        Texto(F_PEQUENA, n, X + w - 12 - tw / 2, Y + h - 40, aviso ? 0x1A1206 : C_TEXTO, 1, 1);
     }
     // Aro de selección en morado SNES.
     if (f > .01f) Borde(X - 6, Y - 6, w + 12, h + 12, 26, 4, C_ACENTO, .95f * f);
@@ -459,6 +466,7 @@ static void DibujarPestanas(float dt)
 void InterfazCuadro(float t, float dt, const Mando& m)
 {
     RegistroCuadro();
+    MusicaActiva(!JuegoActivo());   // la música de la biblioteca se apaga durante el juego
     // Si hay un juego abierto, solo la pantalla de juego (sin gastar en el fondo ni en la biblioteca, que no se ven).
     if (JuegoActivo()) { JuegoCuadro(t, dt, m); return; }
     if (Presentacion(dt, m)) { entrada = 0; return; }
@@ -509,7 +517,7 @@ static int PendientesUsb(const char** rutas, uint64_t* bytes)
     int n = 0;
     uint64_t b = 0;
     for (int i = 0; i < nJuegos; i++)
-        if (juegos[i].enUsb && !juegos[i].copiado)
+        if (juegos[i].enUsb && Visible(juegos[i]))
         {
             if (rutas) rutas[n] = juegos[i].ruta;
             b += juegos[i].bytes;
@@ -525,7 +533,7 @@ static int PendientesConsola(const char** rutas, uint64_t* bytes)
     int n = 0;
     uint64_t b = 0;
     for (int i = 0; i < nJuegos; i++)
-        if (!juegos[i].enUsb && !juegos[i].tambienEnUsb)
+        if (!juegos[i].enUsb && !juegos[i].tambienEnUsb && !juegos[i].repetido)
         {
             if (rutas) rutas[n] = juegos[i].ruta;
             b += juegos[i].bytes;
@@ -929,7 +937,7 @@ static void DibujarCopia(float dt)
 }
 
 // ---------- pestaña de configuración (vale para todos los juegos) ----------
-enum { CF_PROPORCION, CF_FILTRO, CF_AVANCE, CF_REBOBINAR, CF_SUPERFX, CF_COPIAR_AUTO, CF_ADMINISTRAR, CF_ACERCA, NUM_CF };
+enum { CF_PROPORCION, CF_FILTRO, CF_AVANCE, CF_REBOBINAR, CF_SUPERFX, CF_MUSICA, CF_COPIAR_AUTO, CF_ADMINISTRAR, CF_ACERCA, NUM_CF };
 static int selConfig;
 static bool viendoAcerca;
 static void AcercaDe();
@@ -959,13 +967,14 @@ static void Configuracion(float dt, const Mando& m)
         case CF_REBOBINAR: g.rebobinar = !g.rebobinar; break;
         case CF_SUPERFX: g.superfx = 1 + (g.superfx - 1 + 4 + d) % 4; break;
         case CF_COPIAR_AUTO: g.copiarAuto = !g.copiarAuto; break;
+        case CF_MUSICA: g.musica = !g.musica; MusicaEncender(g.musica != 0, (unsigned)(Segundos() * 1000)); break;
         }
         AjustesGuardar();
         Sonar(SON_MOVER);
     }
     Suave(selConfigSuave, (float)selConfig, 18, dt);
 
-    float w = 1180, x = (ANCHO - w) / 2, y = 200, paso = 84, h = 124 + (float)NUM_CF * paso;
+    float w = 1180, x = (ANCHO - w) / 2, y = 176, paso = 78, h = 124 + (float)NUM_CF * paso;
     Sombra(x, y, w, h, 28, 40, .5f, true);
     Caja(x, y, w, h, 28, C_PANEL, .92f);
     Texto(F_SUBTITULO, "Configuración general", x + 48, y + 36, C_TEXTO);
@@ -975,13 +984,14 @@ static void Configuracion(float dt, const Mando& m)
     Caja(x + 24, y0 + selConfigSuave * paso - 14, w - 48, paso - 12, 18, C_ACENTO, .2f);
     Borde(x + 24, y0 + selConfigSuave * paso - 14, w - 48, paso - 12, 18, 2, C_ACENTO, .7f);
     static const char* const TITULOS[NUM_CF] = {"Proporción de la imagen", "Filtro", "Avance rápido (mantener R2)", "Rebobinar (mantener L2)",
-                                                "Velocidad del Super FX", "Copiar juegos nuevos del USB automáticamente", "Copiar o borrar todos los juegos", "Acerca de ALLESIU"};
+                                                "Velocidad del Super FX", "Música en la biblioteca", "Copiar juegos nuevos del USB automáticamente", "Copiar o borrar todos los juegos", "Acerca de ALLESIU"};
     static const char* const AYUDAS[NUM_CF] = {
         "Cómo se ajusta la imagen a la pantalla.",
         "Suave, nítido o el aspecto de un televisor antiguo.",
         "Cuántas veces más rápido corre el juego.",
         "Guarda los últimos segundos para volver atrás. Desactivado, la consola trabaja menos.",
         "Más rápido: los juegos 3D con este chip se ven más fluidos (la consola original va a ×1).",
+        "Diez canciones originales de ALLESIU, en orden aleatorio. Se apaga sola mientras juegas.",
         "Los juegos que aparezcan en el USB se copian solos a la consola, si hay espacio.",
         NULL,   // el espacio libre (se calcula)
         "Versión, autor y página del proyecto.",
@@ -998,6 +1008,7 @@ static void Configuracion(float dt, const Mando& m)
         case CF_REBOBINAR: snprintf(v, sizeof v, "« %s »", g.rebobinar ? "Activado" : "Desactivado"); break;
         case CF_SUPERFX: snprintf(v, sizeof v, g.superfx == 1 ? "« ×1 (original) »" : "« ×%d »", g.superfx); break;
         case CF_COPIAR_AUTO: snprintf(v, sizeof v, "« %s »", g.copiarAuto ? "Sí" : "No"); break;
+        case CF_MUSICA: snprintf(v, sizeof v, "« %s »", g.musica ? "Sí" : "No"); break;
         default: snprintf(v, sizeof v, "Ver  »"); break;
         }
         bool elegida = i == selConfig;
@@ -1175,7 +1186,7 @@ static void Biblioteca(float t, float dt, const Mando& m)
     {
         // Los que están en el USB y también en la consola cuentan una sola vez.
         int distintos = 0;
-        for (int i = 0; i < nJuegos; i++) if (!juegos[i].copiado) distintos++;
+        for (int i = 0; i < nJuegos; i++) if (Visible(juegos[i])) distintos++;
         snprintf(cont, sizeof cont, distintos == 1 ? "%d juego" : "%d juegos", distintos);
     }
     Texto(F_CUERPO, cont, ANCHO - MARGEN, 36, C_TEXTO_2, 1, 2);
@@ -1213,7 +1224,7 @@ static void Biblioteca(float t, float dt, const Mando& m)
         const Juego& j = juegos[vista[sel]];
         Sonar(SON_ACEPTAR);
         AnotarReciente(j.clave);
-        JuegoAbrir(j.ruta, j.nombre);
+        JuegoAbrir(j.ruta, j.nombre, j.sistema);
         if (Tipo() == V_RECIENTES) { ArmarVista(); sel = 0; }
     }
     if ((mb.pulsados & B_OPTIONS) && nVista > 0) { AbrirMenuJuego(juegos[vista[sel]]); Sonar(SON_SECCION); }
@@ -1375,6 +1386,12 @@ static void Biblioteca(float t, float dt, const Mando& m)
     if (j.sistema == SIS_SNES)
         snprintf(buf, sizeof buf, "%s   ·   %d KB   ·   %s%s", j.mapeo, j.tamKB, j.pal ? "PAL" : "NTSC",
                  j.tieneRam ? "   ·   guarda partida" : "");
+    else if (EsArcade(j.sistema))
+    {
+        int ja = ArcadeBuscar(ArcadeNombreDeRuta(j.ruta));
+        snprintf(buf, sizeof buf, "%s   ·   %s %d   ·   %s", ConsolaDe(j.sistema).nombreLargo, ja >= 0 ? ArcadeFabricante(ja) : "", ja >= 0 ? ArcadeAnio(ja) : 0,
+                 j.estado == ARC_COMPLETO ? "Completo" : j.estado > ARC_COMPLETO ? ArcadeEstadoTexto(j.estado) : "");
+    }
     else
         snprintf(buf, sizeof buf, "%s   ·   %d KB", ConsolaDe(j.sistema).nombreLargo, j.tamKB);
     if (limite - x > 60)

@@ -4,8 +4,9 @@
 
 ALLESIU (antes SNESUI) es un emulador de consolas clásicas para la PS4 con GoldHEN. Empezó como un emulador de SNES
 hecho desde cero, y ahora suma NES, Game Boy, Game Boy Color, GBA, Master System, Mega Drive, Game Gear, Neo Geo
-Pocket, Neo Geo Pocket Color, Atari 7800 y Atari Lynx, todo en la misma biblioteca, con interfaz en alta definición,
-carátulas automáticas, guardado de partidas y filtros de imagen.
+Pocket, Neo Geo Pocket Color, Atari 7800, Atari Lynx y **arcade** (Neo Geo, CPS1, CPS2, CPS3 y cientos de placas más),
+todo en la misma biblioteca, con interfaz en alta definición, carátulas automáticas, guardado de partidas, filtros de
+imagen y música propia.
 
 ![Biblioteca](docs/imagen-biblioteca.png)
 
@@ -23,12 +24,25 @@ carátulas automáticas, guardado de partidas y filtros de imagen.
 | Neo Geo Pocket / Color | `.ngp` `.ngc` `.ngpc` | |
 | Atari 7800 | `.a78` | |
 | Atari Lynx | `.lnx` | |
+| Arcade: Neo Geo, CPS1, CPS2, CPS3 y otras placas | `.zip` `.7z` | |
 
 - **ROMs comprimidas:** las ROMs pueden estar sueltas o en `.zip`, `.7z` o `.rar`.
 - **Juegos de varias consolas juntos:** ALLESIU busca en todo el USB, incluidas las subcarpetas, y reconoce la consola
   por la extensión. Si un comprimido está en una carpeta con el nombre de la consola (por ejemplo `GBA`, `roms-gba` o
   `Game Boy Advance`), la búsqueda es más rápida porque no hace falta abrirlo.
 - **Velocidad:** todos los emuladores corren a la velocidad de la consola original; la SNES va sin recompilador (JIT).
+
+### Arcade
+
+- Cada juego es un zip con el nombre corto del set (el que usa FinalBurn Neo). ALLESIU lo reconoce solo, muestra su
+  título completo y lo ordena en su pestaña: **Neo Geo**, **CPS1**, **CPS2**, **CPS3** o **Arcade** (las demás placas).
+- Los sets tienen que ser de la versión de FinalBurn Neo que lleva ALLESIU. Antes de abrir un juego se revisan sus
+  archivos: si falta alguno, si es de otra versión o si falta la BIOS, ALLESIU avisa exactamente qué falta.
+- Las versiones alternativas (clones) necesitan el zip del juego original en la misma carpeta, y los de Neo Geo, la
+  BIOS `neogeo.zip` (en la misma carpeta o en `/data/snes-ps4/bios/`). Al copiar un juego a la consola se copian
+  también esos zips.
+- `herramientas/reparar_arcade.py` rearma tus sets para esta versión: busca cada archivo por su huella (CRC) en todas
+  las carpetas que le indiques y arma zips completos ("non-merged").
 
 ## Qué tiene
 
@@ -40,7 +54,11 @@ carátulas automáticas, guardado de partidas y filtros de imagen.
 - **Guardado.** La batería del cartucho se guarda sola (en la SNES, `.srm` compatible con snes9x y bsnes) y hay 4
   ranuras de estado rápido por juego, cada una con miniatura.
 - **Imagen.** Proporción como la consola original, píxeles cuadrados, píxel exacto o 16:9; filtros suave, nítido,
-  nítido suavizado, líneas de TV y CRT. Configuración general y propia por juego.
+  nítido suavizado, líneas de TV, CRT y **HD** (escalado de bordes al estilo xBR, que redondea las diagonales de los
+  sprites). Configuración general y propia por juego.
+- **Música.** Diez canciones originales de ALLESIU, compuestas y sintetizadas por el propio programa al estilo de los
+  chips de sonido de las consolas, suenan en orden aleatorio en la biblioteca y se apagan solas al jugar. Se puede
+  desactivar en Configuración.
 - **Avance rápido y rebobinar.** R2 acelera hasta ×4 y L2 vuelve atrás en el tiempo.
 - **Dos jugadores.** Con un segundo mando.
 - **Juegos en el USB o en la consola.** Se pueden copiar a la consola o al USB uno por uno, todos juntos o
@@ -78,7 +96,8 @@ Se copian a `/data/snes-ps4/bios/` en la consola:
 | `disksys.rom` | juegos de Famicom Disk System |
 | `gba_bios.bin` | GBA (opcional: sin ella se usa una BIOS propia del emulador) |
 | `bios_MD.bin`, `bios_U.sms`, `bios_E.sms`, `bios_J.sms`, `bios.gg` | pantallas de arranque de Sega (opcionales) |
-| `7800 BIOS (U).rom` | Atari 7800 (opcional) |
+| `7800 BIOS (U).rom`, `7800 BIOS (E).rom` | Atari 7800 (opcionales: americana y europea) |
+| `neogeo.zip` | arcade Neo Geo (**obligatoria** para esos juegos; también puede ir junto a los juegos) |
 
 ## Instalación
 
@@ -150,6 +169,8 @@ Emuladores de otras consolas que usa ALLESIU:
   Mednafen.
 - [ProSystem](https://github.com/libretro/prosystem-libretro) (Atari 7800), de Greg Stanton.
 - [Handy](https://github.com/libretro/libretro-handy) (Atari Lynx), de Keith Wilkins.
+- [FinalBurn Neo](https://github.com/finalburnneo/FBNeo) (arcade), del equipo de FinalBurn Neo, basado en FinalBurn
+  de Dave y FinalBurn Alpha.
 - [miniz](https://github.com/richgel999/miniz), el [LZMA SDK](https://www.7-zip.org/sdk.html) de Igor Pavlov y
   [dmc_unrar](https://github.com/DrMcCoy/dmc_unrar), para las ROMs comprimidas.
 
@@ -161,7 +182,7 @@ Además:
 - Documentación del hardware de la SNES: fullsnes (nocash). Comparación de exactitud: snes9x y bsnes. Pruebas de
   hardware de [PeterLemon](https://github.com/PeterLemon/SNES).
 
-ALLESIU no tiene relación con Nintendo, Sega, SNK ni Atari. Los nombres de las consolas son marcas de sus dueños. Usa
+ALLESIU no tiene relación con Nintendo, Sega, SNK, Atari ni Capcom. Los nombres de las consolas son marcas de sus dueños. Usa
 solo ROMs y BIOS de juegos y consolas que tengas.
 
 Creado por **RudolphGamerBkn**.

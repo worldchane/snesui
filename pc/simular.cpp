@@ -37,8 +37,20 @@ static void Guardar(const char* nombre)
 struct Paso { float t; uint32_t botones; const char* captura; };
 static const uint32_t STICK_DER = 0x80000000u;   // en el guion: el stick derecho a la derecha durante ese cuadro
 
+// Si se cae: dónde (desplazamiento desde la base, para buscarlo en pc/salida/simular.map).
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+static LONG WINAPI AlCaer(EXCEPTION_POINTERS* e)
+{
+    fprintf(stderr, "CAIDA codigo %08lx desplazamiento %llx\n", e->ExceptionRecord->ExceptionCode,
+            (unsigned long long)((char*)e->ExceptionRecord->ExceptionAddress - (char*)GetModuleHandleA(NULL)));
+    fflush(stderr);
+    return EXCEPTION_EXECUTE_HANDLER;
+}
+
 int main()
 {
+    SetUnhandledExceptionFilter(AlCaer);
     IniciarTrabajadores(4);
     auto inicioReal = std::chrono::steady_clock::now();
     bool avisado = false;
@@ -237,11 +249,48 @@ int main()
         {17.0f, B_ARRIBA, NULL}, {17.2f, B_CRUZ, NULL},
         {18.0f, B_R1, NULL}, {18.6f, 0, "103_sms"},
     };
+    // GUION=arcade (con USB_PC = una carpeta con solo juegos arcade): cada pestaña, abrir el primero (incompleto: el aviso),
+    // el segundo y el tercero (jugar, pausa, salir), y la ficha del juego.
+    static const Paso arcade[] = {
+        {4.5f, 0, "110_arcade_todos"},
+        // De Todos a ARCADE: SNES, NES, GB, GBC, GBA, SMS y ARCADE (pulsaciones separadas: la tira de pestañas se anima).
+        {4.6f, B_R1, NULL}, {4.9f, B_R1, NULL}, {5.2f, B_R1, NULL}, {5.5f, B_R1, NULL}, {5.8f, B_R1, NULL}, {6.1f, B_R1, NULL},
+        {6.4f, B_R1, NULL},
+        {7.0f, 0, "111_arcade"},
+        {7.1f, B_R1, NULL}, {7.7f, 0, "112_neogeo"},
+        {7.8f, B_R1, NULL}, {8.4f, 0, "113_cps1"},
+        {8.5f, B_R1, NULL}, {9.1f, 0, "114_cps2"},
+        {9.2f, B_R1, NULL}, {9.8f, 0, "115_cps3"},
+        // CPS3: abrir el primero (el más pesado), jugar, pausa, salir.
+        {9.9f, B_CRUZ, NULL},
+        {16.0f, 0, "116_cps3_jugando"},
+        {16.1f, B_L3 | B_R3, NULL}, {16.7f, 0, "117_pausa"},
+        {16.9f, B_ARRIBA, NULL}, {17.1f, B_CRUZ, NULL},
+        // CPS1: dos juegos seguidos (el segundo con el núcleo recién cerrado).
+        {17.8f, B_L1, NULL}, {18.1f, B_L1, NULL},
+        {18.6f, B_CRUZ, NULL},
+        {23.0f, 0, "118_cps1_primero"},
+        {23.1f, B_L3 | B_R3, NULL}, {23.5f, B_ARRIBA, NULL}, {23.7f, B_CRUZ, NULL},
+        {24.4f, B_DER, NULL}, {24.7f, B_CRUZ, NULL},
+        {29.0f, 0, "119_cps1_segundo"},
+        {29.1f, B_L3 | B_R3, NULL}, {29.5f, B_ARRIBA, NULL}, {29.7f, B_CRUZ, NULL},
+        // ARCADE: el incompleto (el aviso propio) y después Neo Geo.
+        {30.4f, B_L1, NULL}, {30.7f, B_L1, NULL},
+        {31.2f, B_CRUZ, NULL},
+        {32.5f, 0, "120_incompleto"},
+        {32.7f, B_CIRCULO, NULL}, {33.0f, B_CRUZ, NULL},
+        {33.6f, B_R1, NULL},
+        {34.2f, B_CRUZ, NULL},
+        {40.0f, 0, "121_neogeo_jugando"},
+        {40.1f, B_L3 | B_R3, NULL}, {40.5f, B_ARRIBA, NULL}, {40.7f, B_CRUZ, NULL},
+        {41.4f, B_OPTIONS, NULL},
+        {42.0f, 0, "122_ficha"},
+    };
     const char* g = getenv("GUION");
-    bool corto = g && !strcmp(g, "acerca"), larga = g && !strcmp(g, "lista"), muchos = g && !strcmp(g, "mil"), copia = g && !strcmp(g, "copiar"), alUsb = g && !strcmp(g, "alusb"), borra = g && !strcmp(g, "borrar"), dg = g && !strcmp(g, "diag"), mu = g && !strcmp(g, "multi"), me = g && !strcmp(g, "menu");
-    const Paso* pasos = corto ? acerca : larga ? lista : muchos ? mil : copia ? copiar : alUsb ? alusb : borra ? borrar : dg ? diag : mu ? multi : me ? menu : guion;
-    const int N = corto ? (int)(sizeof acerca / sizeof acerca[0]) : larga ? (int)(sizeof lista / sizeof lista[0]) : muchos ? (int)(sizeof mil / sizeof mil[0]) : copia ? (int)(sizeof copiar / sizeof copiar[0]) : alUsb ? (int)(sizeof alusb / sizeof alusb[0]) : borra ? (int)(sizeof borrar / sizeof borrar[0]) : dg ? (int)(sizeof diag / sizeof diag[0]) : mu ? (int)(sizeof multi / sizeof multi[0]) : me ? (int)(sizeof menu / sizeof menu[0]) : (int)(sizeof guion / sizeof guion[0]);
-    const double FIN = corto ? 7.0 : larga ? 9.0 : muchos ? 7.5 : copia ? 15.2 : alUsb ? 9.7 : borra ? 12.6 : dg ? 19.7 : mu ? 17.2 : me ? 18.8 : 42.0;
+    bool corto = g && !strcmp(g, "acerca"), larga = g && !strcmp(g, "lista"), muchos = g && !strcmp(g, "mil"), copia = g && !strcmp(g, "copiar"), alUsb = g && !strcmp(g, "alusb"), borra = g && !strcmp(g, "borrar"), dg = g && !strcmp(g, "diag"), mu = g && !strcmp(g, "multi"), me = g && !strcmp(g, "menu"), ar = g && !strcmp(g, "arcade");
+    const Paso* pasos = corto ? acerca : larga ? lista : muchos ? mil : copia ? copiar : alUsb ? alusb : borra ? borrar : dg ? diag : mu ? multi : me ? menu : ar ? arcade : guion;
+    const int N = corto ? (int)(sizeof acerca / sizeof acerca[0]) : larga ? (int)(sizeof lista / sizeof lista[0]) : muchos ? (int)(sizeof mil / sizeof mil[0]) : copia ? (int)(sizeof copiar / sizeof copiar[0]) : alUsb ? (int)(sizeof alusb / sizeof alusb[0]) : borra ? (int)(sizeof borrar / sizeof borrar[0]) : dg ? (int)(sizeof diag / sizeof diag[0]) : mu ? (int)(sizeof multi / sizeof multi[0]) : me ? (int)(sizeof menu / sizeof menu[0]) : ar ? (int)(sizeof arcade / sizeof arcade[0]) : (int)(sizeof guion / sizeof guion[0]);
+    const double FIN = corto ? 7.0 : larga ? 9.0 : muchos ? 7.5 : copia ? 15.2 : alUsb ? 9.7 : borra ? 12.6 : dg ? 19.7 : mu ? 17.2 : me ? 18.8 : ar ? 42.3 : 42.0;
     double peor = 0;
     int k = 0;
     for (int cuadro = 0; tiempoSimulado < FIN; cuadro++)

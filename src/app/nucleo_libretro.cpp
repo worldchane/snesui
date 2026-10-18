@@ -17,6 +17,7 @@ static bool iniciado;
 static uint8_t* rom;             // la rom en memoria (algunos núcleos guardan el puntero mientras corre)
 static char rutaRom[512];
 static unsigned formato = RETRO_PIXEL_FORMAT_0RGB1555;
+static float aspecto;   // el que informa el núcleo (0 = no informó)
 static int frecuencia = 48000;
 static uint32_t cuadros;
 
@@ -42,14 +43,19 @@ static retro_game_info_ext infoExt_;
 // Los núcleos abren sus archivos (BIOS, por ejemplo) con esta, la misma de la app (ver nucleos/archivos.c).
 extern "C" FILE* NucleoAbrirArchivo(const char* ruta, const char* modo) { return AbrirArchivo(ruta, modo); }
 
+// Mientras se abre un juego se anota también lo informativo (dónde buscó cada archivo, qué le faltó), salvo lo que se
+// repite por cada botón o cada rom encontrada: sirve para entender en el registro por qué un juego no abrió.
+static bool anotarTodo = false;
+
 static void Log(enum retro_log_level nivel, const char* fmt, ...)
 {
-    if (nivel < RETRO_LOG_WARN) return;
+    if (nivel < RETRO_LOG_WARN && !anotarTodo) return;
     char t[300];
     va_list a;
     va_start(a, fmt);
     vsnprintf(t, sizeof t, fmt, a);
     va_end(a);
+    if (nivel < RETRO_LOG_WARN && (strstr(t, "nSwitchCode") || strstr(t, "Using ROM with known crc"))) return;
     size_t n = strlen(t);
     while (n && (t[n - 1] == '\n' || t[n - 1] == '\r')) t[--n] = 0;
     Registrar("Núcleo %s: %s", nombreNucleo, t);
@@ -87,7 +93,12 @@ static bool Entorno(unsigned cmd, void* dato)
     case RETRO_ENVIRONMENT_SET_SUPPORT_ACHIEVEMENTS:
         return true;
     case RETRO_ENVIRONMENT_GET_CORE_OPTIONS_VERSION: *(unsigned*)dato = 0; return true;   // el modo más simple
-    case RETRO_ENVIRONMENT_SET_GEOMETRY: return true;
+    case RETRO_ENVIRONMENT_SET_GEOMETRY:
+    {
+        const retro_game_geometry* g = (const retro_game_geometry*)dato;
+        if (g->aspect_ratio > 0) aspecto = g->aspect_ratio;
+        return true;
+    }
     case RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO:
     {
         const retro_system_av_info* av = (const retro_system_av_info*)dato;
@@ -222,8 +233,16 @@ static bool Abrir(const char* ruta, const char* interno, uint8_t* datos, size_t 
         infoExt_.archive_path = ruta;
         infoExt_.archive_file = archivoInterno;
     }
+#ifdef _WIN32
+    // Simulador de PC: los núcleos compilados para Windows separan las carpetas con '\' (FinalBurn Neo busca los zips
+    // en la carpeta del juego cortando por ahí). plataforma_pc.cpp las vuelve a '/'.
+    for (char* c = rutaRom; *c; c++) if (*c == '/') *c = 0x5C;
+#endif
     retro_game_info gi = {rutaRom, rom, (size_t)tam, NULL};
-    if (!api->load_game(&gi))
+    anotarTodo = true;
+    bool cargado = api->load_game(&gi);
+    anotarTodo = false;
+    if (!cargado)
     {
         snprintf(error, 160, "El núcleo de %s no pudo abrir esta rom (¿está dañada o es de otra consola?).", nombreNucleo);
         return false;
@@ -231,6 +250,8 @@ static bool Abrir(const char* ruta, const char* interno, uint8_t* datos, size_t 
     retro_system_av_info av = {};
     api->get_system_av_info(&av);
     frecuencia = av.timing.sample_rate > 1000 ? (int)(av.timing.sample_rate + .5) : 48000;
+    aspecto = av.geometry.aspect_ratio > 0 ? av.geometry.aspect_ratio
+            : av.geometry.base_height ? (float)av.geometry.base_width / av.geometry.base_height : 0;
     api->set_controller_port_device(0, RETRO_DEVICE_JOYPAD);
     api->set_controller_port_device(1, RETRO_DEVICE_JOYPAD);
     // Copia de la batería tal como quedó al cargar (la app la llena después con el archivo de la partida).
@@ -288,11 +309,13 @@ static int Cuadro(uint32_t* imagen, int* ancho, int* alto, int16_t* audio, int m
 }
 
 static int Frecuencia() { return frecuencia; }
+static float Aspecto() { return aspecto; }
 static void Mando(int j, uint16_t b) { if (j >= 0 && j < 2) botones[j] = b; }
 static void MandoConectado(int j, bool si) { if (j >= 0 && j < 2) conectado[j] = si; }
 
-static uint32_t SramTam() { return (uint32_t)api->get_memory_size(RETRO_MEMORY_SAVE_RAM); }
-static uint8_t* SramDatos() { return (uint8_t*)api->get_memory_data(RETRO_MEMORY_SAVE_RAM); }
+// Sin juego abierto (la carga falló, o el núcleo ya se cerró): no hay partida.
+static uint32_t SramTam() { return api && iniciado ? (uint32_t)api->get_memory_size(RETRO_MEMORY_SAVE_RAM) : 0; }
+static uint8_t* SramDatos() { return api && iniciado ? (uint8_t*)api->get_memory_data(RETRO_MEMORY_SAVE_RAM) : NULL; }
 
 static bool SramCambiada()
 {
@@ -356,6 +379,7 @@ void LibretroLlenar(Consola& c)
     c.Reiniciar = Reiniciar;
     c.Cuadro = Cuadro;
     c.Frecuencia = Frecuencia;
+    c.Aspecto = Aspecto;
     c.Mando = Mando;
     c.MandoConectado = MandoConectado;
     c.SramTam = SramTam;
@@ -374,6 +398,14 @@ bool LibretroCargar(const ApiLibretro* a, const char* nombre, const char* ruta, 
     api = a;
     nombreNucleo = nombre;
     return Cargar(ruta, error);
+}
+
+bool LibretroCargarRuta(const ApiLibretro* a, const char* nombre, const char* ruta, char* error)
+{
+    if (api != a && iniciado) Descargar();
+    api = a;
+    nombreNucleo = nombre;
+    return Abrir(ruta, NULL, NULL, 0, error);
 }
 
 bool LibretroCargarMemoria(const ApiLibretro* a, const char* nombre, const char* ruta, const char* interno, uint8_t* datos,

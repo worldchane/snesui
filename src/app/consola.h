@@ -8,7 +8,7 @@ enum Sistema
 {
     // El número de cada una se guarda en el índice de la biblioteca: las nuevas van siempre al final.
     SIS_SNES, SIS_NES, SIS_GB, SIS_GBC, SIS_GBA, SIS_NGP, SIS_NGPC, SIS_MD, SIS_A2600, SIS_A7800, SIS_LYNX,
-    SIS_SMS, SIS_GG, SIS_ARCADE,
+    SIS_SMS, SIS_GG, SIS_ARCADE, SIS_NEOGEO, SIS_CPS1, SIS_CPS2, SIS_CPS3,
     NUM_SISTEMAS
 };
 
@@ -47,12 +47,17 @@ struct Consola
     uint32_t (*EstadoTam)();
     uint32_t (*GuardarEstado)(uint8_t* buf, uint32_t max);
     bool (*CargarEstado)(const uint8_t* buf, uint32_t n);
+    // La proporción de la imagen que informa el núcleo (ancho / alto; 0 = usar 'aspecto'): en el arcade cambia con cada
+    // juego (los verticales son 3:4).
+    float (*Aspecto)();
     // Diagnóstico (texto) y problemas detectados por el núcleo.
     int (*Diagnostico)(char* out, int max);
     bool (*Anomalia)(char* txt, int max);
 };
 
 const Consola& ConsolaDe(int sistema);
+// Las del arcade (todas con FinalBurn Neo): Arcade y las placas que tienen pestaña propia (Neo Geo, CPS1, CPS2, CPS3).
+inline bool EsArcade(int sistema) { return sistema == SIS_ARCADE || (sistema >= SIS_NEOGEO && sistema <= SIS_CPS3); }
 // La consola del juego abierto (la elige JuegoAbrir; el rebobinado y el diagnóstico hablan con ella).
 void ConsolaActivar(int sistema);
 const Consola& ConsolaActiva();

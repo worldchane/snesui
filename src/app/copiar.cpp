@@ -8,13 +8,14 @@
 #include <string.h>
 
 #include "../comun/plataforma.h"
+#include "arcade.h"
 #include "biblioteca.h"
 #include "consola.h"
 
 static ProgresoCopia progreso;
 static std::atomic<bool> enCurso{false};
 static char (*rutas)[512];
-static int nRutas;
+static int nRutas, capRutas;
 static char destino[256];
 static uint64_t reserva;
 
@@ -100,6 +101,30 @@ static void* HiloCopia(void*)
     uint8_t* buf = (uint8_t*)malloc(BUF);
     AbrirAccesoCompleto("snes");   // para leer y escribir el USB
     CrearCarpetas(destino);
+    // Un juego arcade se copia con lo que necesita para abrir: el zip del juego del que es versión (clon) y el de su BIOS
+    // (neogeo.zip...), si están en la misma carpeta. Si no, la copia de la consola no abre (FinalBurn Neo los busca en
+    // la carpeta del juego).
+    for (int i = 0, original = nRutas; i < original; i++)
+    {
+        int j = ArcadeBuscar(ArcadeNombreDeRuta(rutas[i]));
+        if (j < 0) continue;
+        int padre = ArcadePadre(j);
+        const int extra[3] = {padre, ArcadeBios(j), padre >= 0 ? ArcadeBios(padre) : -1};
+        for (int e : extra)
+        {
+            if (e < 0 || nRutas >= capRutas) continue;
+            char r[512];
+            snprintf(r, sizeof r, "%s", rutas[i]);
+            char* barra = strrchr(r, '/');
+            if (!barra) continue;
+            snprintf(barra + 1, sizeof r - (size_t)(barra + 1 - r), "%s.zip", ArcadeNombre(e));
+            bool repetido = false;
+            for (int k = 0; k < nRutas && !repetido; k++) repetido = !strcmp(rutas[k], r);
+            if (repetido || !ExisteArchivo(r)) continue;
+            snprintf(rutas[nRutas++], sizeof rutas[0], "%s", r);
+            progreso.total++;
+        }
+    }
 
     // Tamaños, y cuáles ya están copiados (mismo nombre y tamaño en la consola).
     uint64_t* tam = (uint64_t*)calloc(nRutas ? nRutas : 1, sizeof(uint64_t));
@@ -216,7 +241,7 @@ static bool Preparar(const char* const* lista, int n)
     free(rutas);
     rutas = (char(*)[512])malloc(sizeof(*rutas) * n);
     if (!rutas) return false;
-    nRutas = n;
+    nRutas = capRutas = n;
     for (int i = 0; i < n; i++) snprintf(rutas[i], sizeof rutas[i], "%s", lista[i]);
     memset(&progreso, 0, sizeof progreso);
     progreso.total = n;
@@ -238,7 +263,8 @@ bool EmpezarCopia(const char* const* lista, int n, const char* carpeta, uint64_t
 {
     if (enCurso.load(std::memory_order_acquire) || n <= 0) return false;
     free(rutas);
-    rutas = (char(*)[512])malloc(sizeof(*rutas) * n);
+    capRutas = n * 4;   // lugar para los zips que necesitan los arcade (ver HiloCopia)
+    rutas = (char(*)[512])malloc(sizeof(*rutas) * capRutas);
     if (!rutas) return false;
     nRutas = n;
     for (int i = 0; i < n; i++) snprintf(rutas[i], sizeof rutas[i], "%s", lista[i]);

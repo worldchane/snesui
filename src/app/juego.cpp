@@ -20,6 +20,7 @@
 #include "../comun/texto.h"
 #include "../nucleo/snes.h"
 #include "ajustes.h"
+#include "arcade.h"
 #include "consola.h"
 #include "rebobinar.h"
 #include "registro.h"
@@ -413,7 +414,13 @@ static void Rectangulo(int iw, int ih, float& x, float& y, float& w, float& h)
         break;
     }
     case PR_16_9: w = ANCHO; h = ALTO; break;
-    default: h = ALTO; w = ALTO * con->aspecto; break;
+    default:
+    {
+        float asp = con->Aspecto ? con->Aspecto() : 0;
+        if (asp <= 0 || !EsArcade(con->sistema)) asp = con->aspecto;   // la tabla de consolas, salvo en el arcade
+        h = ALTO; w = ALTO * asp;
+        break;
+    }
     }
     if (w > ANCHO) { h = h * ANCHO / w; w = ANCHO; }
     x = (ANCHO - w) / 2;
@@ -437,9 +444,63 @@ static inline uint32_t Escalar(uint32_t c, int num)   // c × num / 256 por comp
     return r << 16 | g << 8 | b;
 }
 
+// HD: agrandada ×2 con un escalado de bordes al estilo xBR (el "HD" de otros emuladores): en cada esquina de cada píxel
+// compara las dos diagonales posibles con sus vecinos (una ventana de 5 × 5) y, si el borde va en diagonal, mezcla la
+// esquina con el color del otro lado. Las zonas planas y los bordes rectos quedan igual; las diagonales y las curvas de
+// los sprites se redondean. Después el dibujo la agranda con filtro suave. Se reparte por filas entre los hilos.
+static inline int Distancia(uint32_t a, uint32_t b)
+{
+    int dr = (int)((a >> 16) & 255) - (int)((b >> 16) & 255), dg = (int)((a >> 8) & 255) - (int)((b >> 8) & 255),
+        db = (int)(a & 255) - (int)(b & 255);
+    return (dr < 0 ? -dr : dr) * 2 + (dg < 0 ? -dg : dg) * 4 + (db < 0 ? -db : db);
+}
+
+static inline uint32_t Mitad(uint32_t a, uint32_t b) { return ((a & 0xFEFEFE) >> 1) + ((b & 0xFEFEFE) >> 1); }
+
+struct TrabajoHD { const uint32_t* src; int sw, sh; uint32_t* dst; };
+
+static void FilasHD(int parte, int partes, void* arg)
+{
+    const TrabajoHD& t = *(const TrabajoHD*)arg;
+    const int sw = t.sw, sh = t.sh, dw = sw * 2;
+    auto P = [&](int x, int y) {
+        x = x < 0 ? 0 : x >= sw ? sw - 1 : x;
+        y = y < 0 ? 0 : y >= sh ? sh - 1 : y;
+        return t.src[y * sw + x];
+    };
+    for (int y = sh * parte / partes; y < sh * (parte + 1) / partes; y++)
+        for (int x = 0; x < sw; x++)
+        {
+            uint32_t e = P(x, y);
+            for (int sy = -1; sy <= 1; sy += 2)
+                for (int sx = -1; sx <= 1; sx += 2)
+                {
+                    // Hacia la esquina (sx, sy): f al costado, h arriba o abajo, i en diagonal; el resto alrededor.
+                    uint32_t f = P(x + sx, y), hh = P(x, y + sy), i = P(x + sx, y + sy), c = P(x + sx, y - sy),
+                             g = P(x - sx, y + sy), b = P(x, y - sy), d = P(x - sx, y), f4 = P(x + 2 * sx, y),
+                             h5 = P(x, y + 2 * sy), i4 = P(x + 2 * sx, y + sy), i5 = P(x + sx, y + 2 * sy);
+                    uint32_t out = e;
+                    if (e != f && e != hh)
+                    {
+                        int wd1 = Distancia(e, c) + Distancia(e, g) + Distancia(i, f4) + Distancia(i, h5) + 4 * Distancia(hh, f);
+                        int wd2 = Distancia(hh, d) + Distancia(hh, i5) + Distancia(f, i4) + Distancia(f, b) + 4 * Distancia(e, i);
+                        if (wd1 < wd2) out = Mitad(e, Distancia(e, f) <= Distancia(e, hh) ? f : hh);
+                    }
+                    t.dst[(y * 2 + (sy > 0)) * dw + x * 2 + (sx > 0)] = out;
+                }
+        }
+}
+
 static void Filtrar(const uint32_t* src, int sw, int sh, int cual, int& w, int& h)
 {
-    if (filtro == FI_NITIDO_SUAVE)
+    if (filtro == FI_HD)
+    {
+        w = sw * 2; h = sh * 2;
+        if (procesadoDe == cual && procesadoFiltro == filtro) return;
+        TrabajoHD t = {src, sw, sh, procesado};
+        EnParalelo(FilasHD, &t);
+    }
+    else if (filtro == FI_NITIDO_SUAVE)
     {
         // Agrandada ×4, o menos si la imagen es grande.
         int e = 4;
@@ -593,7 +654,8 @@ static void Salir()
     abierto = false;
     menu = false;
     EsperarHilo();
-    if (!ConAccesoSiHaceFalta([](void*) { return GuardarSram(); }, NULL)) Registrar("ERROR: no se pudo guardar la partida (batería) al salir");
+    // Si el juego no llegó a cargar (la pantalla de error), no hay partida que guardar ni núcleo abierto.
+    if (!error[0] && !ConAccesoSiHaceFalta([](void*) { return GuardarSram(); }, NULL)) Registrar("ERROR: no se pudo guardar la partida (batería) al salir");
     contadorSram = 0;
     DiagnosticoPendiente();
     if (cuadrosTotal)
@@ -712,7 +774,7 @@ static void MenuDibujar(float a)
 }
 
 // ---------- pantalla ----------
-bool JuegoAbrir(const char* ruta, const char* nom)
+bool JuegoAbrir(const char* ruta, const char* nom, int sistema)
 {
     snprintf(nombre, sizeof nombre, "%s", nom);
     error[0] = 0;
@@ -725,7 +787,22 @@ bool JuegoAbrir(const char* ruta, const char* nom)
     // Una rom comprimida se saca a memoria y la consola sale del archivo de adentro.
     bool ok = false;
     AbrirAccesoCompleto("snes", true);
-    if (EsComprimido(ruta))
+    if (EsArcade(sistema))
+    {
+        // Arcade: FinalBurn Neo abre el zip por su ruta. Si falla, la explicación de qué le falta al set es más útil que
+        // el error genérico.
+        con = &ConsolaDe(sistema);
+        char explicacion[160];
+        int estado = ArcadeRevisar(ruta, explicacion);
+        if (!con->presente) snprintf(error, sizeof error, "Esta versión de ALLESIU todavía no trae el emulador arcade.");
+        // Si al set le faltan archivos propios, es de otra versión o falta la BIOS, ni se intenta: FinalBurn Neo abriría
+        // igual, pero con su pantalla de error en inglés. (Un padre que falta sí se intenta: el núcleo lo busca también
+        // en la carpeta de BIOS.)
+        else if (estado == ARC_FALTAN_ARCHIVOS || estado == ARC_OTRA_VERSION || estado == ARC_FALTA_BIOS) snprintf(error, sizeof error, "%s", explicacion);
+        else ok = con->Cargar(ruta, error);
+        if (!ok && estado != ARC_COMPLETO && explicacion[0]) snprintf(error, sizeof error, "%s", explicacion);
+    }
+    else if (EsComprimido(ruta))
     {
         char interno[256];
         uint32_t tam = 0;
@@ -809,7 +886,8 @@ void JuegoCuadro(float t, float dt, const Mando& m)
 {
     (void)t;
     bool combo = (m.apretados & B_L3) && (m.apretados & B_R3) && (m.pulsados & (B_L3 | B_R3));
-    if (abierto && error[0] && combo) Salir();
+    // La pantalla de "no se pudo cargar": se vuelve también con ○ o ✕ (no hay juego que pausar).
+    if (abierto && error[0] && (combo || (m.pulsados & (B_CIRCULO | B_CRUZ)))) Salir();
     else if (abierto && menu) MenuEntrada(m);
     else if (abierto && combo)
     {
@@ -853,8 +931,13 @@ void JuegoCuadro(float t, float dt, const Mando& m)
         Caja(0, 0, ANCHO, ALTO, 0, 0x000000, 1);
         Brillo(ANCHO / 2, ALTO / 2 - 40, 200, C_MAL, .3f);
         Texto(F_TITULO, "No se pudo cargar el juego", ANCHO / 2, ALTO / 2 - 80, C_TEXTO, 1, 1);
-        Parrafo(F_CUERPO, error, ANCHO / 2 - 400, ALTO / 2, 800, C_TEXTO_2);
-        Texto(F_CUERPO_M, "Pulsa L3 + R3 para volver", ANCHO / 2, ALTO - 120, C_TEXTO_3, 1, 1);
+        // Centrado si entra en una línea; si no, en un párrafo de 800 de ancho.
+        float w = AnchoTexto(F_CUERPO, error);
+        if (w <= 800) Texto(F_CUERPO, error, ANCHO / 2, ALTO / 2 + 10, C_TEXTO_2, 1, 1);
+        else Parrafo(F_CUERPO, error, ANCHO / 2 - 400, ALTO / 2, 800, C_TEXTO_2);
+        static const int boton[1] = {BM_CIRCULO};
+        static const char* const textoBoton[1] = {"Volver"};
+        PistasEn(boton, textoBoton, 1, 1, ALTO - 120);
         Opacidad(1);
         return;
     }
