@@ -1,125 +1,126 @@
-# SNESUI — emulador de SNES para PS4
+# ALLESIU — emulador de consolas clásicas para PS4
 
-![SNESUI](docs/logo.png)
+![ALLESIU](docs/logo.png)
 
-SNESUI es un emulador de SNES hecho desde cero para la PS4 con GoldHEN. Tiene una interfaz en alta
-definición, carátulas automáticas, guardado de partidas y filtros de imagen.
+ALLESIU (antes SNESUI) es un emulador de consolas clásicas para la PS4 con GoldHEN. Empezó como un emulador de SNES
+hecho desde cero, y ahora suma NES, Game Boy, Game Boy Color, GBA, Master System, Mega Drive, Game Gear, Neo Geo
+Pocket, Neo Geo Pocket Color, Atari 7800 y Atari Lynx, todo en la misma biblioteca, con interfaz en alta definición,
+carátulas automáticas, guardado de partidas y filtros de imagen.
 
 ![Biblioteca](docs/imagen-biblioteca.png)
 
+## Consolas
+
+| Consola | Extensiones | Emulador |
+|---|---|---|
+| SNES | `.sfc` `.smc` `.fig` `.swc` | propio, hecho desde cero |
+| NES / Famicom Disk System | `.nes` `.fds` `.unf` `.unif` | FCEUmm |
+| Game Boy / Game Boy Color | `.gb` `.gbc` | Gambatte |
+| Game Boy Advance | `.gba` | mGBA |
+| Master System | `.sms` | Genesis Plus GX |
+| Mega Drive / Genesis | `.md` `.gen` `.smd` `.bin` | Genesis Plus GX |
+| Game Gear | `.gg` | Genesis Plus GX |
+| Neo Geo Pocket / Color | `.ngp` `.ngc` `.ngpc` | Beetle NeoPop |
+| Atari 7800 | `.a78` | ProSystem |
+| Atari Lynx | `.lnx` | Handy |
+
+- **ROMs comprimidas:** las ROMs pueden estar sueltas o en `.zip`, `.7z` o `.rar`.
+- **Juegos de varias consolas juntos:** ALLESIU busca en todo el USB, incluidas las subcarpetas, y reconoce la consola
+  por la extensión. Si un comprimido está en una carpeta con el nombre de la consola (por ejemplo `GBA`, `roms-gba` o
+  `Game Boy Advance`), la búsqueda es más rápida porque no hace falta abrirlo.
+- **Velocidad:** todos los emuladores corren a la velocidad de la consola original; la SNES va sin recompilador (JIT).
+
 ## Qué tiene
 
-- **Emulación fiel.** Los gráficos, el sonido y el ritmo de la consola se comparan cuadro por cuadro con bsnes:
-  - en una colección de 762 juegos, el 90 % se ve idéntico a bsnes durante los primeros 30 segundos (el resto
-    llega a las mismas pantallas unos segundos antes o después) y ninguno se cuelga;
-  - interrupciones por línea exactas, aunque el juego las reprograme a mitad de línea.
-- **Gráficos completos.** Están los 8 modos de video:
-  - modo 7 (rotación y zoom);
-  - alta resolución;
-  - transparencias y mezcla de colores;
-  - ventanas, mosaico y HDMA (degradados y efectos por línea);
-  - entrelazado.
-- **Chips especiales del cartucho.**
-  - **Super FX:** gráficos 3D y efectos. En Configuración se puede acelerar (×2 a ×4) para que los juegos 3D se vean
-    más fluidos que en la consola original.
-  - **SA-1:** el segundo procesador de algunos cartuchos.
-  - **DSP-1:** cuentas de 3D y modo 7.
-  - **DSP-2:** dibujo con mapas de bits.
-  - **ST010:** cuentas de un juego de carreras (con su RAM de récords).
-  - **Cx4:** geometría, giros y escalas de sprites.
-  - **S-DD1:** gráficos comprimidos.
-  - **SPC7110:** gráficos comprimidos y rom grande, con su reloj (que sigue en hora entre sesiones).
-  - **OBC1:** ayuda con los sprites.
-- **Sonido completo.** Están el procesador de sonido y el DSP, con eco.
-- **Guardado.**
-  - La batería del cartucho se guarda sola en `.srm`, compatible con snes9x y bsnes.
-  - Hay 4 ranuras de estado rápido por juego, cada una con miniatura.
-- **Carátulas automáticas.** Se bajan desde la base de RetroArch, aunque el nombre del archivo no sea exacto.
-- **Configuración general y por juego.** La pestaña Configuración vale para todos los juegos; desde el menú de pausa
-  cada juego puede tener su propia proporción y filtro.
-- **Imagen.**
-  - Proporción: 4:3, 8:7, píxel exacto o 16:9.
-  - Filtros: suave, nítido, nítido suavizado, líneas de TV y CRT.
+- **Biblioteca.** Una pestaña por consola (más Todos, Recientes, Favoritos y Configuración), fondo pixel art animado y
+  búsqueda por nombre. Los juegos van apareciendo mientras se revisa el USB; la lista se guarda en un índice, así que
+  la próxima vez aparece al instante y solo se revisan los archivos nuevos. Hasta 30.000 juegos.
+- **Carátulas automáticas.** Se bajan desde la base de RetroArch para cada consola, aunque el nombre del archivo no
+  sea exacto. Las ya bajadas, y las que no existen en el servidor, no se vuelven a pedir.
+- **Guardado.** La batería del cartucho se guarda sola (en la SNES, `.srm` compatible con snes9x y bsnes) y hay 4
+  ranuras de estado rápido por juego, cada una con miniatura.
+- **Imagen.** Proporción como la consola original, píxeles cuadrados, píxel exacto o 16:9; filtros suave, nítido,
+  nítido suavizado, líneas de TV y CRT. Configuración general y propia por juego.
 - **Avance rápido y rebobinar.** R2 acelera hasta ×4 y L2 vuelve atrás en el tiempo.
 - **Dos jugadores.** Con un segundo mando.
-- **Interfaz.** Biblioteca con fondo pixel art animado, pestañas de recientes y favoritos, y búsqueda de juegos en
-  todo el USB, incluidas las subcarpetas.
-- **Juegos en el USB o en la consola.** Cada juego muestra dónde está con un ícono (USB o disco duro). Se pueden
-  copiar a la consola uno por uno (OPTIONS), todos juntos o automáticamente al aparecer en el USB (Configuración), y
-  también de la consola al USB (uno o todos, como copia de seguridad). También se pueden borrar todos los juegos de
-  la consola o del USB, siempre con una confirmación que avisa cuáles se perderían. Antes de copiar se mide el espacio
-  libre y siempre se deja 1 GB para el sistema; cada copia se verifica.
-- **Diagnóstico automático.** Si un juego falla (pantalla negra, juego trabado), SNESUI lo detecta y guarda un
-  informe en el USB, en `SNESUI-diagnostico/`: el registro, una captura y el estado de ese momento. También se puede
-  guardar a mano desde el menú de pausa. No incluye datos personales.
-- **Bibliotecas grandes.** Hasta 10.000 juegos: la lista aparece al instante (se guarda un índice), el USB se revisa
-  en segundo plano analizando solo las ROMs nuevas, y se puede buscar por nombre.
+- **Juegos en el USB o en la consola.** Se pueden copiar a la consola o al USB uno por uno, todos juntos o
+  automáticamente; siempre se deja 1 GB libre para el sistema y cada copia se verifica.
+- **Diagnóstico automático.** Si un juego falla, ALLESIU lo detecta y guarda un informe en el USB, en
+  `ALLESIU-diagnostico/`. No incluye datos personales.
+
+### SNES
+
+El emulador de SNES es propio y se compara cuadro por cuadro con bsnes:
+
+- en una colección de 762 juegos, el 90 % se ve idéntico a bsnes durante los primeros 30 segundos y ninguno se cuelga;
+- están los 8 modos de video (modo 7, alta resolución, transparencias, ventanas, mosaico, HDMA, entrelazado) y el
+  sonido completo con eco;
+- chips especiales: **Super FX** (con aceleración ×2 a ×4), **SA-1**, **DSP-1**, **DSP-2**, **ST010**, **Cx4**,
+  **S-DD1**, **SPC7110** (con su reloj) y **OBC1**. Los chips que no traen su programa en la rom se emulan con tablas
+  calculadas por fórmula: no hace falta ningún archivo de firmware.
+
+Todavía no funcionan los juegos con DSP-3, DSP-4, ST011 y ST018.
 
 ![Menú de pausa](docs/imagen-menu.png)
 
 ## Requisitos
 
 - PS4 con **GoldHEN**. Está probado en el firmware 9.00.
-- Tus propias ROMs de SNES (`.sfc`, `.smc`, `.fig`, `.swc`). **No se incluye ninguna ROM.**
+- Tus propias ROMs. **No se incluye ninguna ROM ni ninguna BIOS.**
+
+### BIOS (opcionales salvo Atari Lynx)
+
+Se copian a `/data/snes-ps4/bios/` en la consola:
+
+| Archivo | Para |
+|---|---|
+| `lynxboot.img` | Atari Lynx (**obligatoria**) |
+| `disksys.rom` | juegos de Famicom Disk System |
+| `gba_bios.bin` | GBA (opcional: sin ella se usa una BIOS propia del emulador) |
+| `bios_MD.bin`, `bios_U.sms`, `bios_E.sms`, `bios_J.sms`, `bios.gg` | pantallas de arranque de Sega (opcionales) |
+| `7800 BIOS (U).rom` | Atari 7800 (opcional) |
 
 ## Instalación
 
 1. Descarga el PKG desde la sección [Releases](../../releases).
 2. Cópialo a un USB y, en la PS4, instálalo con GoldHEN (*Ajustes de depuración → Instalador de paquetes*).
-3. Copia tus ROMs en cualquier parte del USB y abre **SNESUI**.
-
-Hay dos versiones del PKG:
-
-- **SNESUI:** la normal.
-- **SNESUI (segura):** no usa la red ni el listado de carpetas. Úsala si la normal no abre en tu consola. No baja
-  carátulas.
+3. Copia tus ROMs en cualquier parte del USB y abre **ALLESIU**.
 
 ## Controles
 
 | En la biblioteca | |
 |---|---|
 | ✕ | Jugar |
-| △ | Buscar juegos en el USB |
+| △ | Actualizar (volver a revisar el USB) |
 | □ | Bajar las carátulas que falten |
-| OPTIONS | Opciones del juego: copiar solo ese juego a la consola o al USB, borrar de la consola, favorito, y copiar o borrar todos los juegos |
-| L1 / R1 | Cambiar de pestaña: Todos, Recientes, Favoritos, Configuración |
+| OPTIONS | Opciones del juego: copiar a la consola o al USB, borrar, favorito, copiar o borrar todos |
+| Panel táctil | Buscar por nombre (teclado en pantalla); ○ quita la búsqueda |
+| L1 / R1 | Cambiar de pestaña: Todos, cada consola, Recientes, Favoritos, Configuración |
 | L2 / R2 | Subir o bajar una página |
 | Stick derecho ← → | Saltar a la letra anterior o siguiente |
-| Panel táctil | Buscar por nombre (teclado en pantalla); ○ quita la búsqueda |
 
-| Jugando | Botón de la SNES |
+| Jugando | |
 |---|---|
-| ✕ ○ □ △ | B A Y X |
+| ✕ ○ □ △ | Los botones de la consola (en la SNES: B A Y X; en las de dos botones, ✕/□ y ○/△) |
 | L1 / R1 | L / R |
 | OPTIONS | Start |
 | Panel táctil | Select |
 | **R2** (mantener) | Avance rápido |
-| **L2** (mantener) | Rebobinar (vuelve atrás en el tiempo) |
+| **L2** (mantener) | Rebobinar |
 | **L3 + R3** | Menú de pausa: guardar o cargar estado, proporción, filtro, reiniciar, salir |
 
-**Dos jugadores:** inicia sesión con un segundo usuario de la PS4 en el otro mando; SNESUI lo detecta solo y lo pone
-como jugador 2.
+**Dos jugadores:** inicia sesión con un segundo usuario de la PS4 en el otro mando; ALLESIU lo detecta solo.
 
 ## Dónde guarda las cosas
 
-Todo queda en `/data/snes-ps4/` en la consola:
+Todo queda en `/data/snes-ps4/` en la consola (la carpeta conserva el nombre de cuando el proyecto era solo de SNES):
 
 - `juegos/`: los juegos copiados desde el USB;
-- `guardados/`: las partidas (`.srm`) y los estados rápidos (`.st0` a `.st3`);
+- `guardados/`: las partidas y los estados rápidos (las consolas que no son la SNES, en `guardados/<consola>/`);
 - `caratulas/`: las carátulas bajadas;
-- `biblioteca.txt`: el índice de la biblioteca (para que aparezca al instante; se actualiza solo);
-- `ajustes.txt`: la configuración general (proporción, filtro, avance rápido, rebobinar, velocidad del Super FX);
-- `guardados/<juego>.cfg`: la proporción y el filtro propios de un juego, si se cambiaron desde su menú de pausa.
-
-## Estado actual
-
-- **Chips soportados:** Super FX, SA-1, DSP-1, DSP-2, Cx4, S-DD1, SPC7110 (con reloj Epson), ST010 y OBC1. Los juegos que los usan
-  se comparan con bsnes cuadro a cuadro. El Super FX pasa además las 58 pruebas de hardware públicas del chip.
-- Los chips Cx4, DSP-1, DSP-2 y ST010 no traen su programa en la rom: SNESUI hace lo mismo que el chip, con tablas
-  calculadas por fórmula (no hace falta ningún archivo de firmware).
-
-Todavía **no** funcionan los juegos con los chips DSP-3, DSP-4, ST011 y ST018. Están planeados para
-próximas versiones.
+- `bios/`: las BIOS;
+- `biblioteca.txt`: el índice de la biblioteca;
+- `ajustes.txt`: la configuración general.
 
 ## Compilar
 
@@ -127,35 +128,40 @@ Se compila en Windows con Git Bash:
 
 - **Toolchain:** [OpenOrbis PS4 Toolchain](https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain) v0.5.3 y
   LLVM/clang 18.
-- **PKG:** `sh construir.sh` deja los PKG en `salida/`. Si tu toolchain está en otra carpeta, define `PS4_TOOLCHAIN`
-  (ruta de Git Bash), `PS4_TOOLCHAIN_WIN` (ruta de Windows) y `LLVM_BIN`.
-- **Herramientas de PC:** `sh pc/compilar.sh` compila el simulador de la interfaz y los probadores del núcleo.
+- **Emuladores de las otras consolas:** se bajan aparte (ver `src/nucleos/nucleos.sh`, que los compila desde
+  `C:\ps4dev\externos`).
+- **PKG:** `sh construir.sh` deja los PKG en `salida/`.
+- **Herramientas de PC:** `sh pc/compilar.sh` compila el simulador de la interfaz y los probadores.
 
-Hay detalles importantes para que el programa abra en la consola: sin excepciones de C++, sin RTTI y sin constructores
-globales. Están explicados en `construir.sh`, y `herramientas/revisar_elf.py` revisa cada ejecutable antes de probarlo.
-
-### Estructura
-
-- `src/nucleo/`: el emulador:
-  - `cpu.cpp`: procesador 65816;
-  - `ppu.cpp`: gráficos;
-  - `apu.cpp`, `spc700.inc`, `dsp.inc`: sonido;
-  - `bus.cpp`: memoria, DMA y HDMA;
-  - `superfx.cpp`, `sa1cpu.cpp` (con `sa1.inc`), `dsp1.cpp`, `dsp2.cpp`, `st010.cpp`, `cx4.cpp`, `sdd1.cpp`, `spc7110.cpp`, `obc1.cpp`: los chips del
-    cartucho.
-- `src/app/`: la interfaz (biblioteca, juego, carátulas, fondo animado, diagnóstico).
-- `src/comun/`: dibujo en HD por software, texto y acceso a la PS4.
-- `pc/`: simulador y pruebas en PC.
+Hay detalles importantes para que el programa abra en la consola: sin excepciones de C++, sin RTTI, sin constructores
+globales y sin tablas constantes grandes de punteros. Están explicados en `construir.sh` y `src/nucleos/nucleos.sh`, y
+`herramientas/revisar_elf.py` revisa cada ejecutable antes de probarlo.
 
 ## Créditos
 
+Emuladores de otras consolas que usa ALLESIU:
+
+- [FCEUmm](https://github.com/libretro/libretro-fceumm) (NES), del equipo de FCEU/FCE Ultra y libretro.
+- [Gambatte](https://github.com/libretro/gambatte-libretro) (Game Boy y Game Boy Color), de Sindre Aamås y libretro.
+- [mGBA](https://github.com/mgba-emu/mgba) (Game Boy Advance), de Vicki Pfau.
+- [Genesis Plus GX](https://github.com/libretro/Genesis-Plus-GX) (Mega Drive, Master System y Game Gear), de Eke-Eke
+  y Charles MacDonald.
+- [Beetle NeoPop](https://github.com/libretro/beetle-ngp-libretro) (Neo Geo Pocket), basado en NeoPop de neopop_uk y
+  Mednafen.
+- [ProSystem](https://github.com/libretro/prosystem-libretro) (Atari 7800), de Greg Stanton.
+- [Handy](https://github.com/libretro/libretro-handy) (Atari Lynx), de Keith Wilkins.
+- [miniz](https://github.com/richgel999/miniz), el [LZMA SDK](https://www.7-zip.org/sdk.html) de Igor Pavlov y
+  [dmc_unrar](https://github.com/DrMcCoy/dmc_unrar), para las ROMs comprimidas.
+
+Además:
+
 - Carátulas: [libretro-thumbnails](https://github.com/libretro-thumbnails/libretro-thumbnails) (RetroArch).
-- Letra Inter, licencia OFL (en `assets/`).
-- [stb](https://github.com/nothings/stb) (dominio público), para PNG y letras.
-- Documentación del hardware: fullsnes (nocash).
-- Comparación de exactitud: snes9x y bsnes.
-- Pruebas de hardware de [PeterLemon](https://github.com/PeterLemon/SNES).
+- Letra Inter (en `assets/`).
+- [stb](https://github.com/nothings/stb), para PNG y letras.
+- Documentación del hardware de la SNES: fullsnes (nocash). Comparación de exactitud: snes9x y bsnes. Pruebas de
+  hardware de [PeterLemon](https://github.com/PeterLemon/SNES).
 
-SNESUI no tiene relación con Nintendo. SNES es marca de Nintendo. Usa solo ROMs de juegos que tengas.
+ALLESIU no tiene relación con Nintendo, Sega, SNK ni Atari. Los nombres de las consolas son marcas de sus dueños. Usa
+solo ROMs y BIOS de juegos y consolas que tengas.
 
-Creado por **RudolphGamerBkn**. © RudolphGamerBkn. Todos los derechos reservados.
+Creado por **RudolphGamerBkn**.
