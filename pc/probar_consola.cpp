@@ -99,6 +99,30 @@ static Resultado Probar(const char* ruta, int cuadros, const char* png)
 int main(int argc, char** argv)
 {
     if (argc < 3) { printf("uso: probar_consola <rom | @lista.txt> <cuadros> [carpeta]\n"); return 1; }
+    // probar_consola reconocer @lista.txt: cuánto tarda la biblioteca en saber la consola de cada comprimido.
+    if (!strcmp(argv[1], "reconocer"))
+    {
+        FILE* lista = fopen(argv[2] + 1, "rb");
+        if (!lista) return 1;
+        char linea[1024];
+        int n = 0, bien = 0;
+        auto t0 = std::chrono::steady_clock::now();
+        while (fgets(linea, sizeof linea, lista))
+        {
+            size_t l = strlen(linea);
+            while (l && (linea[l - 1] == '\n' || linea[l - 1] == '\r')) linea[--l] = 0;
+            if (!l) continue;
+            char interno[256] = "";
+            uint64_t tam = 0;
+            int s = ConsolaDeComprimido(linea, interno, sizeof interno, &tam);
+            n++;
+            if (s >= 0) bien++;
+            else printf("sin consola: %s\n", linea);
+        }
+        double seg = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+        printf("%d comprimidos, %d reconocidos, %.2f s (%.1f ms cada uno)\n", n, bien, seg, n ? seg * 1000 / n : 0);
+        return 0;
+    }
     int cuadros = atoi(argv[2]);
     if (argv[1][0] != '@')
     {

@@ -78,7 +78,7 @@ static Consola consolas[NUM_SISTEMAS] = {
     {SIS_GBA, "GBA", "Game Boy Advance", "GBA", "gba", "Nintendo_-_Game_Boy_Advance", 3.f / 2},
     {SIS_NGP, "NGP", "Neo Geo Pocket", "NGP", "ngp", "SNK_-_Neo_Geo_Pocket", 20.f / 19},
     {SIS_NGPC, "NGPC", "Neo Geo Pocket Color", "NGPC", "ngc|ngpc", "SNK_-_Neo_Geo_Pocket_Color", 20.f / 19},
-    {SIS_MD, "MD", "Mega Drive / Genesis", "MD", "md|gen|smd", "Sega_-_Mega_Drive_-_Genesis", 4.f / 3},
+    {SIS_MD, "MD", "Mega Drive / Genesis", "MD", "md|gen|smd|bin", "Sega_-_Mega_Drive_-_Genesis", 4.f / 3},
     {SIS_A2600, "2600", "Atari 2600", "A2600", "a26", "Atari_-_2600", 4.f / 3},
     {SIS_A7800, "7800", "Atari 7800", "A7800", "a78", "Atari_-_7800", 4.f / 3},
     {SIS_LYNX, "LYNX", "Atari Lynx", "LYNX", "lnx", "Atari_-_Lynx", 160.f / 102},
@@ -213,11 +213,9 @@ static int Elegir(const EntradaComprimido* e, int n, int* sistema)
 
 int ConsolaDeComprimido(const char* ruta, char* interno, int max, uint64_t* tam)
 {
-    size_t n = 0;
-    uint8_t* d = LeerComprimido(ruta, &n);
-    if (!d) return -1;
+    // Solo el índice del comprimido: la búsqueda pasa por cientos y no se lee ninguno entero.
     EntradaComprimido* e = (EntradaComprimido*)malloc(sizeof(EntradaComprimido) * MAX_ENTRADAS);
-    int k = e ? ComprimidoListar(d, n, e, MAX_ENTRADAS) : -1;
+    int k = e ? ComprimidoListarRuta(ruta, e, MAX_ENTRADAS) : -1;
     int sistema = -1, i = k > 0 ? Elegir(e, k, &sistema) : -1;
     if (i >= 0)
     {
@@ -225,7 +223,6 @@ int ConsolaDeComprimido(const char* ruta, char* interno, int max, uint64_t* tam)
         if (tam) *tam = e[i].tam;
     }
     free(e);
-    free(d);
     return i >= 0 ? sistema : -1;
 }
 
@@ -239,7 +236,7 @@ uint8_t* SacarDeComprimido(const char* ruta, char* interno, int max, uint32_t* t
     int sistema = -1, i = k > 0 ? Elegir(e, k, &sistema) : -1;
     uint8_t* r = NULL;
     if (k < 0) snprintf(error, 160, "El archivo comprimido está dañado o es de un tipo que no se puede abrir.");
-    else if (i < 0) snprintf(error, 160, "Adentro del archivo comprimido no hay ninguna rom de una consola que SNESUI pueda abrir.");
+    else if (i < 0) snprintf(error, 160, "Adentro del archivo comprimido no hay ninguna rom de una consola que ALLESIU pueda abrir.");
     else
     {
         size_t t = 0;
@@ -287,4 +284,73 @@ int CopiarBiosIncluidas()
 #else
     return 0;
 #endif
+}
+
+// ---------- consola por el nombre de la carpeta ----------
+// Los nombres que la gente usa para las carpetas de cada consola, en minúsculas y sin espacios ni signos.
+struct Alias { int sistema; const char* nombre; };
+static const Alias ALIAS[] = {
+    {SIS_SNES, "snes"}, {SIS_SNES, "sfc"}, {SIS_SNES, "supernintendo"}, {SIS_SNES, "superfamicom"}, {SIS_SNES, "supernes"},
+    {SIS_NES, "nes"}, {SIS_NES, "famicom"}, {SIS_NES, "fds"},
+    {SIS_GB, "gb"}, {SIS_GB, "gameboy"},
+    {SIS_GBC, "gbc"}, {SIS_GBC, "gameboycolor"},
+    {SIS_GBA, "gba"}, {SIS_GBA, "gameboyadvance"},
+    {SIS_NGP, "ngp"}, {SIS_NGP, "neogeopocket"},
+    {SIS_NGPC, "ngpc"}, {SIS_NGPC, "neogeopocketcolor"},
+    {SIS_MD, "md"}, {SIS_MD, "genesis"}, {SIS_MD, "megadrive"},
+    {SIS_SMS, "sms"}, {SIS_SMS, "mastersystem"},
+    {SIS_GG, "gg"}, {SIS_GG, "gamegear"},
+    {SIS_A2600, "2600"}, {SIS_A2600, "a2600"}, {SIS_A2600, "atari2600"},
+    {SIS_A7800, "7800"}, {SIS_A7800, "a7800"}, {SIS_A7800, "atari7800"},
+    {SIS_LYNX, "lynx"}, {SIS_LYNX, "atarilynx"},
+};
+
+// La consola que dice un nombre de carpeta: alguna palabra igual a un nombre corto ("roms-gba" → gba), o el nombre
+// entero que termina en uno largo ("Nintendo - Game Boy Color" → gameboycolor). -1 si no dice ninguna.
+static int ConsolaDeNombre(const char* nombre, size_t largo)
+{
+    char junto[128], palabra[64];
+    size_t nj = 0, np = 0;
+    int porPalabra = -1;
+    for (size_t i = 0; i <= largo; i++)
+    {
+        char c = i < largo ? (char)tolower((unsigned char)nombre[i]) : 0;
+        bool alnum = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9');
+        if (alnum)
+        {
+            if (nj < sizeof junto - 1) junto[nj++] = c;
+            if (np < sizeof palabra - 1) palabra[np++] = c;
+            continue;
+        }
+        palabra[np] = 0;
+        if (np && porPalabra < 0)
+            for (const Alias& a : ALIAS)
+                if (strlen(a.nombre) <= 4 && !strcmp(palabra, a.nombre)) { porPalabra = a.sistema; break; }
+        np = 0;
+    }
+    junto[nj] = 0;
+    // Primero el nombre largo (más específico: "gameboycolor" antes que la palabra "gb" suelta).
+    int mejor = -1;
+    size_t mejorLargo = 0;
+    for (const Alias& a : ALIAS)
+    {
+        size_t l = strlen(a.nombre);
+        if (l > 4 && l <= nj && !strcmp(junto + nj - l, a.nombre) && l > mejorLargo) { mejor = a.sistema; mejorLargo = l; }
+    }
+    return mejor >= 0 ? mejor : porPalabra;
+}
+
+int ConsolaPorCarpeta(const char* carpeta)
+{
+    // De la carpeta más honda hacia arriba: "USB/roms/GBA/Acción" → GBA.
+    const char* fin = carpeta + strlen(carpeta);
+    while (fin > carpeta)
+    {
+        const char* ini = fin;
+        while (ini > carpeta && ini[-1] != '/') ini--;
+        int s = ConsolaDeNombre(ini, (size_t)(fin - ini));
+        if (s >= 0) return s;
+        fin = ini > carpeta ? ini - 1 : carpeta;
+    }
+    return -1;
 }

@@ -27,10 +27,11 @@ struct Juego
     uint32_t color1, color2;
 };
 
-static const int MAX_JUEGOS = 10000;
+static const int MAX_JUEGOS = 30000;
 
 void BibliotecaIniciar();                  // carga el índice guardado y empieza a buscar en segundo plano
-void BibliotecaBuscar();                   // vuelve a buscar (si ya está buscando, no hace nada)
+void BibliotecaBuscar();                   // vuelve a buscar, revisando todo (si ya está buscando, no hace nada)
+void BibliotecaBuscarDe(bool rapida);      // rápida: lo que ya está en el índice no se vuelve a revisar en el USB
 bool BibliotecaBuscando(int* encontrados); // true mientras busca; cuántas roms lleva
 bool BibliotecaNueva();                    // true (una vez) cuando hay una lista nueva: volver a pedir BibliotecaJuegos
 const Juego* BibliotecaJuegos(int* n);     // la lista actual, ordenada por nombre (no cambia hasta BibliotecaNueva)

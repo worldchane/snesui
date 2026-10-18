@@ -13,11 +13,12 @@
 #include "../comun/plataforma.h"
 #include "../nucleo/snes.h"
 #include "consola.h"
+#include "registro.h"
 
 static const char* const RAICES[] = {
     "/mnt/usb0", "/mnt/usb1", "/mnt/usb2", "/mnt/usb3", "/data/snes-ps4/juegos",
 };
-static const int MAX_PROFUNDIDAD = 8, MAX_CARPETAS = 4000;
+static const int MAX_PROFUNDIDAD = 8, MAX_CARPETAS = 20000;
 
 const char* CarpetasDeJuegos() { return "Busco en todos los USB (en la raíz y en todas sus carpetas) y en /data/snes-ps4/juegos"; }
 
@@ -83,16 +84,19 @@ static void NombreLimpio(const char* archivo, char* out, int max)
     out[n] = 0;
 }
 
-// ---------- las dos listas ----------
-// 'activa' es la que muestra la interfaz (solo se lee); 'nueva' la arma el hilo de búsqueda. Al terminar se cambian
-// (en el hilo principal, con BibliotecaNueva): la vieja queda para la búsqueda siguiente.
+// ---------- las listas ----------
+// 'activa' es la que muestra la interfaz (solo la toca el hilo principal). El hilo de búsqueda arma 'nueva' y, cada
+// tanto mientras busca y al terminar, deja una copia ordenada en 'entrega'; el hilo principal la cambia por 'activa'
+// (BibliotecaNueva). Así los juegos van apareciendo mientras se busca. 'previa' es una copia de 'activa' al empezar,
+// para reusar lo ya analizado sin tocar la de la interfaz.
 struct Lista { Juego* j; int n, cap; };
-static Lista activa, nueva;
+static Lista activa, nueva, previa, entrega;
 static std::atomic<bool> buscando{false}, hayNueva{false};
 static std::atomic<int> encontrados{0};
 static bool iniciada;
 static uint32_t HashRuta(const char* s) { uint32_t h = 2166136261u; for (; *s; s++) h = (h ^ (unsigned char)*s) * 16777619u; return h; }
 
+static bool Copiar(Lista& dst, const Lista& src);
 static bool Crecer(Lista& l)
 {
     if (l.n < l.cap) return true;
@@ -106,19 +110,34 @@ static bool Crecer(Lista& l)
     return true;
 }
 
-// Índice por ruta de la lista activa (tabla hash): para reusar lo ya analizado sin volver a leer la rom.
+// Copia el contenido de una lista en otra (agrandándola si hace falta).
+static bool Copiar(Lista& dst, const Lista& src)
+{
+    if (dst.cap < src.n)
+    {
+        Juego* j = (Juego*)realloc(dst.j, (size_t)(src.n ? src.n : 1) * sizeof(Juego));
+        if (!j) return false;
+        dst.j = j;
+        dst.cap = src.n;
+    }
+    if (src.n) memcpy(dst.j, src.j, (size_t)src.n * sizeof(Juego));
+    dst.n = src.n;
+    return true;
+}
+
+// Índice por ruta de la lista previa (tabla hash): para reusar lo ya analizado sin volver a leer la rom.
 static int* tabla;
 static int tablaTam;
 static void ArmarTabla()
 {
     int t = 1;
-    while (t < activa.n * 2 + 16) t <<= 1;
+    while (t < previa.n * 2 + 16) t <<= 1;
     if (t != tablaTam) { free(tabla); tabla = (int*)malloc(sizeof(int) * t); tablaTam = tabla ? t : 0; }
     if (!tabla) return;
     for (int i = 0; i < tablaTam; i++) tabla[i] = -1;
-    for (int i = 0; i < activa.n; i++)
+    for (int i = 0; i < previa.n; i++)
     {
-        uint32_t k = HashRuta(activa.j[i].ruta) & (tablaTam - 1);
+        uint32_t k = HashRuta(previa.j[i].ruta) & (tablaTam - 1);
         while (tabla[k] >= 0) k = (k + 1) & (tablaTam - 1);
         tabla[k] = i;
     }
@@ -127,7 +146,7 @@ static const Juego* BuscarAnterior(const char* ruta)
 {
     if (!tabla) return NULL;
     for (uint32_t k = HashRuta(ruta) & (tablaTam - 1); tabla[k] >= 0; k = (k + 1) & (tablaTam - 1))
-        if (!strcmp(activa.j[tabla[k]].ruta, ruta)) return &activa.j[tabla[k]];
+        if (!strcmp(previa.j[tabla[k]].ruta, ruta)) return &previa.j[tabla[k]];
     return NULL;
 }
 
@@ -179,9 +198,30 @@ static void MarcarCopiados(Lista& l)
 }
 
 // ---------- recorrido del USB ----------
-struct Busq { int prof, vistas; char carpeta[1024]; };
+struct Busq { int prof, vistas, nuevos; bool rapida; char carpeta[1024]; };
 
 static bool Saltar(const char* n) { return n[0] == '.' || n[0] == '$' || !strcasecmp(n, "System Volume Information"); }
+
+static int PorNombre(const void* a, const void* b);
+static void MarcarCopiados(Lista& l);
+
+// Deja en 'entrega' una copia ordenada de lo encontrado hasta ahora, si la interfaz ya tomó la anterior. Mientras
+// busca, cada 1,5 s; al final, siempre (espera a que la interfaz tome la anterior).
+static double ultimaEntrega;
+static void Entregar(bool final)
+{
+    if (!final && Segundos() - ultimaEntrega < 1.5) return;
+    if (hayNueva.load(std::memory_order_acquire))
+    {
+        if (!final) return;
+        while (hayNueva.load(std::memory_order_acquire)) Dormir(5);
+    }
+    if (!Copiar(entrega, nueva)) return;
+    if (entrega.n > 1) qsort(entrega.j, entrega.n, sizeof(Juego), PorNombre);
+    MarcarCopiados(entrega);
+    ultimaEntrega = Segundos();
+    hayNueva.store(true, std::memory_order_release);
+}
 
 static void AlEncontrar(const char* nombre, bool carpeta, void* u)
 {
@@ -199,21 +239,45 @@ static void AlEncontrar(const char* nombre, bool carpeta, void* u)
     }
     bool comprimido = EsComprimido(nombre);
     int sistema = comprimido ? 0 : SistemaDe(nombre);
+    // ".bin" es muy común: suelto, solo cuenta como Mega Drive en una carpeta de Mega Drive o si trae la firma "SEGA" de
+    // sus cartuchos (en 0x100). Adentro de un comprimido no hace falta (ver consola.cpp).
+    if (sistema == SIS_MD && !strcasecmp(Ext(nombre), "bin") && ConsolaPorCarpeta(b.carpeta) != SIS_MD)
+    {
+        char r[1100], firma[4] = {0};
+        snprintf(r, sizeof r, "%s/%s", b.carpeta, nombre);
+        FILE* f = AbrirArchivo(r, "rb");
+        bool sega = f && !fseek(f, 0x100, SEEK_SET) && fread(firma, 1, 4, f) == 4 && !memcmp(firma, "SEGA", 4);
+        if (f) fclose(f);
+        if (!sega) return;
+    }
     if (sistema < 0 || !Crecer(nueva)) return;
     Juego& j = nueva.j[nueva.n];
     memset(&j, 0, sizeof j);
     j.sistema = sistema;
     snprintf(j.ruta, sizeof j.ruta, "%s/%s", b.carpeta, nombre);
-    uint64_t bytes = 0;
-    if (!ExisteArchivo(j.ruta, &bytes)) return;
-    // Si ya estaba en el índice con el mismo tamaño, se reusa sin leer la rom.
+    // Búsqueda rápida (al abrir la app): lo que ya está en el índice con la misma ruta se reusa sin preguntarle nada al
+    // USB (cada consulta allá es lenta). La completa (triángulo) revisa además que no haya cambiado de tamaño.
     const Juego* antes = BuscarAnterior(j.ruta);
-    if (antes && antes->bytes == bytes) j = *antes;
+    uint64_t bytes = 0;
+    if (antes && b.rapida) j = *antes;
+    else if (!ExisteArchivo(j.ruta, &bytes)) return;
+    else if (antes && antes->bytes == bytes) j = *antes;
     else
     {
+        b.nuevos++;
         InfoRom info;
         memset(&info, 0, sizeof info);
-        if (comprimido)
+        int deCarpeta = comprimido ? ConsolaPorCarpeta(b.carpeta) : -1;
+        if (deCarpeta >= 0 && ConsolaDe(deCarpeta).presente)
+        {
+            // Comprimido en una carpeta que ya dice la consola ("GBA", "roms-gba", "Game Boy Advance"...): no se abre
+            // (abrir cientos en el USB es lento). La rom de adentro se busca al jugar.
+            sistema = deCarpeta;
+            j.sistema = sistema;
+            info.valida = true;
+            info.tamKB = (int)(bytes / 1024);
+        }
+        else if (comprimido)
         {
             // Comprimido: la consola es la de la rom de adentro (si no hay ninguna, no es un juego).
             uint64_t tam = 0;
@@ -235,6 +299,7 @@ static void AlEncontrar(const char* nombre, bool carpeta, void* u)
     }
     nueva.n++;
     encontrados.store(nueva.n, std::memory_order_relaxed);
+    Entregar(false);
 }
 
 static int PorNombre(const void* a, const void* b) { return strcasecmp(((const Juego*)a)->nombre, ((const Juego*)b)->nombre); }
@@ -310,13 +375,19 @@ static void LeerIndice()
 }
 
 // ---------- búsqueda en segundo plano ----------
+static bool proximaRapida;   // la próxima búsqueda es la rápida (ver AlEncontrar)
+
 static void* HiloBusqueda(void*)
 {
+    double t0 = Segundos();
+    ultimaEntrega = t0;
     nueva.n = 0;
     encontrados.store(0, std::memory_order_relaxed);
+    Copiar(previa, activa);   // la interfaz no la cambia mientras tanto: solo cambia con una entrega, y no hay ninguna pendiente
     ArmarTabla();
     static Busq b;
     memset(&b, 0, sizeof b);
+    b.rapida = proximaRapida;
     // Para ver el USB hay que salir del encierro del sistema con GoldHEN.
     AbrirAccesoCompleto("snes");
     bool algo = false;
@@ -327,21 +398,27 @@ static void* HiloBusqueda(void*)
     }
     CerrarAccesoCompleto();
     if (nueva.n > 1) qsort(nueva.j, nueva.n, sizeof(Juego), PorNombre);
+    Registrar("Búsqueda %s: %d carpetas, %d juegos (%d nuevos o cambiados), %.1f s", b.rapida ? "rápida" : "completa",
+              b.vistas, nueva.n, b.nuevos, Segundos() - t0);
     MarcarCopiados(nueva);
-    // Si no se pudo abrir ninguna carpeta (sin acceso, o la variante sin listado), se conserva la lista anterior.
+    // Si no se pudo abrir ninguna carpeta (sin acceso, o la variante sin listado), se conserva la lista anterior (y se
+    // espera a que la interfaz tome una entrega parcial que haya quedado, para que no quede a medias).
     if (algo)
     {
         GuardarIndice(nueva);
-        hayNueva.store(true, std::memory_order_release);
+        Entregar(true);
     }
     buscando.store(false, std::memory_order_release);
     return NULL;
 }
 
-void BibliotecaBuscar()
+void BibliotecaBuscar() { BibliotecaBuscarDe(false); }
+
+void BibliotecaBuscarDe(bool rapida)
 {
     if (buscando.load(std::memory_order_acquire) || hayNueva.load(std::memory_order_acquire)) return;
     buscando.store(true, std::memory_order_release);
+    proximaRapida = rapida;
     if (!Lanzar(HiloBusqueda, NULL, "biblioteca")) buscando.store(false, std::memory_order_release);
 }
 
@@ -351,7 +428,7 @@ void BibliotecaIniciar()
     iniciada = true;
     LeerIndice();
     MarcarCopiados(activa);
-    BibliotecaBuscar();
+    BibliotecaBuscarDe(true);   // al abrir: la rápida (el índice ya tiene casi todo)
 }
 
 bool BibliotecaBuscando(int* n)
@@ -364,8 +441,8 @@ bool BibliotecaNueva()
 {
     if (!hayNueva.load(std::memory_order_acquire)) return false;
     Lista vieja = activa;
-    activa = nueva;
-    nueva = vieja;
+    activa = entrega;
+    entrega = vieja;
     hayNueva.store(false, std::memory_order_release);
     return true;
 }

@@ -178,6 +178,16 @@ void Imagen(const uint32_t* px, int iw, int ih, float x, float y, float w, float
     o->dato = px; o->iw = iw; o->ih = ih; o->suave = suave;
 }
 
+void ImagenSumada(const uint32_t* px, int iw, int ih, float x, float y, float w, float h, float a)
+{
+    if (!px || iw <= 0 || ih <= 0) return;
+    Orden* o = Nueva(O_IMAGEN, x, y, x + w, y + h, a);
+    if (!o) return;
+    o->x = x; o->y = y; o->w = w; o->h = h;
+    o->dato = px; o->iw = iw; o->ih = ih; o->suave = true;
+    o->hueca = 1;   // en las imágenes, "hueca" quiere decir sumada
+}
+
 void OrdenTexto(int fuente, const char* s, int n, float x, float y, uint32_t c, float a)
 {
     // La caja vertical alcanza para letras con acentos y colas (de -0,3 a 1,3 veces el alto de línea).
@@ -343,6 +353,37 @@ static void PintarImagen(const Orden& o, int y0, int y1)
     const uint32_t* src = (const uint32_t*)o.dato;
     float sx = o.iw / o.w, sy = o.ih / o.h;
     int a = A256(1, o.a);
+    if (o.hueca)
+    {
+        // Sumada (ImagenSumada): bilineal, y cada canal se suma al fondo con tope en 255. Solo para imágenes chicas en
+        // pantalla (el logo de la cabecera): va por el camino lento.
+        for (int py = y0; py < y1; py++)
+        {
+            uint32_t* fila = destino + (size_t)py * pitchDestino;
+            float v = (py + .5f - o.y) * sy - .5f;
+            int iy = (int)floorf(v);
+            uint32_t fy = (uint32_t)((v - iy) * 256);
+            const uint32_t* s0 = src + (size_t)(iy < 0 ? 0 : iy >= o.ih ? o.ih - 1 : iy) * o.iw;
+            const uint32_t* s1 = src + (size_t)(iy + 1 < 0 ? 0 : iy + 1 >= o.ih ? o.ih - 1 : iy + 1) * o.iw;
+            for (int px = o.bx0; px < o.bx1; px++)
+            {
+                float u = (px + .5f - o.x) * sx - .5f;
+                int ix = (int)floorf(u);
+                uint32_t fx = (uint32_t)((u - ix) * 256);
+                int ix0 = ix < 0 ? 0 : ix >= o.iw ? o.iw - 1 : ix;
+                int ix1 = ix + 1 >= o.iw ? o.iw - 1 : ix + 1 < 0 ? 0 : ix + 1;
+                uint32_t c = RB(Mezcla(Mezcla(s0[ix0], s0[ix1], fx), Mezcla(s1[ix0], s1[ix1], fx), fy));
+                uint32_t d = fila[px], r = 0;
+                for (int k = 0; k < 24; k += 8)
+                {
+                    uint32_t v2 = ((d >> k) & 255) + (((c >> k) & 255) * (uint32_t)a >> 8);
+                    r |= (v2 > 255 ? 255 : v2) << k;
+                }
+                fila[px] = r | 0xff000000;
+            }
+        }
+        return;
+    }
     uint16_t tablaX[ANCHO], tablaF[ANCHO];   // columna de origen y peso de cada columna de destino (camino rápido)
     bool tablaLista = false;
     for (int py = y0; py < y1; py++)

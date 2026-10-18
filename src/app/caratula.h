@@ -25,5 +25,7 @@ struct ProgresoDescarga
 };
 ProgresoDescarga Progreso();
 void OlvidarCaratulas();
+// Borra el registro de las carátulas que no estaban en el servidor (la próxima descarga las vuelve a buscar).
+void OlvidarNoEncontradas();
 // Carga un PNG cualquiera a 0xRRGGBB (malloc; liberar con free). NULL si no se pudo.
 uint32_t* CargarImagen(const char* ruta, int* w, int* h);   // libera el caché de memoria (al salir de la biblioteca)

@@ -22,6 +22,8 @@ typedef struct
 int ComprimidoTipo(const uint8_t* d, size_t n);
 /* Los archivos de adentro (sin las carpetas). Devuelve cuántos dejó en 'out' (a lo más 'max'), o -1 si está dañado. */
 int ComprimidoListar(const uint8_t* d, size_t n, EntradaComprimido* out, int max);
+/* Lo mismo leyendo del archivo solo el índice, sin cargarlo entero (para la búsqueda de la biblioteca). */
+int ComprimidoListarRuta(const char* ruta, EntradaComprimido* out, int max);
 /* Descomprime un archivo de adentro a un búfer nuevo (malloc). NULL si no se pudo. */
 uint8_t* ComprimidoSacar(const uint8_t* d, size_t n, int indice, size_t* tam);
 

@@ -16,15 +16,18 @@ TCW=${PS4_TOOLCHAIN_WIN:-'C:\ps4dev\oo\OpenOrbis\PS4Toolchain'}
 OBJ=$AQUI/obj/nucleos/$DESTINO
 mkdir -p "$OBJ"
 
+# -O3 en todos los núcleos: la emulación es lo que más pesa (a NeoPop le dio 40-75 % más que -O2).
 case "$DESTINO" in
-  ps4) CC="$LLVM/clang --target=x86_64-pc-freebsd12-elf -fPIC -funwind-tables -fno-exceptions -O2 -isysroot $TCW -isystem $TCW\\include"
+  ps4) CC="$LLVM/clang --target=x86_64-pc-freebsd12-elf -fPIC -funwind-tables -fno-exceptions -O3 -isysroot $TCW -isystem $TCW\\include"
        # C++ como la app (construir.sh): sin excepciones ni RTTI, con la libc++ de OpenOrbis.
-       CXX="$LLVM/clang++ --target=x86_64-pc-freebsd12-elf -fPIC -funwind-tables -fno-exceptions -fno-rtti -fno-threadsafe-statics -D_LIBCPP_DISABLE_EXTERN_TEMPLATE -O2 -isysroot $TCW -isystem $TCW\\include\\c++\\v1 -isystem $TCW\\include -std=gnu++17" ;;
-  pc)  CC="$LLVM/clang -O2 -Wno-error=implicit-function-declaration -D_CRT_SECURE_NO_WARNINGS -D_USE_MATH_DEFINES -I$AQUI/pc/compat_win"
-       CXX="$LLVM/clang++ -O2 -fno-exceptions -fno-rtti -std=gnu++17 -D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH -D_CRT_SECURE_NO_WARNINGS -D_USE_MATH_DEFINES -I$AQUI/pc/compat_win" ;;
+       CXX="$LLVM/clang++ --target=x86_64-pc-freebsd12-elf -fPIC -funwind-tables -fno-exceptions -fno-rtti -fno-threadsafe-statics -D_LIBCPP_DISABLE_EXTERN_TEMPLATE -O3 -isysroot $TCW -isystem $TCW\\include\\c++\\v1 -isystem $TCW\\include -std=gnu++17" ;;
+  pc)  CC="$LLVM/clang -O3 -Wno-error=implicit-function-declaration -D_CRT_SECURE_NO_WARNINGS -D_USE_MATH_DEFINES -I$AQUI/pc/compat_win"
+       CXX="$LLVM/clang++ -O3 -fno-exceptions -fno-rtti -std=gnu++17 -D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH -D_CRT_SECURE_NO_WARNINGS -D_USE_MATH_DEFINES -I$AQUI/pc/compat_win" ;;
   *) echo "destino desconocido: $DESTINO (ps4 o pc)"; exit 1 ;;
 esac
-COMUN="-w -include $AQUI/src/nucleos/prefijo.h -D__LIBRETRO__"
+# HAVE_NO_LANGEXTRA: sin las traducciones de las opciones de cada núcleo (miles de punteros a textos que no se usan:
+# llevaban la tabla de relocaciones del programa de 900 a 228.000 entradas).
+COMUN="-w -include $AQUI/src/nucleos/prefijo.h -D__LIBRETRO__ -DHAVE_NO_LANGEXTRA"
 
 # compilar <núcleo> <prefijo> <opciones> <archivos...>: un .o por archivo en obj/nucleos/<destino>/<núcleo>/. Lo
 # compartido (sin prefijo) va sin prefijo.h.
@@ -44,6 +47,11 @@ compilar() {
   mkdir -p "$OBJ/$N"
   # Primera pasada (sin renombrar.h): los objetos viejos pueden estar renombrados; se compila todo de nuevo.
   [ -n "$P" ] && [ ! -f "$REN" ] && rm -f "$OBJ/$N"/*.o
+  # Si cambiaron las opciones de compilación (las del script, no solo los archivos), se compila todo de nuevo.
+  if [ "$(cat "$OBJ/$N/opciones.txt" 2>/dev/null)" != "$CC $CXX $PRE $OPC" ]; then
+    rm -f "$OBJ/$N"/*.o
+    echo "$CC $CXX $PRE $OPC" > "$OBJ/$N/opciones.txt"
+  fi
   : > "$OBJ/$N/lista.txt"
   for f in "$@"; do
     o="$OBJ/$N/$(echo "${f#$EXT/}" | tr '/' '_' | sed 's/\.c$/.o/; s/\.cpp$/.o/; s/\.cxx$/.o/; s/\.cc$/.o/')"
@@ -83,6 +91,9 @@ comun() {
 
 # Genesis Plus GX (Mega Drive / Genesis, Master System y Game Gear), licencia no comercial (ver su LICENSE.txt). Sin
 # los CD con pistas OGG ni imágenes CHD (no se usan libchdr ni tremor). Usa libretro-common de comun().
+# BUILD_TABLES: las tablas de instrucciones del 68000 (dos de 65.536 punteros) se arman al iniciar en vez de ser
+# constantes. Constantes iban a la zona RELRO (1 MB de punteros a corregir al cargar) y la PS4 no abría el programa
+# (CE-41839-5; pruebas 6 y 7 del 2026-10-17).
 gpgx() {
   D=$EXT/Genesis-Plus-GX
   [ -d "$D" ] || return 0
@@ -92,8 +103,18 @@ gpgx() {
   for d in $DIRS; do ARCH="$ARCH $(ls $D/$d/*.c)"; INC="$INC -I$D/$d"; done
   for f in adler32 crc32 inffast inflate inftrees zutil; do ARCH="$ARCH $D/libretro/deps/zlib-1.2.11/$f.c"; done
   OPC="$INC -DLSB_FIRST -DBYTE_ORDER=LITTLE_ENDIAN -DUSE_16BPP_RENDERING -DFRONTEND_SUPPORTS_RGB565 -DUSE_LIBRETRO_VFS
-       -DM68K_OVERCLOCK_SHIFT=20 -DZ80_OVERCLOCK_SHIFT=20 -DHAVE_YM3438_CORE -DHAVE_OPLL_CORE -DMAXROMSIZE=33554432
+       -DM68K_OVERCLOCK_SHIFT=20 -DZ80_OVERCLOCK_SHIFT=20 -DHAVE_YM3438_CORE -DHAVE_OPLL_CORE -DMAXROMSIZE=10485760
        -DHAVE_ZLIB -include $AQUI/src/nucleos/incluir/inline.h"
+  # Las dos copias del procesador (68000 y el del Sega CD) con BUILD_TABLES (ver arriba); solo esos archivos lo admiten.
+  mkdir -p "$OBJ/gpgx/fuente"
+  for f in m68kcpu s68kcpu; do
+    c="$OBJ/gpgx/fuente/$f.c"
+    if [ ! -f "$c" ] || [ "$D/core/m68k/$f.c" -nt "$c" ]; then
+      # (upstream BUILD_TABLES declara la tabla de ciclos después de que m68kcpu.h la usa: se declara antes)
+      { echo "#define BUILD_TABLES"; echo "static unsigned char m68ki_cycles[0x10000];"; cat "$D/core/m68k/$f.c"; } > "$c"
+    fi
+    ARCH=$(echo "$ARCH" | sed "s|$D/core/m68k/$f.c|$c|")
+  done
   compilar gpgx md "$OPC" $ARCH
 }
 
@@ -169,6 +190,61 @@ gambatte() {
        -DHAVE_STDINT_H -DHAVE_INTTYPES_H -DVIDEO_RGB565" $ARCH
 }
 
+# Stella 2014 (Atari 2600), licencia GPL 2. En C++. Los pocos archivos con try/catch(...) o throw se compilan como copias
+# pasadas por sin_excepciones.sed (en la consola no puede haber excepciones). Usa libretro-common de comun().
+stella() {
+  D=$EXT/stella2014-libretro
+  [ -d "$D" ] || return 0
+  C=$D/stella/src
+  F=$OBJ/stella/fuente
+  mkdir -p "$F"
+  ARCH="$D/libretro.cxx $C/emucore/Thumbulator.c $C/common/Base.cxx $C/common/Sound.cxx"
+  for f in AtariVox Booster Cart CartARM Cart0840 Cart0FA0 Cart03E0 CartWD Cart2K Cart3E Cart3EX Cart3EPlus Cart3F Cart4A50 \
+           Cart4K Cart4KSC CartAR CartBF CartBFSC CartBUS CartCDF CartCM CartCTY CartCV CartDF CartDFSC CartDPC CartDPCPlus \
+           CartE0 CartE7 CartEF CartEnhanced CartEFSC CartF0 CartF4 CartF4SC CartF6 CartF6SC CartF8 CartF8SC CartFA CartFA2 \
+           CartFC CartFE CartGL CartMC CartMDM CartMVC CartSB CartTVBoy CartUA CartX07 CompuMate Console Control Driving \
+           Genesis Joystick Keyboard KidVid M6502 M6532 MD5 MindLink MT24LC256 NullDev Paddles QuadTari Props PropsSet Random \
+           SaveKey Serializer Settings StateManager Switches System TIA TIASnd TIATables TrackBall; do
+    ARCH="$ARCH $C/emucore/$f.cxx"
+  done
+  for f in $D/libretro.cxx $C/emucore/CartARM.cxx $C/emucore/CartBUS.cxx $C/emucore/CartCDF.cxx $C/emucore/CartEnhanced.cxx \
+           $C/emucore/CartMVC.cxx $C/emucore/Serializer.cxx; do
+    c="$F/$(basename "$f")"
+    if [ ! -f "$c" ] || [ "$f" -nt "$c" ] || [ "$AQUI/src/nucleos/sin_excepciones.sed" -nt "$c" ]; then
+      sed -f "$AQUI/src/nucleos/sin_excepciones.sed" "$f" > "$c"
+    fi
+    ARCH=$(echo "$ARCH" | sed "s|$f|$c|")
+  done
+  compilar stella a26 "-I$D -I$D/stella -I$D/stella/stubs -I$C -I$C/emucore -I$C/common -I$C/gui -I$LC/include -I$F" $ARCH
+}
+
+# FinalBurn Neo (arcade: CPS1/2/3, Neo Geo, Cave, Toaplan, Sega System 16/18, Konami, IGS PGM...), licencia no comercial
+# (ver su LICENSE.md). En C++. La lista de archivos sale de sus Makefiles (herramientas/lista_fbneo.py, sin CHD ni 7z).
+# Su decodificador MPEG (mpeg_audio, que usan ymz770 y otros) corta con una excepción al quedarse sin datos: se compilan
+# copias donde levanta una marca (limite_superado) y no lee más allá. Usa libretro-common de comun().
+fbneo() {
+  D=$EXT/FBNeo/src
+  [ -d "$D" ] || return 0
+  LISTA=$OBJ/fbneo/lista_fuentes.txt
+  INC=$OBJ/fbneo/cabeceras.txt
+  mkdir -p "$OBJ/fbneo/fuente"
+  if [ ! -f "$LISTA" ] || [ "$AQUI/herramientas/lista_fbneo.py" -nt "$LISTA" ]; then
+    python "$AQUI/herramientas/lista_fbneo.py" "$(cygpath -m "$EXT/FBNeo")" "$(cygpath -m "$LISTA")" "$(cygpath -m "$INC")" || exit 1
+  fi
+  F=$OBJ/fbneo/fuente
+  S=$D/burn/snd
+  if [ ! -f "$F/mpeg_audio.h" ] || [ "$S/mpeg_audio.h" -nt "$F/mpeg_audio.h" ]; then
+    sed -e 's/int current_pos, current_limit;/int current_pos, current_limit; bool limite_superado;/' \
+        -e 's/throw limit_hit();/{ limite_superado = true; return 0; }/' "$S/mpeg_audio.h" > "$F/mpeg_audio.h"
+    sed -e 's/try {/{ limite_superado = false;/' -e 's/} catch(limit_hit) {/} if (limite_superado) {/' "$S/mpeg_audio.cpp" > "$F/mpeg_audio.cpp"
+    cp "$S/ymz770.cpp" "$F/ymz770.cpp"
+  fi
+  ARCH=$(sed 's|^C:/ps4dev/externos|'"$EXT"'|' "$LISTA" | sed "s|$S/mpeg_audio.cpp|$F/mpeg_audio.cpp|; s|$S/ymz770.cpp|$F/ymz770.cpp|" | tr '\n' ' ')
+  OPC="-I$F $(sed 's|^C:/ps4dev/externos|'"$EXT"'|; s|^|-I|' "$INC" | grep -v libretro-common | tr '\n' ' ') -I$LC/include
+       -DLSB_FIRST -DUSE_SPEEDHACKS -DHAVE_UNISTD_H -Wno-register"
+  compilar fbneo arc "$OPC" $ARCH
+}
+
 # Roms comprimidas (comprimido.c): miniz para .zip (MIT), el LZMA SDK de 7-Zip para .7z (dominio público) y dmc_unrar
 # para .rar (GPL 2). Sin funciones de archivos: todo desde memoria.
 comprimir() {
@@ -221,9 +297,10 @@ fceumm() {
 
 : > "$OBJ/enlazar.rsp.$$"
 : > "$OBJ/definiciones.txt.$$"
+ninguno() { :; }   # para armar la app sin núcleos (prueba de arranque)
 comun
 comprimir
-for n in ${*:-gambatte fceumm gpgx mgba neopop prosystem handy}; do $n; done   # sameboy: más preciso pero lento en la PS4
+for n in ${*:-gambatte fceumm gpgx mgba neopop prosystem handy}; do $n; done   # stella y fbneo: todavía sin probar (sh nucleos.sh ps4 stella fbneo)   # sameboy: más preciso pero lento en la PS4
 # Recién ahora, completas, reemplazan a las anteriores (si corren dos a la vez, ninguna queda a medias ni repetida).
 mv -f "$OBJ/enlazar.rsp.$$" "$OBJ/enlazar.rsp"
 mv -f "$OBJ/definiciones.txt.$$" "$OBJ/definiciones.txt"

@@ -223,6 +223,7 @@ int main()
     // GUION=menu: la biblioteca con varias consolas: Todos y cada pestaña de consola (R1), un juego de GBA abierto y su
     // menú de pausa.
     static const Paso menu[] = {
+        {1.5f, 0, "94_presentacion"},
         {5.0f, 0, "95_todos"},
         {5.2f, B_R1, NULL}, {5.8f, 0, "96_snes"},
         {6.0f, B_R1, NULL}, {6.6f, 0, "97_nes"},

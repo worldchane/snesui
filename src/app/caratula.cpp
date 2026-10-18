@@ -210,7 +210,7 @@ static void CarpetaServidor(const Consola& c, char* out, int max)
     for (const char* p = c.caratulas; *p && n < max - 1; p++) out[n++] = *p == '_' ? ' ' : *p;
     out[n] = 0;
 }
-static const int MAX_DESCARGAS = 10000;
+static const int MAX_DESCARGAS = 30000;
 static char claves[MAX_DESCARGAS][96];
 static int nClaves;
 static ProgresoDescarga progreso;
@@ -411,6 +411,64 @@ static int BuscarEnIndice(const char* clave)
     return mejor;
 }
 
+// Registro de las que no están en el servidor (caratulas/no_encontradas.txt, una clave por línea): no se vuelven a
+// pedir en cada descarga (es lo que más tarda). Las que ya están bajadas se saltean porque existe su archivo.
+static char* noEncontradasTexto;
+static char** noEncontradas;
+static int nNoEncontradas;
+static int CompararClave(const void* a, const void* b) { return strcmp(*(const char* const*)a, *(const char* const*)b); }
+
+static void RutaNoEncontradas(char* r, int max) { snprintf(r, max, "%s/caratulas/no_encontradas.txt", CARPETA_DATOS); }
+
+static void LeerNoEncontradas()
+{
+    free(noEncontradasTexto);
+    free(noEncontradas);
+    noEncontradasTexto = NULL;
+    noEncontradas = NULL;
+    nNoEncontradas = 0;
+    char r[200];
+    RutaNoEncontradas(r, sizeof r);
+    uint64_t tam = 0;
+    if (!ExisteArchivo(r, &tam) || !tam || tam > 8u * 1024 * 1024) return;
+    noEncontradasTexto = (char*)malloc((size_t)tam + 1);
+    if (!noEncontradasTexto || LeerTexto(r, noEncontradasTexto, (int)tam + 1) <= 0) return;
+    int lineas = 1;
+    for (char* p = noEncontradasTexto; *p; p++) lineas += *p == '\n';
+    noEncontradas = (char**)malloc(sizeof(char*) * lineas);
+    if (!noEncontradas) return;
+    for (char* p = noEncontradasTexto; *p;)
+    {
+        char* fin = strchr(p, '\n');
+        if (fin) *fin = 0;
+        if (*p) noEncontradas[nNoEncontradas++] = p;
+        if (!fin) break;
+        p = fin + 1;
+    }
+    qsort(noEncontradas, nNoEncontradas, sizeof(char*), CompararClave);
+}
+
+static bool YaNoEncontrada(const char* clave)
+{
+    return noEncontradas && bsearch(&clave, noEncontradas, nNoEncontradas, sizeof(char*), CompararClave);
+}
+
+static void AnotarNoEncontrada(const char* clave)
+{
+    char r[200];
+    RutaNoEncontradas(r, sizeof r);
+    FILE* f = AbrirArchivo(r, "ab");
+    if (f) { fprintf(f, "%s\n", clave); fclose(f); }
+}
+
+void OlvidarNoEncontradas()
+{
+    char r[200];
+    RutaNoEncontradas(r, sizeof r);
+    EscribirTexto(r, "");
+    LeerNoEncontradas();
+}
+
 static void* HiloDescarga(void*)
 {
     static const int MAXIMO = 4 * 1024 * 1024;
@@ -426,6 +484,7 @@ static void* HiloDescarga(void*)
         enCurso = false;
         return NULL;
     }
+    LeerNoEncontradas();
     // Consola por consola: se baja el índice de su carpeta y después sus carátulas.
     int seguidasSinRed = 0, hechas = 0;
     for (int s = 0; s < NUM_SISTEMAS && !progreso.fallo; s++)
@@ -454,7 +513,7 @@ static void* HiloDescarga(void*)
             const char* nombre;
             if (ConsolaDeClave(claves[i], &nombre).sistema != s) continue;
             progreso.hechas = hechas;
-            if (HayCaratula(claves[i])) { progreso.hechas = ++hechas; continue; }
+            if (HayCaratula(claves[i]) || YaNoEncontrada(claves[i])) { progreso.hechas = ++hechas; continue; }
             snprintf(progreso.detalle, sizeof progreso.detalle, "%s", nombre);
             char cand[12][96];
             int nc;
@@ -483,6 +542,8 @@ static void* HiloDescarga(void*)
             }
             if (hecha) progreso.bajadas++;
             else progreso.sinCaratula++;
+            // Solo se anota si hubo red y se pudo leer la lista del servidor (si no, la próxima vez se reintenta).
+            if (!hecha && !sinRed && nIndice > 0) AnotarNoEncontrada(claves[i]);
             progreso.hechas = ++hechas;
             // Sin conexión: se corta después de 2 seguidas (no tiene sentido esperar el tiempo de cada una).
             seguidasSinRed = sinRed ? seguidasSinRed + 1 : 0;

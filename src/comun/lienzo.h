@@ -40,6 +40,8 @@ void Brillo(float cx, float cy, float r, uint32_t c, float a);   // luz radial d
 void Linea(float x0, float y0, float x1, float y1, float grosor, uint32_t c, float a);
 // Imagen de 32 bits (0xRRGGBB) escalada con filtro bilineal (suave) o al píxel más cercano (nítido).
 void Imagen(const uint32_t* px, int iw, int ih, float x, float y, float w, float h, float a, bool suave);
+// Sumada al fondo (lo negro no tapa nada): para imágenes con fondo negro y brillos, como el logo.
+void ImagenSumada(const uint32_t* px, int iw, int ih, float x, float y, float w, float h, float a);
 
 // Uso interno de texto.cpp: una orden de texto ya medida.
 void OrdenTexto(int fuente, const char* s, int n, float x, float y, uint32_t c, float a);

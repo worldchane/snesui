@@ -19,13 +19,15 @@ static const float MARGEN = 96;   // margen a los lados de la pantalla (zona seg
 void Suave(float& v, float objetivo, float rapidez, float dt);
 float Facilidad(float t);   // curva de 0 a 1 que arranca y frena suave (para entradas con tiempo fijo)
 
-enum BotonMando { BM_CRUZ, BM_CIRCULO, BM_TRIANGULO, BM_CUADRADO, BM_L1, BM_R1, BM_OPTIONS };
+enum BotonMando { BM_CRUZ, BM_CIRCULO, BM_TRIANGULO, BM_CUADRADO, BM_L1, BM_R1, BM_OPTIONS, BM_TACTIL };
 // Dibuja el botón centrado en (cx, cy) y devuelve su ancho.
 float DibujarBoton(int boton, float cx, float cy, float a = 1);
 // Pista "botón + texto" con la parte izquierda en x; devuelve el ancho.
 float Pista(int boton, const char* texto, float x, float cy, float a = 1, bool medir = false);
 // Fila de pistas alineada a la derecha, abajo de la pantalla.
 void Pistas(const int* botones, const char* const* textos, int n, float a = 1);
+// Lo mismo a otra altura (cy: el centro de la fila).
+void PistasEn(const int* botones, const char* const* textos, int n, float a, float cy);
 // Pastilla de texto (etiqueta redondeada). Devuelve el ancho.
 float Pastilla(const char* texto, float x, float y, uint32_t fondo, float alfaFondo, uint32_t color, float a = 1);
 // Fondo: degradado y tres luces difusas que se mueven lentamente (si animado = false quedan quietas).

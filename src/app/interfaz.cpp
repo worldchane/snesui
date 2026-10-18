@@ -26,7 +26,7 @@ static const char* const VERSION = "1.3";
 #else
 #define COMPILACION "pc"
 #endif
-static const char* const AUTOR = "RudolphGamerBkn";   // el creador de SNESUI (Configuración → Acerca de)
+static const char* const AUTOR = "RudolphGamerBkn";   // el creador de ALLESIU (Configuración → Acerca de)
 static const char* const PAGINA = "github.com/worldchane/snesui";
 
 static const Juego* juegos;   // la lista de la biblioteca (ver biblioteca.h; cambia cuando termina una búsqueda)
@@ -62,7 +62,7 @@ static bool Presentacion(float dt, const Mando& m)
         float w = 1180 * crece, h = w * logoH / logoW;
         Imagen(logo, logoW, logoH, (ANCHO - w) / 2, (ALTO - h) / 2, w, h, a, true);
     }
-    else Texto(F_LOGO, "SNESUI", ANCHO / 2, ALTO / 2 - 70, C_TEXTO, a, 1);
+    else Texto(F_LOGO, "ALLESIU", ANCHO / 2, ALTO / 2 - 70, C_TEXTO, a, 1);
     return true;
 }   // tiempo desde que se pidió bajar carátulas (para mostrar el resultado un rato)
 
@@ -107,8 +107,10 @@ static void DibujarDescarga(float dt)
 }
 
 static const int COLS = 5;
-static const float CW = 300, CH = 300, GAPX = 36, GAPY = 56;
-static const float X0 = MARGEN, Y0 = 258;
+// Tarjetas con la forma de las cajas de SNES (apaisadas, 1,38:1) y 3 filas en pantalla.
+static const float CW = 300, CH = 218, GAPX = 36, GAPY = 50;
+static const float X0 = MARGEN, Y0 = 178;
+static const float PIE = 46;   // alto de la barra de abajo (datos del juego y botones en una línea), pegada al borde
 
 // ---------- pestañas: todos, recientes y favoritos ----------
 // Los recientes (los últimos abiertos, el más nuevo primero) y los favoritos se guardan por clave (nombre de archivo) en
@@ -304,7 +306,7 @@ static void Estrella(float cx, float cy, float r, uint32_t c, float a)
 }
 
 // Navegación rápida.
-static const int FILAS_PAGINA = 2;    // filas que entran en pantalla (lo que salta L2 / R2)
+static const int FILAS_PAGINA = 3;    // filas que entran en pantalla (lo que salta L2 / R2)
 static float esperaLetra;             // repetición del salto de letra con el stick derecho
 static char letraVisible;             // la letra a la que se saltó (se muestra grande un momento)
 static float tLetra = 99;
@@ -347,9 +349,9 @@ static void Tarjeta(const Juego& j, float x, float y, float f)
         FranjaSnes(X + w * .12f, Y + 14, w * .76f, 8, .5f);
         Velo(X, Y, w, h * .5f, 20, 0xFFFFFF, .06f, 0);
         char buf[80];
-        Texto(F_INICIAL, j.iniciales, X + 26, Y + h * .30f, 0xFFFFFF, .95f);
+        Texto(F_INICIAL, j.iniciales, X + 26, Y + h * .12f, 0xFFFFFF, .95f);
         Velo(X, Y + h * .52f, w, h * .48f, 20, 0x05070F, 0, .62f);
-        Texto(F_ETIQUETA, Acortar(F_ETIQUETA, j.nombre, w - 48, buf, sizeof buf), X + 26, Y + h - 84, C_TEXTO);
+        Texto(F_ETIQUETA, Acortar(F_ETIQUETA, j.nombre, w - 48, buf, sizeof buf), X + 26, Y + h - 82, C_TEXTO);
     }
     if (car.px)
     {
@@ -392,7 +394,7 @@ static void VentanaDibujar(float dt);
 static void DibujarBusqueda()
 {
     // Alineada a la derecha, en la fila de las pestañas.
-    float derecha = ANCHO - MARGEN, y = 160;
+    float derecha = ANCHO - MARGEN, y = 96;
     if (busqueda[0])
     {
         // "Buscando: «texto»" y el botón ○ dibujado (la letra no trae los símbolos de los botones).
@@ -405,7 +407,7 @@ static void DibujarBusqueda()
         Texto(F_CUERPO_M, t, derecha - w + 20, y + 10, C_TEXTO, 1);
         Pista(BM_CIRCULO, "quitar", derecha - qw - 20, y + 24);
     }
-    else if (Tipo() != V_CONFIG) Texto(F_PEQUENA, "Panel táctil: buscar por nombre", derecha, y + 14, C_TEXTO_3, 1, 2);
+    // (la pista de cómo buscar está en la barra de abajo: el panel táctil)
 }
 
 // Las pestañas bajo la cabecera, con L1 y R1 a los costados y una pastilla que se desliza a la elegida. Cada una mide lo
@@ -413,7 +415,7 @@ static void DibujarBusqueda()
 // quedan fuera se desvanecen en los bordes.
 static void DibujarPestanas(float dt)
 {
-    float y = 160, alto = 48, x0 = MARGEN + 70, separa = 10;
+    float y = 96, alto = 48, x0 = MARGEN + 70, separa = 10;
     float limite = ANCHO - MARGEN - 470;   // a la derecha va la búsqueda
     float px[NUM_VISTAS + NUM_SISTEMAS], pw[NUM_VISTAS + NUM_SISTEMAS], total = 0;
     for (int i = 0; i < nPestanas; i++)
@@ -840,7 +842,7 @@ static void VentanaDibujar(float dt)
         const char* nota = !pend ? "Todos los juegos del USB ya están en la consola: no hay nada para copiar."
                          : !libreMedido ? "No se pudo medir el espacio libre: por seguridad, no se va a copiar nada."
                          : alcanza ? "Entran todos. Igual revisa que te quede espacio para tus juegos y aplicaciones de PS4: "
-                                     "SNESUI siempre deja 1 GB libre para el sistema."
+                                     "ALLESIU siempre deja 1 GB libre para el sistema."
                                    : "No entran todos: se copiarán solo los que entren, dejando 1 GB libre para el sistema. "
                                      "Si quieres copiarlos todos, libera espacio en la consola primero.";
         Parrafo(F_PEQUENA, nota, x + 56, ay + 58, w - 112, C_TEXTO_2, a);
@@ -973,7 +975,7 @@ static void Configuracion(float dt, const Mando& m)
     Caja(x + 24, y0 + selConfigSuave * paso - 14, w - 48, paso - 12, 18, C_ACENTO, .2f);
     Borde(x + 24, y0 + selConfigSuave * paso - 14, w - 48, paso - 12, 18, 2, C_ACENTO, .7f);
     static const char* const TITULOS[NUM_CF] = {"Proporción de la imagen", "Filtro", "Avance rápido (mantener R2)", "Rebobinar (mantener L2)",
-                                                "Velocidad del Super FX", "Copiar juegos nuevos del USB automáticamente", "Copiar o borrar todos los juegos", "Acerca de SNESUI"};
+                                                "Velocidad del Super FX", "Copiar juegos nuevos del USB automáticamente", "Copiar o borrar todos los juegos", "Acerca de ALLESIU"};
     static const char* const AYUDAS[NUM_CF] = {
         "Cómo se ajusta la imagen a la pantalla.",
         "Suave, nítido o el aspecto de un televisor antiguo.",
@@ -1024,7 +1026,7 @@ static void AcercaDe()
         Imagen(logo, logoW, logoH, cx - lw / 2, y + 24, lw, lh, 1, true);
     }
     char v[128];
-    snprintf(v, sizeof v, "Emulador de SNES para PS4   ·   versión %s   ·   compilación %s", VERSION, COMPILACION);
+    snprintf(v, sizeof v, "Emulador de consolas clásicas para PS4   ·   versión %s   ·   compilación %s", VERSION, COMPILACION);
     Texto(F_CUERPO, v, cx, y + 270, C_TEXTO_2, 1, 1);
     Texto(F_PEQUENA, "CREADO POR", cx, y + 318, C_TEXTO_3, 1, 1);
     Texto(F_TITULO, AUTOR, cx, y + 344, C_TEXTO, 1, 1);
@@ -1042,7 +1044,7 @@ static void AcercaDe()
         "Letra Inter (OFL)   ·   Imágenes PNG: stb",
     };
     for (int i = 0; i < 4; i++) Texto(F_PEQUENA, GRACIAS[i], cx, y + 512 + i * 30, C_TEXTO_3, 1, 1);
-    Texto(F_PEQUENA, "SNESUI no tiene relación con Nintendo. Usa solo juegos que tengas.", cx, y + h + 26, C_TEXTO_3, 1, 1);
+    Texto(F_PEQUENA, "ALLESIU no tiene relación con Nintendo, Sega, SNK ni Atari. Usa solo juegos que tengas.", cx, y + h + 26, C_TEXTO_3, 1, 1);
     int b[1] = {BM_CIRCULO};
     const char* tx[1] = {"Volver a la configuración"};
     Pistas(b, tx, 1);
@@ -1155,10 +1157,17 @@ static void Biblioteca(float t, float dt, const Mando& m)
     FondoPixel(t);
     TomarListaNueva();
 
-    // Cabecera: logo con una franja de los cuatro colores de la SNES.
-    Texto(F_TITULO, "SNESUI", MARGEN, 58, C_TEXTO);
-    float lw = AnchoTexto(F_TITULO, "SNESUI");
-    FranjaSnes(MARGEN, 118, lw, 7, 1);
+    // Cabecera: el logo de SNESUI, chico, arriba a la izquierda (si no se pudo cargar, el nombre en texto).
+    if (logo)
+    {
+        float lh = 64, lw = lh * logoW / logoH;
+        ImagenSumada(logo, logoW, logoH, MARGEN - 18, 18, lw, lh, 1);
+    }
+    else
+    {
+        Texto(F_TITULO, "ALLESIU", MARGEN, 20, C_TEXTO);
+        FranjaSnes(MARGEN, 80, AnchoTexto(F_TITULO, "ALLESIU"), 7, 1);
+    }
     char cont[48];
     int halladas = 0;
     if (BibliotecaBuscando(&halladas)) snprintf(cont, sizeof cont, "Buscando juegos…  %d", halladas);
@@ -1169,7 +1178,7 @@ static void Biblioteca(float t, float dt, const Mando& m)
         for (int i = 0; i < nJuegos; i++) if (!juegos[i].copiado) distintos++;
         snprintf(cont, sizeof cont, distintos == 1 ? "%d juego" : "%d juegos", distintos);
     }
-    Texto(F_CUERPO, cont, ANCHO - MARGEN, 100, C_TEXTO_2, 1, 2);
+    Texto(F_CUERPO, cont, ANCHO - MARGEN, 36, C_TEXTO_2, 1, 2);
 
 
     // El teclado en pantalla y las ventanas se llevan los botones mientras están abiertos.
@@ -1302,12 +1311,13 @@ static void Biblioteca(float t, float dt, const Mando& m)
     float objScroll = fila * paso - paso;
     if (objScroll < 0) objScroll = 0;
     int filas = (nVista + COLS - 1) / COLS;
-    float maxScroll = filas * paso - (ALTO - Y0 - 110);
+    float maxScroll = filas * paso - (ALTO - Y0 - PIE - 30);
     if (maxScroll < 0) maxScroll = 0;
     if (objScroll > maxScroll) objScroll = maxScroll;
     Suave(scrollVis, objScroll, 12, dt);
 
-    Recorte(0, Y0 - 30, ANCHO, ALTO - Y0 - 80);
+    // Hasta poco después de la tercera fila (que no se asome una cuarta cortada arriba de la barra de abajo).
+    Recorte(0, Y0 - 30, ANCHO, FILAS_PAGINA * (CH + GAPY) + 10);
     for (int i = 0; i < nVista; i++)
     {
         Suave(foco[i], i == sel ? 1 : 0, 14, dt);
@@ -1323,7 +1333,7 @@ static void Biblioteca(float t, float dt, const Mando& m)
     // Barra de posición a la derecha (solo si no entran todos en pantalla).
     if (filas > FILAS_PAGINA)
     {
-        float bx = ANCHO - 40, by = Y0 - 10, bh = ALTO - Y0 - 110;
+        float bx = ANCHO - 40, by = Y0 - 10, bh = ALTO - Y0 - PIE - 30;
         float total = filas * paso, visible = bh;
         float th = bh * (visible / total);
         if (th < 60) th = 60;
@@ -1343,28 +1353,35 @@ static void Biblioteca(float t, float dt, const Mando& m)
         Texto(F_LOGO, l, ANCHO / 2, ALTO / 2 - 88, C_TEXTO, a, 1);
     }
 
-    // Pie: datos del juego + pistas.
-    Velo(0, ALTO - 86, ANCHO, 86, 0, 0x120A24, 0, .82f);
+    // Pie, en una sola línea: el nombre del juego y sus datos a la izquierda (recortados para no llegar a los botones), y
+    // los botones a la derecha.
+    Velo(0, ALTO - PIE, ANCHO, PIE, 0, 0x120A24, 0, .86f);
     const Juego& j = juegos[vista[sel]];
-    char buf[120];
-    if (j.sistema == SIS_SNES)
-        snprintf(buf, sizeof buf, "       %s   ·   %s   ·   %d KB   ·   %s%s", j.enUsb ? "En el USB" : "En la consola", j.mapeo,
-                 j.tamKB, j.pal ? "PAL" : "NTSC", j.tieneRam ? "   ·   guarda partida" : "");
-    else
-        snprintf(buf, sizeof buf, "       %s   ·   %s   ·   %d KB", j.enUsb ? "En el USB" : "En la consola",
-                 ConsolaDe(j.sistema).nombreLargo, j.tamKB);
-    Texto(F_CUERPO_M, j.nombre, MARGEN, ALTO - 70, C_TEXTO);
+    int b[5] = {BM_CRUZ, BM_OPTIONS, BM_TRIANGULO, BM_CUADRADO, BM_TACTIL};
+    const char* tx[5] = {"Jugar", "Opciones", "Actualizar", "Carátulas", "Buscar"};
+    float anchoPistas = 4 * 40;
+    for (int i = 0; i < 5; i++) anchoPistas += Pista(b[i], tx[i], 0, 0, 1, true);
+    float limite = ANCHO - MARGEN - anchoPistas - 40, cy = ALTO - PIE / 2;
+    char corto[128], buf[160];
+    const char* nom = Acortar(F_CUERPO_M, j.nombre, (limite - MARGEN) * .55f, corto, sizeof corto);
+    Texto(F_CUERPO_M, nom, MARGEN, cy - AltoLinea(F_CUERPO_M) / 2, C_TEXTO);
+    float x = MARGEN + AnchoTexto(F_CUERPO_M, nom) + 24;
     char pos[48];
-    snprintf(pos, sizeof pos, "%d de %d   ·   ", sel + 1, nVista);
-    float pw = AnchoTexto(F_PEQUENA, pos);
-    Texto(F_PEQUENA, pos, MARGEN, ALTO - 38, C_ACENTO);
-    Texto(F_PEQUENA, buf, MARGEN + pw, ALTO - 38, C_TEXTO_2);
-    IconoLugar(j.enUsb, MARGEN + pw + 16, ALTO - 26, .6f, 1);
-    int b[4] = {BM_CRUZ, BM_OPTIONS, BM_TRIANGULO, BM_CUADRADO};
-    const char* tx[4] = {"Jugar", "Opciones", "Buscar juegos", "Bajar carátulas"};
+    snprintf(pos, sizeof pos, "%d de %d", sel + 1, nVista);
+    Texto(F_PEQUENA, pos, x, cy - AltoLinea(F_PEQUENA) / 2, C_ACENTO);
+    x += AnchoTexto(F_PEQUENA, pos) + 18;
+    IconoLugar(j.enUsb, x + 12, cy, .6f, 1);
+    x += 34;
+    if (j.sistema == SIS_SNES)
+        snprintf(buf, sizeof buf, "%s   ·   %d KB   ·   %s%s", j.mapeo, j.tamKB, j.pal ? "PAL" : "NTSC",
+                 j.tieneRam ? "   ·   guarda partida" : "");
+    else
+        snprintf(buf, sizeof buf, "%s   ·   %d KB", ConsolaDe(j.sistema).nombreLargo, j.tamKB);
+    if (limite - x > 60)
+        Texto(F_PEQUENA, Acortar(F_PEQUENA, buf, limite - x, corto, sizeof corto), x, cy - AltoLinea(F_PEQUENA) / 2, C_TEXTO_2);
     // Con el teclado o una ventana abiertos, sus pistas reemplazan a estas.
     float tapa = tecladoVis > ventanaVis ? tecladoVis : ventanaVis;
-    if (tapa < .5f) Pistas(b, tx, 4, 1 - tapa * 2);
+    if (tapa < .5f) PistasEn(b, tx, 5, 1 - tapa * 2, ALTO - PIE / 2);
     DibujarBusqueda();
     TecladoDibujar(tecladoVis);
     DibujarDescarga(dt);

@@ -70,7 +70,7 @@ static bool BuscarCarpeta()
     {
         char* barra = strrchr(usb, '/');   // CarpetaUsb devuelve <usb>/SNES
         if (barra) *barra = 0;
-        snprintf(carpeta, sizeof carpeta, "%s/SNESUI-diagnostico", usb);
+        snprintf(carpeta, sizeof carpeta, "%s/ALLESIU-diagnostico", usb);
         if (CrearCarpetas(carpeta)) return true;
     }
     snprintf(carpeta, sizeof carpeta, "%s/diagnostico", CARPETA_DATOS);
@@ -87,7 +87,7 @@ static bool Agregar(const char* texto, int n)
     bool nuevo = !ExisteArchivo(ruta, &tam) || tam > MAX_REGISTRO;   // muy grande: se empieza de nuevo
     FILE* f = AbrirArchivo(ruta, nuevo ? "wb" : "ab");
     if (!f) return false;
-    if (nuevo) fputs("Registro de diagnóstico de SNESUI. Pásale este archivo (y los informe-*) al desarrollador.\n\n", f);
+    if (nuevo) fputs("Registro de diagnóstico de ALLESIU. Pásale este archivo (y los informe-*) al desarrollador.\n\n", f);
     bool ok = fwrite(texto, 1, n, f) == (size_t)n;
     fclose(f);
     return ok;
@@ -135,7 +135,7 @@ void RegistroIniciar(const char* version)
     AbrirAccesoCompleto("snes");
     bool hay = BuscarCarpeta();
     CerrarAccesoCompleto();
-    Registrar("===== SNESUI %s abierto (sesión %d). Registro en %s =====", version, sesion, hay ? carpeta : "(ninguna carpeta)");
+    Registrar("===== ALLESIU %s abierto (sesión %d). Registro en %s =====", version, sesion, hay ? carpeta : "(ninguna carpeta)");
     uint64_t libres = 0;
     if (EspacioLibre(CARPETA_DATOS, &libres)) Registrar("Espacio libre en la consola: %llu MB", (unsigned long long)(libres >> 20));
 
@@ -224,7 +224,7 @@ bool RegistroInforme(const char* motivo, const char* texto, const uint32_t* imag
         {
             static char ult[sizeof ultimas];
             RegistroUltimas(ult, sizeof ult);
-            fprintf(f, "Informe de diagnóstico de SNESUI (sesión %d, %.0f s desde que se abrió)\nMotivo: %s\n\n", sesion,
+            fprintf(f, "Informe de diagnóstico de ALLESIU (sesión %d, %.0f s desde que se abrió)\nMotivo: %s\n\n", sesion,
                     Segundos(), motivo);
             fputs(texto, f);
             fputs("\n\nÚltimas líneas del registro:\n", f);

@@ -17,20 +17,33 @@
 // .init_array, que el sistema correría solo, van en la sección nucleo_init y se llaman acá, al empezar.
 extern "C" {
 typedef void (*Constructor)(void);
-extern const Constructor __start_nucleo_init[] __attribute__((weak));
-extern const Constructor __stop_nucleo_init[] __attribute__((weak));
+extern const Constructor __start_nucleo_init[];
+extern const Constructor __stop_nucleo_init[];
 }
+// Una entrada vacía propia: así la sección existe siempre (aunque no haya núcleos) y el enlazador define __start y
+// __stop (si no, quedarían como funciones a pedir al sistema).
+__attribute__((section("nucleo_init"), used)) static const Constructor nadaQueIniciar = 0;
 
 static void IniciarNucleos()
 {
-    if (!__start_nucleo_init) return;
     for (const Constructor* c = __start_nucleo_init; c < __stop_nucleo_init; c++)
         if (*c) (*c)();
 }
 
+#ifdef PRUEBA_BSS_MB
+// Prueba de arranque: relleno vacío para ver si hay un tope de memoria estática al cargar el programa.
+static char lastre[PRUEBA_BSS_MB * 1024 * 1024];
+#endif
+
 int main()
 {
+#ifdef PRUEBA_BSS_MB
+    ((volatile char*)lastre)[0] = 1;
+    ((volatile char*)lastre)[sizeof lastre - 1] = 1;
+#endif
+#ifndef SIN_INICIAR_NUCLEOS
     IniciarNucleos();
+#endif
     setvbuf(stdout, NULL, _IONBF, 0);
     Segundos();
     IniciarMando();

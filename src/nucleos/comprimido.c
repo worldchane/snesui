@@ -3,6 +3,7 @@
 #include "comprimido.h"
 
 #include <stdbool.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -31,22 +32,28 @@ static void Copiar(char* dst, const char* src)
 }
 
 /* ---------- zip ---------- */
-static int ZipListar(const uint8_t* d, size_t n, EntradaComprimido* out, int max)
+static int ZipListarAbierto(mz_zip_archive* z, EntradaComprimido* out, int max)
 {
-    mz_zip_archive z;
-    memset(&z, 0, sizeof z);
-    if (!mz_zip_reader_init_mem(&z, d, n, 0)) return -1;
     int k = 0;
-    mz_uint total = mz_zip_reader_get_num_files(&z);
+    mz_uint total = mz_zip_reader_get_num_files(z);
     for (mz_uint i = 0; i < total && k < max; i++)
     {
         mz_zip_archive_file_stat st;
-        if (!mz_zip_reader_file_stat(&z, i, &st) || st.m_is_directory) continue;
+        if (!mz_zip_reader_file_stat(z, i, &st) || st.m_is_directory) continue;
         Copiar(out[k].nombre, st.m_filename);
         out[k].tam = st.m_uncomp_size;
         out[k].indice = (int)i;
         k++;
     }
+    return k;
+}
+
+static int ZipListar(const uint8_t* d, size_t n, EntradaComprimido* out, int max)
+{
+    mz_zip_archive z;
+    memset(&z, 0, sizeof z);
+    if (!mz_zip_reader_init_mem(&z, d, n, 0)) return -1;
+    int k = ZipListarAbierto(&z, out, max);
     mz_zip_reader_end(&z);
     return k;
 }
@@ -102,18 +109,13 @@ typedef struct
 
 static const ISzAlloc asignar = {SzAlloc, SzFree};
 
-static Abierto7z* Abrir7z(const uint8_t* d, size_t n)
+// Abre el 7z que lee 'fuente' (memoria o archivo). 'a' (calloc) queda a cargo: se libera si falla.
+static Abierto7z* Abrir7zDesde(ISeekInStreamPtr fuente, Abierto7z* a)
 {
     static bool crc;
     if (!crc) { CrcGenerateTable(); crc = true; }
-    Abierto7z* a = (Abierto7z*)calloc(1, sizeof *a);
-    if (!a) return NULL;
-    a->mem.vt.Read = MemLeer;
-    a->mem.vt.Seek = MemBuscar;
-    a->mem.d = d;
-    a->mem.n = n;
     LookToRead2_CreateVTable(&a->look, False);
-    a->look.realStream = &a->mem.vt;
+    a->look.realStream = fuente;
     a->look.buf = a->buf;
     a->look.bufSize = sizeof a->buf;
     LookToRead2_INIT(&a->look);
@@ -127,16 +129,25 @@ static Abierto7z* Abrir7z(const uint8_t* d, size_t n)
     return a;
 }
 
+static Abierto7z* Abrir7z(const uint8_t* d, size_t n)
+{
+    Abierto7z* a = (Abierto7z*)calloc(1, sizeof *a);
+    if (!a) return NULL;
+    a->mem.vt.Read = MemLeer;
+    a->mem.vt.Seek = MemBuscar;
+    a->mem.d = d;
+    a->mem.n = n;
+    return Abrir7zDesde(&a->mem.vt, a);
+}
+
 static void Cerrar7z(Abierto7z* a)
 {
     SzArEx_Free(&a->db, &asignar);
     free(a);
 }
 
-static int SieteListar(const uint8_t* d, size_t n, EntradaComprimido* out, int max)
+static int SieteListarAbierto(Abierto7z* a, EntradaComprimido* out, int max)
 {
-    Abierto7z* a = Abrir7z(d, n);
-    if (!a) return -1;
     int k = 0;
     for (UInt32 i = 0; i < a->db.NumFiles && k < max; i++)
     {
@@ -161,6 +172,14 @@ static int SieteListar(const uint8_t* d, size_t n, EntradaComprimido* out, int m
         out[k].indice = (int)i;
         k++;
     }
+    return k;
+}
+
+static int SieteListar(const uint8_t* d, size_t n, EntradaComprimido* out, int max)
+{
+    Abierto7z* a = Abrir7z(d, n);
+    if (!a) return -1;
+    int k = SieteListarAbierto(a, out, max);
     Cerrar7z(a);
     return k;
 }
@@ -185,24 +204,30 @@ static uint8_t* SieteSacar(const uint8_t* d, size_t n, int indice, size_t* tam)
 }
 
 /* ---------- rar ---------- */
-static int RarListar(const uint8_t* d, size_t n, EntradaComprimido* out, int max)
+static int RarListarAbierto(dmc_unrar_archive* a, EntradaComprimido* out, int max)
 {
-    dmc_unrar_archive a;
-    if (dmc_unrar_archive_init(&a) != DMC_UNRAR_OK) return -1;
-    if (dmc_unrar_archive_open_mem(&a, d, n) != DMC_UNRAR_OK) { dmc_unrar_archive_close(&a); return -1; }
     int k = 0;
-    dmc_unrar_size_t total = dmc_unrar_get_file_count(&a);
+    dmc_unrar_size_t total = dmc_unrar_get_file_count(a);
     for (dmc_unrar_size_t i = 0; i < total && k < max; i++)
     {
-        if (dmc_unrar_file_is_directory(&a, i)) continue;
+        if (dmc_unrar_file_is_directory(a, i)) continue;
         char t[256];
-        if (!dmc_unrar_get_filename(&a, i, t, sizeof t)) continue;
-        const dmc_unrar_file* st = dmc_unrar_get_file_stat(&a, i);
+        if (!dmc_unrar_get_filename(a, i, t, sizeof t)) continue;
+        const dmc_unrar_file* st = dmc_unrar_get_file_stat(a, i);
         Copiar(out[k].nombre, t);
         out[k].tam = st ? st->uncompressed_size : 0;
         out[k].indice = (int)i;
         k++;
     }
+    return k;
+}
+
+static int RarListar(const uint8_t* d, size_t n, EntradaComprimido* out, int max)
+{
+    dmc_unrar_archive a;
+    if (dmc_unrar_archive_init(&a) != DMC_UNRAR_OK) return -1;
+    if (dmc_unrar_archive_open_mem(&a, d, n) != DMC_UNRAR_OK) { dmc_unrar_archive_close(&a); return -1; }
+    int k = RarListarAbierto(&a, out, max);
     dmc_unrar_archive_close(&a);
     return k;
 }
@@ -248,4 +273,103 @@ uint8_t* ComprimidoSacar(const uint8_t* d, size_t n, int indice, size_t* tam)
     case COMPRIMIDO_RAR: return RarSacar(d, n, indice, tam);
     default: return NULL;
     }
+}
+
+/* ---------- listar sin leer el archivo entero ---------- */
+/* Para la biblioteca: solo se lee el índice de cada comprimido (en zip y 7z está al final; en rar, los encabezados de
+ * cada archivo), con lecturas sueltas. Así buscar en cientos de comprimidos del USB es rápido. */
+FILE* NucleoAbrirArchivo(const char* ruta, const char* modo);
+
+static size_t ZipLeerArchivo(void* opaco, mz_uint64 desde, void* buf, size_t n)
+{
+    FILE* f = (FILE*)opaco;
+    if (fseek(f, (long)desde, SEEK_SET)) return 0;
+    return fread(buf, 1, n, f);
+}
+
+typedef struct
+{
+    ISeekInStream vt;
+    FILE* f;
+} ArchivoEntrada;
+
+static SRes ArchLeer(ISeekInStreamPtr p, void* buf, size_t* size)
+{
+    ArchivoEntrada* a = (ArchivoEntrada*)(void*)p;
+    *size = fread(buf, 1, *size, a->f);
+    return SZ_OK;
+}
+
+static SRes ArchBuscar(ISeekInStreamPtr p, Int64* pos, ESzSeek origen)
+{
+    ArchivoEntrada* a = (ArchivoEntrada*)(void*)p;
+    int w = origen == SZ_SEEK_CUR ? SEEK_CUR : origen == SZ_SEEK_END ? SEEK_END : SEEK_SET;
+    if (fseek(a->f, (long)*pos, w)) return SZ_ERROR_READ;
+    *pos = ftell(a->f);
+    return SZ_OK;
+}
+
+static void* RarAbrirNada(const char* ruta) { (void)ruta; return NULL; }
+static void RarCerrarNada(void* opaco) { (void)opaco; }   /* el archivo lo cierra ComprimidoListarRuta */
+static dmc_unrar_size_t RarLeer(void* opaco, void* buf, dmc_unrar_size_t n) { return fread(buf, 1, (size_t)n, (FILE*)opaco); }
+static bool RarBuscar(void* opaco, dmc_unrar_offset_t desde, int origen) { return fseek((FILE*)opaco, (long)desde, origen) == 0; }
+static dmc_unrar_offset_t RarPosicion(void* opaco) { return ftell((FILE*)opaco); }
+static dmc_unrar_io_handler rarArchivo = {RarAbrirNada, RarCerrarNada, RarLeer, RarBuscar, RarPosicion};
+
+int ComprimidoListarRuta(const char* ruta, EntradaComprimido* out, int max)
+{
+    FILE* f = NucleoAbrirArchivo(ruta, "rb");
+    if (!f) return -1;
+    uint8_t cabeza[8] = {0};
+    size_t leidos = fread(cabeza, 1, sizeof cabeza, f);
+    fseek(f, 0, SEEK_END);
+    long tam = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    int k = -1;
+    switch (ComprimidoTipo(cabeza, leidos))
+    {
+    case COMPRIMIDO_ZIP:
+    {
+        mz_zip_archive z;
+        memset(&z, 0, sizeof z);
+        z.m_pRead = ZipLeerArchivo;
+        z.m_pIO_opaque = f;
+        if (tam > 0 && mz_zip_reader_init(&z, (mz_uint64)tam, 0))
+        {
+            k = ZipListarAbierto(&z, out, max);
+            mz_zip_reader_end(&z);
+        }
+        break;
+    }
+    case COMPRIMIDO_7Z:
+    {
+        ArchivoEntrada e;
+        e.vt.Read = ArchLeer;
+        e.vt.Seek = ArchBuscar;
+        e.f = f;
+        Abierto7z* a = (Abierto7z*)calloc(1, sizeof *a);
+        if (a) a = Abrir7zDesde(&e.vt, a);
+        if (a)
+        {
+            k = SieteListarAbierto(a, out, max);
+            Cerrar7z(a);
+        }
+        break;
+    }
+    case COMPRIMIDO_RAR:
+    {
+        dmc_unrar_archive a;
+        if (dmc_unrar_archive_init(&a) == DMC_UNRAR_OK)
+        {
+            a.io.funcs = &rarArchivo;
+            a.io.opaque = f;
+            a.io.size = (dmc_unrar_size_t)tam;
+            if (dmc_unrar_archive_open(&a) == DMC_UNRAR_OK) k = RarListarAbierto(&a, out, max);
+            dmc_unrar_archive_close(&a);
+        }
+        break;
+    }
+    }
+    fclose(f);
+    return k;
 }

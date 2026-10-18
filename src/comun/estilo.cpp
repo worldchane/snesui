@@ -29,6 +29,15 @@ float DibujarBoton(int b, float cx, float cy, float a)
         Texto(F_BOTON, t, cx, cy - AltoLinea(F_BOTON) / 2, C_TEXTO, a, 1);
         return w;
     }
+    if (b == BM_TACTIL)
+    {
+        // El panel táctil del DualShock 4: un rectángulo ancho de esquinas redondas, con la marca de un dedo.
+        const float w = 42, h = 24;
+        Caja(cx - w / 2, cy - h / 2, w, h, 7, 0xFFFFFF, .13f * a);
+        Borde(cx - w / 2, cy - h / 2, w, h, 7, 2, 0xC9C2E8, a);
+        Circulo(cx + 5, cy - 1, 4, 0xC9C2E8, a);
+        return w;
+    }
     const float r = 17;
     Circulo(cx, cy, r, 0xFFFFFF, .13f * a);
     switch (b)
@@ -53,7 +62,8 @@ float DibujarBoton(int b, float cx, float cy, float a)
 
 float Pista(int b, const char* texto, float x, float cy, float a, bool medir)
 {
-    float wb = b == BM_L1 || b == BM_R1 || b == BM_OPTIONS ? AnchoTexto(F_BOTON, b == BM_OPTIONS ? "OPTIONS" : "L1") + 22 : 34;
+    float wb = b == BM_L1 || b == BM_R1 || b == BM_OPTIONS ? AnchoTexto(F_BOTON, b == BM_OPTIONS ? "OPTIONS" : "L1") + 22
+             : b == BM_TACTIL ? 42 : 34;
     if (!medir)
     {
         DibujarBoton(b, x + wb / 2, cy, a);
@@ -62,9 +72,11 @@ float Pista(int b, const char* texto, float x, float cy, float a, bool medir)
     return wb + 12 + AnchoTexto(F_CUERPO_M, texto);
 }
 
-void Pistas(const int* botones, const char* const* textos, int n, float a)
+void Pistas(const int* botones, const char* const* textos, int n, float a) { PistasEn(botones, textos, n, a, 1012); }
+
+void PistasEn(const int* botones, const char* const* textos, int n, float a, float cy)
 {
-    const float sep = 40, cy = 1012;
+    const float sep = 40;
     float total = 0;
     for (int i = 0; i < n; i++) total += Pista(botones[i], textos[i], 0, 0, a, true) + (i ? sep : 0);
     float x = ANCHO - MARGEN - total;

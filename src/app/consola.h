@@ -68,5 +68,8 @@ int CopiarBiosIncluidas();
 bool EsComprimido(const char* ruta);   // por la extensión
 // La consola de esa rom (-1 si no hay ninguna), con su nombre adentro y su tamaño.
 int ConsolaDeComprimido(const char* ruta, char* interno, int max, uint64_t* tam);
+// La consola que indica el nombre de alguna carpeta de la ruta ("roms/GBA", "Game Boy Advance", "roms-gba"...), o -1.
+// La biblioteca la usa para no abrir cada comprimido de una carpeta que ya dice la consola.
+int ConsolaPorCarpeta(const char* carpeta);
 // La saca a un búfer nuevo (malloc). NULL si no se pudo (con la explicación en 'error', 160 bytes).
 uint8_t* SacarDeComprimido(const char* ruta, char* interno, int max, uint32_t* tam, char* error);

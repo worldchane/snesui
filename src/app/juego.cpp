@@ -738,7 +738,7 @@ bool JuegoAbrir(const char* ruta, const char* nom)
     {
         const Consola* c = ConsolaParaRuta(ruta);
         con = c ? c : &ConsolaDe(SIS_SNES);
-        if (!con->presente) snprintf(error, sizeof error, "Esta versión de SNESUI todavía no trae el emulador de %s.", con->nombreLargo);
+        if (!con->presente) snprintf(error, sizeof error, "Esta versión de ALLESIU todavía no trae el emulador de %s.", con->nombreLargo);
         else ok = con->Cargar(ruta, error);
     }
     CerrarAccesoCompleto();
