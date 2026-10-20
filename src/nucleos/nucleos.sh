@@ -274,7 +274,12 @@ fbneo() {
   grep -q "ALLESIU: ver nucleos.sh" "$F/retro_input.cpp" || { echo "fbneo: no se pudo corregir retro_input.cpp"; rm -f "$F/retro_input.cpp"; exit 1; }
   # vdc.cpp (video de PC Engine, que usan también algunas placas arcade) lee las DIP del driver de PC Engine, que no va.
   [ -f "$F/pce_dips.cpp" ] || echo "unsigned char PCEDips[4];" > "$F/pce_dips.cpp"
-  ARCH=$(sed 's|^C:/ps4dev/externos|'"$EXT"'|' "$LISTA" | sed "s|$S/mpeg_audio.cpp|$F/mpeg_audio.cpp|; s|$S/ymz770.cpp|$F/ymz770.cpp|; s|$R/libretro.cpp|$F/libretro.cpp|; s|$R/retro_input.cpp|$F/retro_input.cpp|; s|$D/burn/burn.cpp|$F/burn.cpp|" | tr '\n' ' ')
+  # dcs2k.cpp (el sonido de las placas de Midway): con el atajo de MAME 2003 para su transformada (la placa Wolf iba
+  # lenta: el sonido era el 73 % del tiempo). Ver herramientas/parche_dcs.py.
+  if [ ! -f "$F/dcs2k.cpp" ] || [ "$D/burn/drv/midway/dcs2k.cpp" -nt "$F/dcs2k.cpp" ] || [ "$AQUI/herramientas/parche_dcs.py" -nt "$F/dcs2k.cpp" ]; then
+    python "$AQUI/herramientas/parche_dcs.py" "$(cygpath -m "$D/burn/drv/midway/dcs2k.cpp")" "$(cygpath -m "$F/dcs2k.cpp")" >/dev/null || { echo "fbneo: no se pudo corregir dcs2k.cpp"; rm -f "$F/dcs2k.cpp"; exit 1; }
+  fi
+  ARCH=$(sed 's|^C:/ps4dev/externos|'"$EXT"'|' "$LISTA" | sed "s|$S/mpeg_audio.cpp|$F/mpeg_audio.cpp|; s|$S/ymz770.cpp|$F/ymz770.cpp|; s|$R/libretro.cpp|$F/libretro.cpp|; s|$R/retro_input.cpp|$F/retro_input.cpp|; s|$D/burn/burn.cpp|$F/burn.cpp|; s|$D/burn/drv/midway/dcs2k.cpp|$F/dcs2k.cpp|" | tr '\n' ' ')
   ARCH="$ARCH $F/pce_dips.cpp"
   # Lo que en su Makefile va en bloques opcionales (la lista no los trae): su zlib, los sets en .7z y las imágenes CHD
   # (su código de CD las usa siempre; también sirven para Neo Geo CD).
@@ -288,7 +293,7 @@ fbneo() {
   for f in chd codec_zlib codec_cdzl bitstream huffman codec_huff codec_flac codec_lzma codec_zstd codec_cdlz codec_cdfl codec_cdzs cdrom; do
     ARCH="$ARCH $L/libchdr/libchdr_$f.c"
   done
-  OPC="-I$F $(sed 's|^C:/ps4dev/externos|'"$EXT"'|; s|^|-I|' "$INC" | grep -v libretro-common | tr '\n' ' ') -I$LC/include
+  OPC="-I$F -I$D/burn/drv/midway $(sed 's|^C:/ps4dev/externos|'"$EXT"'|; s|^|-I|' "$INC" | grep -v libretro-common | tr '\n' ' ') -I$LC/include
        -I$L/libchdr/include -I$L/lzma -I$L/lzma/include -I$L/zstd -idirafter $D/burner/libretro/libretro-common/include
        -DLSB_FIRST -DUSE_SPEEDHACKS -DHAVE_UNISTD_H -DINCLUDE_7Z_SUPPORT -DZ7_PPMD_SUPPORT -DZ7_ST -DINCLUDE_CHD_SUPPORT
        -DUSE_LIBRETRO_VFS -DCHDR_SYSTEM_ZLIB -Wno-register -Wno-c++11-narrowing -include $AQUI/src/nucleos/incluir/sstr_allesiu.h"
@@ -350,6 +355,141 @@ fceumm() {
 ninguno() { :; }   # para armar la app sin núcleos (prueba de arranque)
 comun
 comprimir
+# Snes9x (SNES), licencia no comercial (ver su LICENSE). Reemplaza al emulador de SNES propio como el de la app (el
+# propio queda en src/nucleo como alternativa). En C y C++, preparado para compilarse sin excepciones ni RTTI. Usa
+# libretro-common de comun() (STATIC_LINKING: la capa de archivos la pone la app).
+snes9x() {
+  D=$EXT/snes9x
+  [ -d "$D" ] || return 0
+  ARCH=""
+  for f in c4emu msu1 zipfile srtc obc1 bsflash tile bsx spc7110 fxemu sdd1 seta sa1hw dsp filter/snes_ntsc; do ARCH="$ARCH $D/$f.c"; done
+  for f in apu/apu apu/bapu/dsp/sdsp apu/bapu/smp/smp apu/bapu/smp/smp_state cheats2 clip controls cpu cpuexec cpuops \
+           crosshairs dma gfx globals loadzip memmap ppu sa1 sa1cpu snapshot sha256 bml fscompat libretro/libretro; do
+    ARCH="$ARCH $D/$f.cpp"
+  done
+  # Su descompresor de zip (rinflate_*, para las roms en .zip), que en libretro va aparte en su libretro-common.
+  ARCH="$ARCH $D/libretro/libretro-common/encodings/encoding_deflate.c"
+  OPC="-I$D/libretro -I$D -I$D/apu -I$D/apu/bapu -I$LC/include -DALLOW_CPU_OVERCLOCK -DHAVE_STRINGS_H -DSTATIC_LINKING -DSKIP_STDIO_REDEFINES -idirafter $D/libretro/libretro-common/include
+       -fno-strict-aliasing"
+  [ "$DESTINO" = pc ] && OPC="$OPC -Dstrcasecmp=_stricmp -Dstrncasecmp=_strnicmp"   # Windows no las tiene con ese nombre
+  compilar snes9x s9x "$OPC" $ARCH
+  # En la PC, los archivos de C piden sin decorar las variables globales de C++ (ver herramientas/alternativos_pc.py).
+  if [ "$DESTINO" = pc ]; then
+    python "$AQUI/herramientas/alternativos_pc.py" s9x "$(cygpath -m "$OBJ/snes9x/alternativos.txt")" $(cygpath -m -f "$OBJ/snes9x/lista.txt") || exit 1
+    cat "$OBJ/snes9x/alternativos.txt" >> "$OBJ/enlazar.rsp.$$"
+  fi
+}
+
+# Mupen64Plus-Next (N64), licencia GPL 2. En C y C++ (GLideN64). La lista de archivos y las opciones salen de su
+# Makefile.common (herramientas/lista_mupen.py): OpenGL ES 2 (el de la PS4, Piglet), el recompilador x86-64 (en la
+# consola, con memoria RWX: ver src/app/prueba_jit.cpp), Angrylion por software y el RSP por HLE. Las cabeceras de
+# OpenGL ES y EGL son las del toolchain de OpenOrbis (también en la PC: las funciones se piden por nombre en el momento).
+n64() {
+  D=$EXT/mupen64plus-libretro-nx
+  [ -d "$D" ] || return 0
+  mkdir -p "$OBJ/n64"
+  L=$OBJ/n64/lista_fuentes.txt
+  if [ ! -f "$L" ] || [ "$AQUI/herramientas/lista_mupen.py" -nt "$L" ]; then
+    python "$AQUI/herramientas/lista_mupen.py" "$(cygpath -m "$D")" "$(cygpath -m "$L")" "$(cygpath -m "$OBJ/n64/nasm.txt")" \
+      "$(cygpath -m "$OBJ/n64/opciones_mupen.txt")" || exit 1
+  fi
+  ARCH=$(sed 's|^C:/ps4dev/externos|'"$EXT"'|' "$L" | tr '\n' ' ')
+  # Sin su propia capa de archivos de libretro-common (pedía stat, read, write, rename... al sistema): usa la de la app
+  # (archivos.c en comun()). Sin las gz* de zlib ni el acceso a carpetas de GLideN64 (solo para la caché de texturas en
+  # alta resolución): en su lugar, src/nucleos/n64 (no tocan el disco). En la PC, la versión de Windows de las carpetas.
+  for f in libretro-common/vfs/vfs_implementation.c libretro-common/streams/file_stream.c libretro-common/file/file_path_io.c \
+           custom/dependencies/libzlib/gzclose.c custom/dependencies/libzlib/gzlib.c custom/dependencies/libzlib/gzread.c \
+           custom/dependencies/libzlib/gzwrite.c; do
+    ARCH=$(echo " $ARCH " | sed "s| $D/$f | |")
+  done
+  ARCH="$ARCH $AQUI/src/nucleos/n64/gz_allesiu.c"
+  # glsm.c (la capa de OpenGL de libretro) tiene una tabla fija de 81 MB (program_uniforms, 1024 × 1024): en una copia
+  # se pide recién al armar el contexto de OpenGL (solo con el dibujo por GPU). Fija, dejaba a la app sin memoria.
+  mkdir -p "$OBJ/n64/fuente"
+  G=$OBJ/n64/fuente/glsm.c
+  if [ ! -f "$G" ] || [ "$D/libretro-common/glsm/glsm.c" -nt "$G" ]; then
+    sed -e 's/^static struct gl_program_uniforms program_uniforms\[MAX_UNIFORMS\]\[MAX_UNIFORMS\];$/static struct gl_program_uniforms (*program_uniforms)[MAX_UNIFORMS];   \/* ALLESIU: ver nucleos.sh *\//'         -e '/^static void glsm_state_setup(void)$/{n;s/^{$/{ if (!program_uniforms) program_uniforms = calloc(MAX_UNIFORMS, sizeof *program_uniforms);/;}'         "$D/libretro-common/glsm/glsm.c" > "$G"
+    grep -q "ALLESIU: ver nucleos.sh" "$G" && grep -q "calloc(MAX_UNIFORMS" "$G" || { echo "n64: no se pudo corregir glsm.c"; rm -f "$G"; exit 1; }
+  fi
+  ARCH=$(echo "$ARCH" | sed "s|$D/libretro-common/glsm/glsm.c|$G|")
+  # La máquina de N64 (g_dev, 60 MB) se pide al abrir el núcleo y se suelta al cerrarlo (ver n64/memoria_n64.h): en una
+  # copia de libretro.c, retro_init la pide primero y retro_deinit la suelta al final.
+  G=$OBJ/n64/fuente/libretro.c
+  if [ ! -f "$G" ] || [ "$D/libretro/libretro.c" -nt "$G" ]; then
+    sed -e '/^void retro_init(void)$/{n;s/^{$/{ void n64_dispositivo_pedir(void); n64_dispositivo_pedir();   \/* ALLESIU *\//;}' \
+        -e '/^void retro_deinit(void)$/,/^}$/{s/^}$/    { void n64_dispositivo_soltar(void); n64_dispositivo_soltar(); }   \/* ALLESIU *\/ }/;}' \
+        "$D/libretro/libretro.c" > "$G"
+    [ "$(grep -c "n64_dispositivo_" "$G")" = 2 ] || { echo "n64: no se pudo corregir libretro.c"; rm -f "$G"; exit 1; }
+  fi
+  ARCH=$(echo "$ARCH" | sed "s|$D/libretro/libretro.c|$G|")
+  ARCH="$ARCH $AQUI/src/nucleos/n64/memoria_n64.c"
+  # Angrylion en varios hilos con los hilos de la app (su parallel_al.cpp usa std::thread, que cierra el programa en la
+  # consola): ver n64/parallel_allesiu.cpp.
+  ARCH=$(echo " $ARCH " | sed "s| $D/mupen64plus-video-angrylion/parallel_al.cpp | $AQUI/src/nucleos/n64/parallel_allesiu.cpp |")
+  [ "$DESTINO" = ps4 ] && ARCH=$(echo "$ARCH" | sed "s|$D/GLideN64/src/osal/osal_files_unix\\.c|$AQUI/src/nucleos/n64/osal_allesiu.c|")
+  # Los archivos de C++ con excepciones (try / catch / throw), en copias pasadas por sin_excepciones.sed; la carpeta
+  # original va como carpeta de cabeceras (sus #include "..." son relativos a ella).
+  F=$OBJ/n64/fuente
+  mkdir -p "$F"
+  OTRAS=""
+  for f in $ARCH; do
+    case "$f" in *.cpp) ;; *) continue ;; esac
+    grep -qE '\btry\b|\bthrow\b|catch *\(' "$f" || continue
+    c="$F/$(basename "$f")"
+    if [ ! -f "$c" ] || [ "$f" -nt "$c" ] || [ "$AQUI/src/nucleos/sin_excepciones.sed" -nt "$c" ]; then
+      sed -f "$AQUI/src/nucleos/sin_excepciones.sed" "$f" > "$c"
+    fi
+    ARCH=$(echo "$ARCH" | sed "s|$f|$c|")
+    OTRAS="$OTRAS -I$(dirname "$f")"
+  done
+  OPC="$(sed 's|C:/ps4dev/externos|'"$EXT"'|g' "$OBJ/n64/opciones_mupen.txt") $OTRAS -idirafter $(echo "$TCW" | tr '\' /)/include"
+  # En la PC (Windows) faltan cosas de sistemas tipo Unix que el núcleo da por hechas.
+  # En la consola, mprotect (lo usa el recompilador para dar permiso de ejecución a su memoria) por la de la app, que la
+  # busca en el sistema por nombre (sin sumarla a las funciones que pide el programa para abrir).
+  [ "$DESTINO" = ps4 ] && OPC="$OPC -Dmprotect=nucleo_mprotect"
+  OPC="$OPC -I$D/libretro -I$D/mupen64plus-video-angrylion"
+  # En la consola, la máquina de N64 se pide al abrir el núcleo (ver n64/memoria_n64.h); en la PC queda fija.
+  [ "$DESTINO" = ps4 ] && OPC="$OPC -DN64_DISPOSITIVO_DINAMICO -include $AQUI/src/nucleos/n64/memoria_n64.h"
+  # En la PC, de las cabeceras del toolchain de la PS4 solo las de OpenGL ES, EGL y KHR (las demás chocan con las de
+  # Windows).
+  if [ "$DESTINO" = pc ]; then
+    G=$OBJ/n64/gl
+    TCU=$(echo "$TCW" | tr '\' /)
+    [ -d "$G/GLES2" ] || { mkdir -p "$G"; cp -r "$TCU/include/GLES2" "$TCU/include/EGL" "$TCU/include/KHR" "$G/"; }
+    OPC=$(echo "$OPC" | sed "s|-idirafter $TCU/include|-idirafter $G|")
+    OPC="$OPC -DPATH_MAX=4096 -idirafter $AQUI/src/nucleos/incluir/pc -include $AQUI/src/nucleos/incluir/pc/tipos_bsd.h -D_XKEYCHECK_H -DNOMINMAX -DKHRONOS_STATIC"
+    ARCH=$(echo "$ARCH" | sed 's|osal_files_unix\.c|osal_files_win32.c|')
+  fi
+  compilar n64 n64 "$OPC" $ARCH
+  # El recompilador x86-64 tiene una parte en ensamblador (NASM). Necesita las posiciones de los campos de sus
+  # estructuras (asm_defines.c compilado: los textos "@ASM_DEFINE nombre valor" del objeto; distintas en la PC y en la
+  # consola) y los nombres de C con el prefijo del núcleo (renombrar.h pasado a %define).
+  NASM=${NASM:-/c/ps4dev/herramientas_ext/nasm/nasm-2.16.03/nasm.exe}
+  A=$OBJ/n64/asm
+  mkdir -p "$A"
+  REN="$AQUI/obj/nucleos/renombrar/n64.h"
+  C64=$D/mupen64plus-core
+  if [ ! -f "$A/linkage_x64.o" ] || [ "$C64/src/device/r4300/new_dynarec/x64/linkage_x64.asm" -nt "$A/linkage_x64.o" ] || [ "$REN" -nt "$A/linkage_x64.o" ]; then
+    $CC $COMUN -DNUCLEO=n64_ -include "$REN" $OPC -c -o "$A/asm_defines.o" "$C64/src/asm_defines/asm_defines.c" || exit 1
+    python -c "
+import re, sys
+d = open(sys.argv[1], 'rb').read().decode('latin-1')
+l = ['%define {} ({})'.format(n, v) for n, v in re.findall(r'@ASM_DEFINE (offsetof_struct_\w+) (0x[0-9a-fA-F]+)', d)]
+open(sys.argv[2], 'w').write(chr(10).join(l) + chr(10))
+print('asm_defines:', len(l), 'posiciones')" "$(cygpath -m "$A/asm_defines.o")" "$(cygpath -m "$A/asm_defines_nasm.h")" || exit 1
+    python "$AQUI/herramientas/nasm_nombres.py" "$(cygpath -m "$REN")" "$(cygpath -m "$A/renombrar.inc")" || exit 1
+    if [ "$DESTINO" = ps4 ]; then FORMATO="-f elf64"; else FORMATO="-f win64 -DWIN64"; fi
+    "$NASM" $FORMATO -i"$(cygpath -m "$A")/" -p"$(cygpath -m "$A/renombrar.inc")" \
+      -o "$(cygpath -m "$A/linkage_x64.o")" "$(cygpath -m "$C64/src/device/r4300/new_dynarec/x64/linkage_x64.asm")" || { echo "falló: linkage_x64.asm"; exit 1; }
+  fi
+  cygpath -m "$A/linkage_x64.o" >> "$OBJ/enlazar.rsp.$$"
+  # En la PC, las variables de C que GLideN64 (C++) pide con el nombre de C++ (ver herramientas/alternativos_pc.py).
+  if [ "$DESTINO" = pc ]; then
+    python "$AQUI/herramientas/alternativos_pc.py" n64 "$(cygpath -m "$OBJ/n64/alternativos.txt")" $(cygpath -m -f "$OBJ/n64/lista.txt") || exit 1
+    cat "$OBJ/n64/alternativos.txt" >> "$OBJ/enlazar.rsp.$$"
+  fi
+}
+
 for n in ${*:-gambatte fceumm gpgx mgba neopop prosystem handy}; do $n; done   # stella y fbneo: todavía sin probar (sh nucleos.sh ps4 stella fbneo)   # sameboy: más preciso pero lento en la PS4
 # Recién ahora, completas, reemplazan a las anteriores (si corren dos a la vez, ninguna queda a medias ni repetida).
 mv -f "$OBJ/enlazar.rsp.$$" "$OBJ/enlazar.rsp"

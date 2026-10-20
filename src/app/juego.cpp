@@ -4,7 +4,7 @@
 // demás con núcleos libretro. El mando del DualShock 4 se traduce a sus botones. L3 + R3 juntos abre el menú de pausa.
 //
 // Guardado, como en snes9x y bsnes:
-//   - Batería (SRAM del cartucho): /data/snes-ps4/guardados/<rom>.srm (las otras consolas, en guardados/<carpeta>/), el contenido tal cual (se puede usar en esos
+//   - Batería (SRAM del cartucho): /data/allesiu/guardados/<rom>.srm (las otras consolas, en guardados/<carpeta>/), el contenido tal cual (se puede usar en esos
 //     emuladores y al revés). Se escribe sola un momento después de que el juego guarda, y siempre al salir.
 //   - Estados rápidos: 4 ranuras por juego, <rom>.st0..st3, cada una con su miniatura (<rom>.st0.img, 128 × 112).
 #include "juego.h"
@@ -23,11 +23,13 @@
 #include "arcade.h"
 #include "consola.h"
 #include "rebobinar.h"
+#include "caratula.h"
+#include "trucos.h"
 #include "registro.h"
 
 static bool abierto;
 static float vis;
-static char nombre[64], error[160];
+static char nombre[64], error[256];
 static bool mostrarAyuda = true;
 static float tAyuda;
 
@@ -40,9 +42,49 @@ static int marcoW[2] = {SNES_ANCHO, SNES_ANCHO}, marcoH[2] = {SNES_ALTO, SNES_AL
 static int16_t audio[4096];
 
 // Corre un cuadro de la consola en el marco 'm'. Devuelve las muestras de sonido.
+// Run-ahead de un cuadro (menos retraso de los controles): se corre el cuadro de verdad sin mostrarlo (su sonido sí
+// se usa), se guarda el estado, se corre uno más con la misma entrada y ese es el que se ve, y se vuelve al estado
+// guardado. Cuesta el doble: solo en las consolas con estados chicos (no el arcade ni la N64).
+static uint32_t descarte[CONSOLA_MAX_ANCHO * CONSOLA_MAX_ALTO];
+static int16_t audioDescarte[4096];
+static uint8_t* estadoAdelanto;
+static uint32_t capEstadoAdelanto;
+
+static bool RunAhead()
+{
+    if (!General().runahead || EsArcade(con->sistema) || con->sistema == SIS_N64) return false;
+    uint32_t tam = con->EstadoTam();
+    if (!tam || tam > (1u << 20)) return false;
+    if (tam > capEstadoAdelanto)
+    {
+        uint8_t* nuevo = (uint8_t*)realloc(estadoAdelanto, tam);
+        if (!nuevo) return false;
+        estadoAdelanto = nuevo;
+        capEstadoAdelanto = tam;
+    }
+    return true;
+}
+
 static int Correr(int m)
 {
     int w = 0, h = 0;
+    if (RunAhead())
+    {
+        int n = con->Cuadro(descarte, &w, &h, audio, sizeof audio / 4);
+        uint32_t guardado = con->GuardarEstado(estadoAdelanto, capEstadoAdelanto);
+        if (guardado)
+        {
+            con->Cuadro(marcos[m], &w, &h, audioDescarte, sizeof audioDescarte / 4);
+            con->CargarEstado(estadoAdelanto, guardado);
+            marcoW[m] = w > 0 && w <= CONSOLA_MAX_ANCHO ? w : 1;
+            marcoH[m] = h > 0 && h <= CONSOLA_MAX_ALTO ? h : 1;
+            return n;
+        }
+        memcpy(marcos[m], descarte, sizeof descarte);   // no se pudo guardar: el cuadro normal
+        marcoW[m] = w > 0 && w <= CONSOLA_MAX_ANCHO ? w : 1;
+        marcoH[m] = h > 0 && h <= CONSOLA_MAX_ALTO ? h : 1;
+        return n;
+    }
     int n = con->Cuadro(marcos[m], &w, &h, audio, sizeof audio / 4);
     marcoW[m] = w > 0 && w <= CONSOLA_MAX_ANCHO ? w : 1;
     marcoH[m] = h > 0 && h <= CONSOLA_MAX_ALTO ? h : 1;
@@ -76,21 +118,16 @@ static bool hayHistoria;                                // se pudo reservar la m
 static std::atomic<bool> hiloCreado{false};
 
 // ---------- archivos de guardado ----------
-static char base[256];   // /data/snes-ps4/guardados/<nombre de la rom sin extensión>
+static char base[256];   // /data/allesiu/guardados/<nombre de la rom sin extensión>
 static const int RANURAS = 4;
 static const int MINI_W = SNES_ANCHO / 2, MINI_H = SNES_ALTO / 2;
 static uint32_t miniaturas[RANURAS][MINI_W * MINI_H];
 static bool hayEstado[RANURAS];
 static int contadorSram;   // cuadros que faltan para escribir la batería (hilo de emulación)
-static bool carpetaLista;  // /data/snes-ps4/guardados existe y se puede escribir
+static bool carpetaLista;  // /data/allesiu/guardados existe y se puede escribir
 
-// La carpeta de las partidas: guardados/ para la SNES (como siempre) y guardados/<carpeta de la consola> para las demás
-// (dos roms de consolas distintas pueden llamarse igual).
-static void CarpetaGuardados(char* c, int max)
-{
-    if (con->sistema == SIS_SNES) snprintf(c, max, "%s/guardados", CARPETA_DATOS);
-    else snprintf(c, max, "%s/guardados/%s", CARPETA_DATOS, con->carpeta);
-}
+// La carpeta de las partidas: guardados/<carpeta de la consola> (dos roms de consolas distintas pueden llamarse igual).
+static void CarpetaGuardados(char* c, int max) { snprintf(c, max, "%s/guardados/%s", CARPETA_DATOS, con->carpeta); }
 
 static void ArmarBase(const char* ruta)
 {
@@ -373,8 +410,10 @@ static int propJuego = -1, filtroJuego = -1;
 
 static void AplicarAjustes()
 {
-    proporcion = propJuego >= 0 ? propJuego : General().proporcion;
-    filtro = filtroJuego >= 0 ? filtroJuego : General().filtro;
+    // Lo del juego; si no, lo de su consola; si no, lo general.
+    const AjustesConsola& c = DeConsola(con ? con->sistema : SIS_SNES);
+    proporcion = propJuego >= 0 ? propJuego : c.proporcion >= 0 ? c.proporcion : General().proporcion;
+    filtro = filtroJuego >= 0 ? filtroJuego : c.filtro >= 0 ? c.filtro : General().filtro;
 }
 
 static void LeerAjustesJuego()
@@ -431,7 +470,7 @@ static void Rectangulo(int iw, int ih, float& x, float& y, float& w, float& h)
 //   Nítido suavizado: agrandada ×4 al píxel más cercano (bordes nítidos, sin el temblor del filtro "nítido").
 //   Líneas de TV: el doble de filas, con las impares oscuras (como las líneas de un televisor de tubo).
 //   CRT: además, cada píxel en 3 columnas que resaltan el rojo, el verde y el azul (la máscara del tubo).
-static const int PROCESADO_MAX = 1536 * 1024;   // entra 320 × 224 × 4 y 512 × 480 con el CRT (× 3 × 2)
+static const int PROCESADO_MAX = 640 * 480 * 6;   // la imagen más grande (640 × 480) con el CRT (× 3 × 2)
 static uint32_t procesado[PROCESADO_MAX];
 static int procesadoDe = -1, procesadoFiltro = -1;
 
@@ -554,14 +593,53 @@ static void Filtrar(const uint32_t* src, int sw, int sh, int cual, int& w, int& 
     procesadoFiltro = filtro;
 }
 
+// ---------- marco decorativo (bezel) ----------
+// Una imagen del tamaño de la pantalla que se ve en las franjas que deja libres la imagen del juego (en lugar del
+// negro). Se busca al abrir el juego: bezels/<consola>/<juego>.png, bezels/<consola>/default.png o bezels/<consola>.png,
+// en /data/allesiu y en los USB (también .jpg).
+static uint32_t* bezel;
+static int bezelW, bezelH;
+
+static void BuscarBezel(const char* ruta)
+{
+    free(bezel);
+    bezel = NULL;
+    if (!General().bezels) return;
+    const char* n = strrchr(ruta, '/');
+    n = n ? n + 1 : ruta;
+    char nombre[200];
+    snprintf(nombre, sizeof nombre, "%s", n);
+    char* e = strrchr(nombre, '.');
+    if (e) *e = 0;
+    static const char* const RAICES[] = {CARPETA_DATOS, "/mnt/usb0", "/mnt/usb1", "/mnt/usb2", "/mnt/usb3"};
+    static const char* const EXT[] = {"png", "jpg"};
+    AbrirAccesoCompleto("snes");
+    for (int forma = 0; forma < 3 && !bezel; forma++)
+        for (const char* r : RAICES)
+            for (const char* x : EXT)
+            {
+                if (bezel) break;
+                char p[600];
+                if (forma == 0) snprintf(p, sizeof p, "%s/bezels/%s/%s.%s", r, con->carpeta, nombre, x);
+                else if (forma == 1) snprintf(p, sizeof p, "%s/bezels/%s/default.%s", r, con->carpeta, x);
+                else snprintf(p, sizeof p, "%s/bezels/%s.%s", r, con->carpeta, x);
+                if (ExisteArchivo(p)) bezel = CargarImagen(p, &bezelW, &bezelH);
+            }
+    CerrarAccesoCompleto();
+}
+
 static void DibujarImagen()
 {
     int l = listo.load(std::memory_order_acquire);
     int iw = l >= 0 ? marcoW[l] : SNES_ANCHO, ih = l >= 0 ? marcoH[l] : SNES_ALTO;
     float x, y, w, h;
     Rectangulo(iw, ih, x, y, w, h);
-    if (x > 0) { Caja(0, 0, x + 1, ALTO, 0, 0x000000, 1); Caja(x + w - 1, 0, ANCHO - x - w + 1, ALTO, 0, 0x000000, 1); }
-    if (y > 0) { Caja(0, 0, ANCHO, y + 1, 0, 0x000000, 1); Caja(0, y + h - 1, ANCHO, ALTO - y - h + 1, 0, 0x000000, 1); }
+    if (bezel && (x > 1 || y > 1)) Imagen(bezel, bezelW, bezelH, 0, 0, ANCHO, ALTO, 1, true);   // el marco en las franjas
+    else
+    {
+        if (x > 0) { Caja(0, 0, x + 1, ALTO, 0, 0x000000, 1); Caja(x + w - 1, 0, ANCHO - x - w + 1, ALTO, 0, 0x000000, 1); }
+        if (y > 0) { Caja(0, 0, ANCHO, y + 1, 0, 0x000000, 1); Caja(0, y + h - 1, ANCHO, ALTO - y - h + 1, 0, 0x000000, 1); }
+    }
     if (l < 0) { Caja(x, y, w, h, 0, 0x000000, 1); return; }
     if (filtro == FI_SUAVE || filtro == FI_NITIDO)
     {
@@ -575,10 +653,12 @@ static void DibujarImagen()
 }
 
 // ---------- menú de pausa ----------
-enum { OP_CONTINUAR, OP_GUARDAR, OP_CARGAR, OP_PROPORCION, OP_FILTRO, OP_GENERAL, OP_REINICIAR, OP_SALIR, NUM_OPCIONES };
+enum { OP_CONTINUAR, OP_GUARDAR, OP_CARGAR, OP_PROPORCION, OP_FILTRO, OP_GENERAL, OP_TRUCOS, OP_REINICIAR, OP_SALIR, NUM_OPCIONES };
 static const char* const OPCIONES[NUM_OPCIONES] = {"Continuar", "Guardar estado", "Cargar estado", "Proporción", "Filtro",
-                                                   "Usar la configuración general",
+                                                   "Usar la configuración general", "Trucos",
                                                    "Reiniciar", "Volver a la biblioteca"};
+static bool viendoTrucos;   // la lista de trucos del juego (desde el menú de pausa)
+static int selTruco;
 static bool menu;
 static float visMenu, selSuave, transparencia;
 static int sel, ranura;
@@ -600,8 +680,29 @@ static bool EscribirEstado(void* u)
     return EscribirArchivo(e->ruta, e->d, e->n);
 }
 
+// Ranuras bloqueadas (no se pueden sobrescribir): <base>.bloqueos con un 0 o un 1 por ranura.
+static bool bloqueada[RANURAS];
+static void LeerBloqueos()
+{
+    char ruta[300], t[16] = "";
+    snprintf(ruta, sizeof ruta, "%s.bloqueos", base);
+    LeerTexto(ruta, t, sizeof t);
+    for (int i = 0; i < RANURAS; i++) bloqueada[i] = t[i] == '1';
+}
+static void CambiarBloqueo(int r)
+{
+    bloqueada[r] = !bloqueada[r];
+    char ruta[300], t[RANURAS + 2];
+    for (int i = 0; i < RANURAS; i++) t[i] = bloqueada[i] ? '1' : '0';
+    t[RANURAS] = '\n';
+    t[RANURAS + 1] = 0;
+    snprintf(ruta, sizeof ruta, "%s.bloqueos", base);
+    EscribirTexto(ruta, t);
+}
+
 static void GuardarEstado(int r)
 {
+    if (bloqueada[r]) { Avisar("Esa ranura está bloqueada (□ la desbloquea)", C_AVISO); return; }
     uint32_t tam = con->EstadoTam();
     uint8_t* d = (uint8_t*)malloc(tam);
     uint32_t n = d ? con->GuardarEstado(d, tam) : 0;
@@ -626,8 +727,37 @@ static void GuardarEstado(int r)
         snprintf(t, sizeof t, "Estado guardado en la ranura %d", r + 1);
         Avisar(t, C_BIEN);
     }
-    else if (!carpetaLista) { Avisar("No se pudo crear la carpeta de guardados en /data/snes-ps4", C_MAL); Registrar("ERROR: no se pudo crear la carpeta de guardados"); }
+    else if (!carpetaLista) { Avisar("No se pudo crear la carpeta de guardados en /data/allesiu", C_MAL); Registrar("ERROR: no se pudo crear la carpeta de guardados"); }
     else { Avisar("No se pudo escribir el archivo del estado en /data", C_MAL); Registrar("ERROR: no se pudo escribir %s", ruta); }
+}
+
+// Continuar donde quedé: un estado aparte (<base>.continuar, no ocupa las ranuras) que se guarda al salir del juego y se
+// carga al abrirlo (si está activado en la configuración).
+static void GuardarContinuar()
+{
+    uint32_t tam = con->EstadoTam();
+    uint8_t* d = tam ? (uint8_t*)malloc(tam) : NULL;
+    uint32_t n = d ? con->GuardarEstado(d, tam) : 0;
+    if (n)
+    {
+        char ruta[300];
+        snprintf(ruta, sizeof ruta, "%s.continuar", base);
+        EscrituraEstado e = {ruta, d, n};
+        if (!ConAccesoSiHaceFalta(EscribirEstado, &e)) Registrar("ERROR: no se pudo guardar el estado para continuar");
+    }
+    free(d);
+}
+
+static void CargarContinuar()
+{
+    char ruta[300];
+    snprintf(ruta, sizeof ruta, "%s.continuar", base);
+    uint32_t n = 0;
+    uint8_t* d = LeerArchivo(ruta, &n);
+    if (!d) return;
+    bool ok = con->CargarEstado(d, n);
+    free(d);
+    if (ok) { AudioJuegoVaciar(); NuevaHistoria(); Avisar("Continuando donde quedaste", C_BIEN); }
 }
 
 static bool CargarEstado(int r)
@@ -651,23 +781,50 @@ static bool CargarEstado(int r)
 
 static void Salir()
 {
+    // Cuánto tarda cada paso (al registro si la salida se nota: más de medio segundo).
+    double t0 = Segundos(), t[4];
     abierto = false;
     menu = false;
     EsperarHilo();
+    t[0] = Segundos();
     // Si el juego no llegó a cargar (la pantalla de error), no hay partida que guardar ni núcleo abierto.
     if (!error[0] && !ConAccesoSiHaceFalta([](void*) { return GuardarSram(); }, NULL)) Registrar("ERROR: no se pudo guardar la partida (batería) al salir");
+    if (!error[0] && General().continuar) GuardarContinuar();
     contadorSram = 0;
+    t[1] = Segundos();
     DiagnosticoPendiente();
     if (cuadrosTotal)
         Registrar("Juego cerrado: %.0f s jugados, %u cuadros, %.2f ms por cuadro en promedio (máximo %.1f), %u segundos lentos",
                   Segundos() - inicioPartida, cuadrosTotal, tiempoSumaTotal / cuadrosTotal, tiempoMaxTotal, segundosLentos);
     RegistroFinJuego();
+    t[2] = Segundos();
     con->Descargar();
+    free(bezel);
+    bezel = NULL;
+    t[3] = Segundos();
+    if (t[3] - t0 > .5)
+        Registrar("Salir del juego tardó %.1f s: esperar la emulación %.1f, guardar la partida %.1f, diagnóstico %.1f, cerrar el "
+                  "emulador %.1f", t[3] - t0, t[0] - t0, t[1] - t[0], t[2] - t[1], t[3] - t[2]);
     Sonar(SON_ATRAS);
 }
 
 static void MenuEntrada(const Mando& m)
 {
+    // La lista de trucos: ↑ ↓ eligen, X activa o desactiva (con la emulación quieta), ○ vuelve al menú.
+    if (viendoTrucos)
+    {
+        int n = TrucosCuantos();
+        if (m.pulsados & (B_CIRCULO | B_OPTIONS)) { viendoTrucos = false; Sonar(SON_ATRAS); return; }
+        if (n && (m.pulsados & B_ARRIBA)) { selTruco = (selTruco + n - 1) % n; Sonar(SON_MOVER); }
+        if (n && (m.pulsados & B_ABAJO)) { selTruco = (selTruco + 1) % n; Sonar(SON_MOVER); }
+        if (n && (m.pulsados & B_CRUZ))
+        {
+            EsperarHilo();
+            TrucoCambiar(selTruco);
+            Sonar(TrucoDe(selTruco)->activo ? SON_ACEPTAR : SON_ATRAS);
+        }
+        return;
+    }
     if (m.pulsados & B_ARRIBA) { sel = (sel + NUM_OPCIONES - 1) % NUM_OPCIONES; Sonar(SON_MOVER); }
     if (m.pulsados & B_ABAJO) { sel = (sel + 1) % NUM_OPCIONES; Sonar(SON_MOVER); }
     // ← → cambia el valor de la opción elegida: la ranura, la proporción o el filtro.
@@ -676,6 +833,13 @@ static void MenuEntrada(const Mando& m)
     // Proporción y filtro cambiados acá valen solo para este juego.
     if (d && sel == OP_PROPORCION) { propJuego = (proporcion + NUM_PROPORCIONES + d) % NUM_PROPORCIONES; GuardarAjustesJuego(); Sonar(SON_MOVER); }
     if (d && sel == OP_FILTRO) { filtroJuego = (filtro + NUM_FILTROS + d) % NUM_FILTROS; GuardarAjustesJuego(); Sonar(SON_MOVER); }
+    if ((m.pulsados & B_CUADRADO) && (sel == OP_GUARDAR || sel == OP_CARGAR))
+    {
+        CambiarBloqueo(ranura);
+        Avisar(bloqueada[ranura] ? "Ranura bloqueada: no se puede sobrescribir" : "Ranura desbloqueada", C_TEXTO);
+        Sonar(SON_MOVER);
+        return;
+    }
     if (m.pulsados & (B_CIRCULO | B_OPTIONS)) { menu = false; Sonar(SON_ATRAS); return; }
     if (!(m.pulsados & B_CRUZ)) return;
     switch (sel)
@@ -692,7 +856,11 @@ static void MenuEntrada(const Mando& m)
         break;
     case OP_GUARDAR: GuardarEstado(ranura); Sonar(SON_ACEPTAR); menu = false; break;
     case OP_CARGAR: if (CargarEstado(ranura)) { Sonar(SON_ACEPTAR); menu = false; } else Sonar(SON_ERROR); break;
-    case OP_REINICIAR: Registrar("Juego reiniciado desde el menú"); con->Reiniciar(); AudioJuegoVaciar(); NuevaHistoria(); Avisar("Juego reiniciado", C_TEXTO); Sonar(SON_ACEPTAR); menu = false; break;
+    case OP_TRUCOS:
+        if (TrucosCuantos()) { viendoTrucos = true; selTruco = 0; Sonar(SON_ACEPTAR); }
+        else { Avisar("Sin trucos: pon su archivo .cht en trucos/<consola>/ del USB", C_TEXTO_2); Sonar(SON_ERROR); }
+        break;
+    case OP_REINICIAR: Registrar("Juego reiniciado desde el menú"); con->Reiniciar(); TrucosAplicar(); AudioJuegoVaciar(); NuevaHistoria(); Avisar("Juego reiniciado", C_TEXTO); Sonar(SON_ACEPTAR); menu = false; break;
     case OP_SALIR: Salir(); break;
     }
 }
@@ -717,7 +885,7 @@ static void MenuDibujar(float a)
     for (int i = 0; i < NUM_OPCIONES; i++)
     {
         char t[64];
-        if (i == OP_GUARDAR || i == OP_CARGAR) snprintf(t, sizeof t, "%s   « %d »", OPCIONES[i], ranura + 1);
+        if (i == OP_GUARDAR || i == OP_CARGAR) snprintf(t, sizeof t, "%s   « %d »%s", OPCIONES[i], ranura + 1, bloqueada[ranura] ? "  (bloqueada)" : "");
         else snprintf(t, sizeof t, "%s", OPCIONES[i]);
         if (i == OP_PROPORCION || i == OP_FILTRO)
         {
@@ -728,6 +896,17 @@ static void MenuDibujar(float a)
             Texto(F_CUERPO_M, v, x + 580, y0 + i * paso - 6, i == sel ? C_ACENTO : C_TEXTO_3, a, 2);
             bool propio = i == OP_PROPORCION ? propJuego >= 0 : filtroJuego >= 0;
             Texto(F_PEQUENA, propio ? "Este juego" : "General", x + 580, y0 + i * paso + 24, propio ? C_SNES_B : C_TEXTO_3, a, 2);
+            continue;
+        }
+        if (i == OP_TRUCOS)
+        {
+            int nt = TrucosCuantos(), act = 0;
+            for (int k = 0; k < nt; k++) act += TrucoDe(k)->activo;
+            Texto(F_SUBTITULO, OPCIONES[i], x, y0 + i * paso, nt ? (i == sel ? C_TEXTO : C_TEXTO_2) : C_TEXTO_3, nt ? a : a * .6f);
+            char v[48];
+            if (nt) snprintf(v, sizeof v, act ? "%d de %d activos" : "%d", act ? act : nt, nt);
+            else snprintf(v, sizeof v, "No hay");
+            Texto(F_PEQUENA, v, x + 580, y0 + i * paso + 8, act ? C_SNES_B : C_TEXTO_3, a, 2);
             continue;
         }
         if (i == OP_GENERAL)
@@ -743,8 +922,32 @@ static void MenuDibujar(float a)
     a *= 1 - transparencia;
     if (a <= .01f) return;
     float pw = 768, ph = 750, px = ANCHO - MARGEN - pw - 40 + (1 - a) * 60, py = 120;
-    Sombra(px, py, pw, ph, 24, 40, .5f * a);
-    Caja(px, py, pw, ph, 24, C_PANEL, a);
+    Panel(px, py, pw, ph, 24, a);
+    if (viendoTrucos)
+    {
+        // Los trucos del juego (de su archivo .cht), con su estado; la lista se desplaza con la selección.
+        Texto(F_SUBTITULO, "Trucos", px + 32, py + 30, C_TEXTO, a);
+        int nt = TrucosCuantos();
+        const int filas = 13;
+        int primero = selTruco - filas / 2;
+        if (primero > nt - filas) primero = nt - filas;
+        if (primero < 0) primero = 0;
+        for (int k = primero; k < nt && k < primero + filas; k++)
+        {
+            const Truco* tr = TrucoDe(k);
+            float fy = py + 90 + (k - primero) * 46;
+            bool el = k == selTruco;
+            if (el) Caja(px + 16, fy - 6, pw - 32, 42, 12, C_ACENTO, .22f * a);
+            Caja(px + 32, fy + 4, 44, 24, 12, tr->activo ? C_BIEN : 0xFFFFFF, (tr->activo ? .9f : .15f) * a);
+            Circulo(px + (tr->activo ? 64 : 44), fy + 16, 9, 0xFFFFFF, a);
+            char corto[96];
+            Texto(F_CUERPO, Acortar(F_CUERPO, tr->nombre, pw - 140, corto, sizeof corto), px + 92, fy, el ? C_TEXTO : C_TEXTO_2, a);
+        }
+        int b2[2] = {BM_CRUZ, BM_CIRCULO};
+        const char* tx2[2] = {"Activar o desactivar", "Volver"};
+        Pistas(b2, tx2, 2, a);
+        return;
+    }
     char t[64];
     snprintf(t, sizeof t, "Ranura %d", ranura + 1);
     Texto(F_SUBTITULO, t, px + 32, py + 30, C_TEXTO, a);
@@ -765,12 +968,13 @@ static void MenuDibujar(float a)
     {
         float cx = px + pw / 2 + (i - 1.5f) * 56, cy = py + ph - 34;
         Circulo(cx, cy, i == ranura ? 12 : 8, hayEstado[i] ? C_ACENTO : C_TEXTO_3, a);
+        if (bloqueada[i]) Aro(cx, cy, i == ranura ? 17 : 13, 2.5f, C_SNES_B, a);   // bloqueada: un aro dorado
     }
 
     int b[2] = {BM_CRUZ, BM_CIRCULO};
     const char* tx[2] = {"Aceptar", "Volver al juego"};
     Pistas(b, tx, 2, a);
-    Texto(F_PEQUENA, "← → cambia la ranura, la proporción o el filtro (la proporción y el filtro, solo para este juego)", MARGEN, ALTO - 44, C_TEXTO_3, a);
+    Texto(F_PEQUENA, "← → cambia la ranura, la proporción o el filtro (solo para este juego)   ·   □ bloquea la ranura", MARGEN, ALTO - 44, C_TEXTO_3, a);
 }
 
 // ---------- pantalla ----------
@@ -782,24 +986,30 @@ bool JuegoAbrir(const char* ruta, const char* nom, int sistema)
     procesadoDe = -1;
     if (!hiloCreado) hiloCreado = Lanzar(HiloEmulacion, NULL, "emulacion");
     EsperarHilo();
+    // Los cuadros en negro: si el núcleo nuevo empieza con cuadros repetidos (N64 lo hace), se repetiría la imagen del
+    // juego anterior.
+    memset(marcos, 0, sizeof marcos);
     // La rom está en el USB: solo se ve afuera del encierro del sistema (igual que al buscar). Se carga entera a memoria,
     // así que después se puede volver a entrar.
     // Una rom comprimida se saca a memoria y la consola sale del archivo de adentro.
     bool ok = false;
-    AbrirAccesoCompleto("snes", true);
+    int acceso = AbrirAccesoCompleto("snes", true);
     if (EsArcade(sistema))
     {
         // Arcade: FinalBurn Neo abre el zip por su ruta. Si falla, la explicación de qué le falta al set es más útil que
         // el error genérico.
         con = &ConsolaDe(sistema);
-        char explicacion[160];
+        char explicacion[160], rutaNucleo[600];
         int estado = ArcadeRevisar(ruta, explicacion);
+        // Si el zip (o su juego principal, o la BIOS) tiene otro nombre, FinalBurn Neo recibe el nombre corto y la capa
+        // de archivos abre el real (ver ArcadePrepararAlias).
+        ArcadePrepararAlias(ruta, rutaNucleo, sizeof rutaNucleo);
         if (!con->presente) snprintf(error, sizeof error, "Esta versión de ALLESIU todavía no trae el emulador arcade.");
         // Si al set le faltan archivos propios, es de otra versión o falta la BIOS, ni se intenta: FinalBurn Neo abriría
         // igual, pero con su pantalla de error en inglés. (Un padre que falta sí se intenta: el núcleo lo busca también
         // en la carpeta de BIOS.)
         else if (estado == ARC_FALTAN_ARCHIVOS || estado == ARC_OTRA_VERSION || estado == ARC_FALTA_BIOS) snprintf(error, sizeof error, "%s", explicacion);
-        else ok = con->Cargar(ruta, error);
+        else ok = con->Cargar(rutaNucleo, error);
         if (!ok && estado != ARC_COMPLETO && explicacion[0]) snprintf(error, sizeof error, "%s", explicacion);
     }
     else if (EsComprimido(ruta))
@@ -818,10 +1028,23 @@ bool JuegoAbrir(const char* ruta, const char* nom, int sistema)
         if (!con->presente) snprintf(error, sizeof error, "Esta versión de ALLESIU todavía no trae el emulador de %s.", con->nombreLargo);
         else ok = con->Cargar(ruta, error);
     }
+    // Un juego del USB sin el acceso de GoldHEN no se ve: eso explica el error mejor que lo que dijo el emulador.
+    if (!ok && acceso <= 0 && !strncmp(ruta, "/mnt/", 5))
+        snprintf(error, sizeof error, "La aplicación no pudo ver el USB. %s", AccesoDetalle());
     CerrarAccesoCompleto();
     ConsolaActivar(con->sistema);
     ArmarBase(ruta);
     LeerAjustesJuego();
+    viendoTrucos = false;
+    LeerBloqueos();
+    if (ok)
+    {
+        AbrirAccesoCompleto("snes");   // los trucos pueden estar en el USB
+        TrucosAbrir(ruta, con->sistema, base);
+        CerrarAccesoCompleto();
+        TrucosAplicar();
+        BuscarBezel(ruta);
+    }
     // Diagnóstico: todo en cero para esta partida, y al registro qué se abrió.
     informesAuto = cuadrosDiag = segNegro = 0;
     negroAvisado = false;
@@ -842,9 +1065,13 @@ bool JuegoAbrir(const char* ruta, const char* nom, int sistema)
         Registrar("Juego abierto: %s\n%s", ruta, cab);
     }
     else Registrar("ERROR al abrir %s: %s", ruta, error);
+    char memoria[160];
+    MemoriaResumen(memoria, sizeof memoria);
+    Registrar("Al abrir: %s", memoria);
     if (ok)
     {
         CargarSram();
+        if (General().continuar) CargarContinuar();
         LeerMiniaturas();
         NuevaHistoria();
     }
@@ -966,8 +1193,7 @@ void JuegoCuadro(float t, float dt, const Mando& m)
     {
         float a = tAviso < .2f ? tAviso / .2f : tAviso > 2 ? (2.5f - tAviso) / .5f : 1;
         float w = AnchoTexto(F_CUERPO_M, aviso) + 64;
-        Sombra(ANCHO / 2 - w / 2, 36, w, 60, 30, 20, .4f * a);
-        Caja(ANCHO / 2 - w / 2, 36, w, 60, 30, C_PANEL, .95f * a);
+        Panel(ANCHO / 2 - w / 2, 36, w, 60, 30, a);
         Circulo(ANCHO / 2 - w / 2 + 30, 66, 7, avisoColor, a);
         Texto(F_CUERPO_M, aviso, ANCHO / 2 + 10, 50, C_TEXTO, a, 1);
     }

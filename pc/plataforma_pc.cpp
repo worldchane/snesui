@@ -45,6 +45,9 @@ void IniciarTrabajadores(int n)
 int Partes() { return nTrab + 1; }
 void EnParalelo(void (*f)(int, int, void*), void* arg)
 {
+    // UN_HILO=1: todo en este hilo, en 6 partes (para medir el trabajo total, como el de la consola).
+    static const bool unHilo = getenv("UN_HILO") != NULL;
+    if (unHilo) { for (int p = 0; p < 6; p++) f(p, 6, arg); return; }
     tareaF = f;
     tareaArg = arg;
     pendientes = nTrab;
@@ -53,6 +56,8 @@ void EnParalelo(void (*f)(int, int, void*), void* arg)
     while (pendientes.load() > 0) std::this_thread::yield();
 }
 
+void CapturarCierres() {}
+void ActivarCandadosLibc() {}
 void IniciarMando() {}
 void LeerMando(Mando&, float) {}
 void IniciarAudio() {}
@@ -90,6 +95,14 @@ bool EspacioLibre(const char* r, uint64_t* libres, uint64_t* total)
     return true;
 }
 bool BorrarArchivo(const char* r) { std::error_code e; return std::filesystem::remove(Ruta(r), e); }
+bool RenombrarArchivo(const char* de, const char* a)
+{
+    std::error_code e;
+    std::string d = Ruta(de), b = Ruta(a);
+    if (!std::filesystem::exists(d, e) || std::filesystem::exists(b, e)) return false;
+    std::filesystem::rename(d, b, e);
+    return !e;
+}
 bool CrearCarpetas(const char* r) { std::error_code e; std::filesystem::create_directories(Ruta(r), e); return std::filesystem::is_directory(Ruta(r)); }
 
 // Red con Winsock (la misma lógica de descarga que en la consola).
@@ -174,3 +187,5 @@ bool EscribirTexto(const char* r, const char* t)
     fclose(f);
     return true;
 }
+
+extern "C" void MemoriaResumen(char* sale, int max) { snprintf(sale, max, "(memoria: solo en la consola)"); }

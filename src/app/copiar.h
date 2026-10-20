@@ -1,4 +1,4 @@
-// Copiar juegos entre el USB y la consola (/data/snes-ps4/juegos), en las dos direcciones, en un hilo aparte. Antes de
+// Copiar juegos entre el USB y la consola (/data/allesiu/roms), en las dos direcciones, en un hilo aparte. Antes de
 // copiar se mide el espacio libre real del destino y se deja siempre una reserva (1 GB en la consola para el sistema;
 // un poco en el USB): se copian solo los que entran. Cada copia se verifica (mismo tamaño que el original) y si algo
 // falla se borra la copia incompleta.
@@ -31,14 +31,14 @@ bool EmpezarCopia(const char* const* rutas, int n, const char* destino, uint64_t
 // También devuelve el espacio libre del USB, si se pide.
 bool CarpetaUsb(char* out, int max, uint64_t* libres = 0);
 // Borra estos juegos (de la consola o del USB) en segundo plano. Solo borra roms de SNES (.sfc/.smc/.fig/.swc) dentro
-// de /data/snes-ps4/juegos o de un USB; nunca otros archivos ni carpetas. false si ya hay una copia o un borrado en curso.
+// de /data/allesiu/roms o de un USB; nunca otros archivos ni carpetas. false si ya hay una copia o un borrado en curso.
 bool EmpezarBorrado(const char* const* rutas, int n);
 ProgresoCopia ProgresoDeCopia();
 bool CopiaEnCurso();
 
 // Espacio libre en la consola (bytes). false si no se pudo medir.
 bool EspacioConsola(uint64_t* libres);
-// Borra un juego copiado a la consola (solo dentro de /data/snes-ps4/juegos).
+// Borra un juego copiado a la consola (solo dentro de /data/allesiu/roms).
 bool BorrarDeConsola(const char* ruta);
 // "350 MB", "1,5 GB".
 void TextoTamano(uint64_t bytes, char* out, int max);

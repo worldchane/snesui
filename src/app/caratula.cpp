@@ -11,16 +11,18 @@
 #include "../comun/plataforma.h"
 #include "arcade.h"
 #include "consola.h"
+#include "registro.h"
 
 #define STB_IMAGE_STATIC
 #define STBI_ONLY_PNG
+#define STBI_ONLY_JPEG   // las carátulas que el usuario trae en el USB (ES-DE y Batocera suelen usar JPG)
 #define STBI_NO_STDIO
 #define STBI_ASSERT(x) ((void)0)
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb/stb_image.h>
 
-// Las claves de las consolas que no son la SNES llevan delante su carpeta ("NES/<nombre>", ver biblioteca.cpp): sus
-// carátulas van en caratulas/<carpeta>/ y se bajan de la carpeta de esa consola en el servidor.
+// Las claves llevan delante la carpeta de su consola ("nes/<nombre>", ver biblioteca.cpp): sus carátulas van en
+// caratulas/<carpeta>/ y se bajan de la carpeta de esa consola en el servidor.
 static const Consola& ConsolaDeClave(const char* clave, const char** nombre)
 {
     *nombre = clave;
@@ -30,7 +32,7 @@ static const Consola& ConsolaDeClave(const char* clave, const char** nombre)
         {
             const Consola& c = ConsolaDe(s);
             size_t l = strlen(c.carpeta);
-            if (s != SIS_SNES && (size_t)(barra - clave) == l && !strncmp(clave, c.carpeta, l)) { *nombre = barra + 1; return c; }
+            if ((size_t)(barra - clave) == l && !strncmp(clave, c.carpeta, l)) { *nombre = barra + 1; return c; }
         }
     return ConsolaDe(SIS_SNES);
 }
@@ -49,9 +51,10 @@ static void RutaCaratula(const char* clave, char* ruta, int max)
         limpio[n++] = c;
     }
     limpio[n] = 0;
-    if (con.sistema == SIS_SNES) snprintf(ruta, max, "%s/caratulas/%s.png", CARPETA_DATOS, limpio);
-    else snprintf(ruta, max, "%s/caratulas/%s/%s.png", CARPETA_DATOS, con.carpeta, limpio);
+    snprintf(ruta, max, "%s/caratulas/%s/%s.png", CARPETA_DATOS, con.carpeta, limpio);
 }
+
+void CaratulaRuta(const char* clave, char* ruta, int max) { RutaCaratula(clave, ruta, max); }
 
 bool HayCaratula(const char* nombre)
 {
@@ -241,7 +244,7 @@ static int PedirHttp(const char* ruta, uint8_t* buf, int max, const uint8_t** cu
     int s = RedConectar(SERVIDOR, 80);
     if (s < 0) return -1;
     char pedido[1024];
-    int n = snprintf(pedido, sizeof pedido, "GET %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: snes-ps4\r\nConnection: close\r\n\r\n", ruta, SERVIDOR);
+    int n = snprintf(pedido, sizeof pedido, "GET %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: allesiu\r\nConnection: close\r\n\r\n", ruta, SERVIDOR);
     if (RedEnviar(s, pedido, n) != n) { RedCerrar(s); return -1; }
     int total = 0;
     while (total < max)
@@ -301,11 +304,13 @@ static int Candidatos(const char* clave, char out[][96], int max)
 }
 
 // ---------- índice de carátulas ----------
-// La carpeta de carátulas del servidor tiene una página con la lista de todas (unas 3.700, ~1 MB). Se baja una vez y
+// La carpeta de carátulas del servidor tiene una página con la lista de todas (de 1.500 a más de 13.000 según la
+// consola: la de NES pasa de 4 MB). Se baja una vez y
 // se busca en ella el nombre más parecido al de cada rom: así se encuentran aunque el archivo no tenga el nombre exacto
 // (mayúsculas distintas, la región que falta, o el subtítulo que el archivo no trae).
 static char (*indice)[112];
 static int nIndice;
+static bool indiceCortado;   // la página no entró entera (o tenía más nombres de los que caben): se prueba también por nombre
 
 // Comparaciones sin distinguir mayúsculas (propias: así no se piden más funciones a la consola).
 static inline int Minus(int c) { return c >= 'A' && c <= 'Z' ? c - 'A' + 'a' : c; }
@@ -316,7 +321,7 @@ static int Hex(int c) { return c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <=
 
 static void LeerIndice(const uint8_t* html, int largo)
 {
-    static const int MAX_INDICE = 12000;
+    static const int MAX_INDICE = 30000;
     if (!indice) indice = (char(*)[112])malloc(sizeof(*indice) * MAX_INDICE);
     nIndice = 0;
     if (!indice) return;
@@ -343,6 +348,7 @@ static void LeerIndice(const uint8_t* html, int largo)
         o[n] = 0;
         nIndice++;
     }
+    if (nIndice == MAX_INDICE) indiceCortado = true;
 }
 
 // Título normalizado para comparar: solo letras y números, en minúsculas, sin "the" al principio ni ", the" (libretro
@@ -472,12 +478,13 @@ void OlvidarNoEncontradas()
 
 static void* HiloDescarga(void*)
 {
-    static const int MAXIMO = 4 * 1024 * 1024;
+    static const int MAXIMO = 8 * 1024 * 1024;
     uint8_t* buf = (uint8_t*)malloc(MAXIMO + 1);
     char detalle[160] = "";
     if (!buf || !RedIniciar(detalle, sizeof detalle))
     {
         snprintf(progreso.detalle, sizeof progreso.detalle, "%s", buf ? detalle : "Sin memoria para bajar carátulas.");
+        Registrar("Carátulas: no se pudo empezar la descarga: %s", progreso.detalle);
         progreso.fallo = true;
         progreso.activa = false;
         progreso.terminada = true;
@@ -488,26 +495,47 @@ static void* HiloDescarga(void*)
     LeerNoEncontradas();
     // Consola por consola: se baja el índice de su carpeta y después sus carátulas.
     int seguidasSinRed = 0, hechas = 0;
-    for (int s = 0; s < NUM_SISTEMAS && !progreso.fallo; s++)
+    // Una pasada por consola y una más para los juegos de NES que no se encontraron: los del Famicom Disk System (.fds)
+    // tienen sus carátulas en otra carpeta del servidor.
+    for (int pasada = 0; pasada <= NUM_SISTEMAS && !progreso.fallo; pasada++)
     {
+        bool fds = pasada == NUM_SISTEMAS;
+        int s = fds ? SIS_NES : pasada;
         const Consola& con = ConsolaDe(s);
-        int deEsta = 0;
-        for (int i = 0; i < nClaves; i++) { const char* nom; if (ConsolaDeClave(claves[i], &nom).sistema == s) deEsta++; }
+        // Solo las consolas con carátulas pendientes (sin archivo y no anotadas como que no están en el servidor): la
+        // lista del servidor es grande y no vale la pena bajarla si no falta ninguna.
+        int deEsta = 0, pendientes = 0;
+        for (int i = 0; i < nClaves; i++)
+        {
+            const char* nom;
+            if (ConsolaDeClave(claves[i], &nom).sistema != s) continue;
+            deEsta++;
+            if (!HayCaratula(claves[i]) && !YaNoEncontrada(claves[i])) pendientes++;
+        }
         if (!deEsta) continue;
+        if (!pendientes) { if (!fds) progreso.hechas = hechas += deEsta; continue; }
         char sistema[96], carpeta[160];
-        CarpetaServidor(con, sistema, sizeof sistema);
-        if (s == SIS_SNES) snprintf(carpeta, sizeof carpeta, "%s/caratulas", CARPETA_DATOS);
-        else snprintf(carpeta, sizeof carpeta, "%s/caratulas/%s", CARPETA_DATOS, con.carpeta);
+        if (fds) snprintf(sistema, sizeof sistema, "Nintendo - Family Computer Disk System");
+        else CarpetaServidor(con, sistema, sizeof sistema);
+        snprintf(carpeta, sizeof carpeta, "%s/caratulas/%s", CARPETA_DATOS, con.carpeta);
         CrearCarpetas(carpeta);
         {
-            snprintf(progreso.detalle, sizeof progreso.detalle, "Leyendo la lista de carátulas de %s...", con.nombre);
+            snprintf(progreso.detalle, sizeof progreso.detalle, "Leyendo la lista de carátulas de %s...", fds ? "Disk System" : con.nombre);
             char ruta[300] = "/";
             AgregarCodificado(ruta, sizeof ruta, sistema);
             snprintf(ruta + strlen(ruta), sizeof ruta - strlen(ruta), "/Named_Boxarts/");
             const uint8_t* cuerpo = NULL;
             int largo = 0;
             nIndice = 0;
-            if (PedirHttp(ruta, buf, MAXIMO, &cuerpo, &largo) == 200) LeerIndice(cuerpo, largo);
+            indiceCortado = false;
+            int codigo = PedirHttp(ruta, buf, MAXIMO, &cuerpo, &largo);
+            if (codigo == 200)
+            {
+                indiceCortado = cuerpo + largo >= buf + MAXIMO - 1;   // llenó el búfer: la lista llegó cortada
+                LeerIndice(cuerpo, largo);
+            }
+            Registrar("Carátulas de %s: lista del servidor con %d nombres%s (respuesta %d)", fds ? "Disk System" : con.nombre, nIndice,
+                      indiceCortado ? ", cortada" : "", codigo);
         }
         for (int i = 0; i < nClaves; i++)
         {
@@ -519,14 +547,15 @@ static void* HiloDescarga(void*)
                 int ja = ArcadeBuscar(nombre);
                 if (ja >= 0) nombre = ArcadeTitulo(ja);
             }
-            progreso.hechas = hechas;
-            if (HayCaratula(claves[i]) || YaNoEncontrada(claves[i])) { progreso.hechas = ++hechas; continue; }
+            if (!fds) progreso.hechas = hechas;
+            if (HayCaratula(claves[i]) || YaNoEncontrada(claves[i])) { if (!fds) progreso.hechas = ++hechas; continue; }
             snprintf(progreso.detalle, sizeof progreso.detalle, "%s", nombre);
             char cand[12][96];
             int nc;
             int k0 = nIndice ? BuscarEnIndice(nombre) : -1;
-            if (nIndice) { nc = k0 >= 0 ? 1 : 0; if (k0 >= 0) snprintf(cand[0], 96, "%s", indice[k0]); }   // con índice: solo la elegida
-            else nc = Candidatos(nombre, cand, 12);                                                          // sin índice: probar nombres
+            if (k0 >= 0) { nc = 1; snprintf(cand[0], 96, "%s", indice[k0]); }   // con índice: solo la elegida
+            else if (nIndice && !indiceCortado) nc = 0;                          // la lista entera no la tiene
+            else nc = Candidatos(nombre, cand, 12);                              // sin lista (o cortada): probar nombres
             bool hecha = false, sinRed = false;
             for (int k = 0; k < nc && !hecha; k++)
             {
@@ -547,11 +576,13 @@ static void* HiloDescarga(void*)
                     if (f) { hecha = fwrite(cuerpo, 1, largo, f) == (size_t)largo; fclose(f); }
                 }
             }
+            // Las de NES que faltan se cuentan y se anotan recién en la pasada del Disk System (pueden estar ahí).
+            bool ultima = s != SIS_NES || fds;
             if (hecha) progreso.bajadas++;
-            else progreso.sinCaratula++;
+            else if (ultima) progreso.sinCaratula++;
             // Solo se anota si hubo red y se pudo leer la lista del servidor (si no, la próxima vez se reintenta).
-            if (!hecha && !sinRed && nIndice > 0) AnotarNoEncontrada(claves[i]);
-            progreso.hechas = ++hechas;
+            if (!hecha && ultima && !sinRed && nIndice > 0 && !indiceCortado) AnotarNoEncontrada(claves[i]);
+            if (!fds) progreso.hechas = ++hechas;
             // Sin conexión: se corta después de 2 seguidas (no tiene sentido esperar el tiempo de cada una).
             seguidasSinRed = sinRed ? seguidasSinRed + 1 : 0;
             if (seguidasSinRed >= 2)
@@ -563,6 +594,8 @@ static void* HiloDescarga(void*)
         }
     }
     if (!progreso.fallo) snprintf(progreso.detalle, sizeof progreso.detalle, "Listo.");
+    Registrar("Carátulas: %d bajadas, %d sin carátula en el servidor, de %d juegos%s%s", progreso.bajadas, progreso.sinCaratula,
+              progreso.total, progreso.fallo ? ". Falló: " : "", progreso.fallo ? progreso.detalle : "");
     free(buf);
     progreso.activa = false;
     progreso.terminada = true;
@@ -570,13 +603,14 @@ static void* HiloDescarga(void*)
     return NULL;
 }
 
-bool EmpezarDescarga(const char* const* lista, int n)
+bool EmpezarDescarga(const char* const* lista, int n, bool automatica)
 {
     if (enCurso) return false;
     nClaves = n < MAX_DESCARGAS ? n : MAX_DESCARGAS;
     for (int i = 0; i < nClaves; i++) snprintf(claves[i], sizeof claves[i], "%s", lista[i]);
     memset(&progreso, 0, sizeof progreso);
     progreso.total = nClaves;
+    progreso.automatica = automatica;
     progreso.activa = true;
     enCurso = true;
     if (!Lanzar(HiloDescarga, NULL, "caratulas"))
@@ -613,4 +647,187 @@ uint32_t* CargarImagen(const char* ruta, int* w, int* h)
 void OlvidarCaratulas()
 {
     for (Entrada& e : cache) Descartar(e);
+}
+
+// ---------- elegir la carátula a mano ----------
+// Las 12 carátulas del servidor con el nombre más parecido al del juego (también las que solo comparten la primera
+// palabra), bajadas y achicadas para mostrarlas; la elegida se guarda como carátula del juego. Usa la misma lista del
+// servidor que la descarga: mientras tanto, la descarga automática espera (enCurso).
+static const int MAX_OPCIONES = 12;
+static OpcionCaratula opciones[MAX_OPCIONES];
+static uint8_t* opcionPng[MAX_OPCIONES];
+static int opcionTam[MAX_OPCIONES];
+static char manualClave[96];
+static std::atomic<int> manualListas{0}, manualTotal{0};
+static std::atomic<bool> manualTerminado{false}, manualCancelar{false}, manualSinRed{false};
+
+// Puntaje de un nombre del servidor para el título de la rom (como BuscarEnIndice, más el parecido por la primera
+// palabra). -1000: nada que ver.
+static int Puntaje(const char* entrada, const char* tit, const char* titCorto, const char* region)
+{
+    char e[128], eCorto[128];
+    Normalizar(entrada, e, sizeof e, false);
+    Normalizar(entrada, eCorto, sizeof eCorto, true);
+    int puntos;
+    if (!strcmp(e, tit)) puntos = 100;
+    else if (!strcmp(eCorto, tit)) puntos = 80;
+    else if (titCorto[0] && !strcmp(eCorto, titCorto)) puntos = 60;
+    else if (strlen(tit) >= 4 && strstr(e, tit)) puntos = 45;   // el título está adentro del nombre
+    else if (strlen(e) >= 4 && strstr(tit, e)) puntos = 40;     // el nombre está adentro del título
+    else
+    {
+        // La primera palabra igual (al menos 4 letras).
+        char p1[64], p2[64];
+        int a = 0, b = 0;
+        for (const char* q = entrada; *q && *q != ' ' && a < 63; q++) p1[a++] = (char)Minus(*q);
+        for (const char* q = tit; *q && b < 63; q++) p2[b++] = *q;
+        p1[a] = 0;
+        p2[b] = 0;
+        char n1[64];
+        Normalizar(p1, n1, sizeof n1, false);
+        if (strlen(n1) < 4 || strncmp(n1, p2, strlen(n1))) return -1000;
+        puntos = 20;
+    }
+    const char* er = strstr(entrada, "(");
+    if (er && !strncmp(er, region, 4)) puntos += 20;
+    else if (er && strstr(er, "USA")) puntos += 12;
+    puntos -= (int)strlen(entrada) / 16;
+    return puntos;
+}
+
+static void* HiloManual(void*)
+{
+    const char* nombre;
+    const Consola& con = ConsolaDeClave(manualClave, &nombre);
+    char titulo[128];
+    snprintf(titulo, sizeof titulo, "%s", nombre);
+    if (EsArcade(con.sistema)) { int ja = ArcadeBuscar(nombre); if (ja >= 0) snprintf(titulo, sizeof titulo, "%s", ArcadeTitulo(ja)); }
+    static const int MAXIMO = 8 * 1024 * 1024;
+    uint8_t* buf = (uint8_t*)malloc(MAXIMO + 1);
+    char detalle[160];
+    if (!buf || !RedIniciar(detalle, sizeof detalle)) { manualSinRed = true; manualTerminado = true; free(buf); enCurso = false; return NULL; }
+    char sistema[96], ruta[700] = "/";
+    CarpetaServidor(con, sistema, sizeof sistema);
+    AgregarCodificado(ruta, sizeof ruta, sistema);
+    snprintf(ruta + strlen(ruta), sizeof ruta - strlen(ruta), "/Named_Boxarts/");
+    const uint8_t* cuerpo = NULL;
+    int largo = 0;
+    nIndice = 0;
+    int codigo = PedirHttp(ruta, buf, MAXIMO, &cuerpo, &largo);
+    if (codigo < 0) manualSinRed = true;
+    if (codigo == 200) LeerIndice(cuerpo, largo);
+    // Las mejores 12.
+    char tit[128], titCorto[128];
+    Normalizar(titulo, tit, sizeof tit, false);
+    Normalizar(titulo, titCorto, sizeof titCorto, true);
+    const char* region = strstr(titulo, "(") ? strstr(titulo, "(") : "(USA";
+    int mejores[MAX_OPCIONES], puntos[MAX_OPCIONES], n = 0;
+    for (int i = 0; i < nIndice && tit[0]; i++)
+    {
+        int p = Puntaje(indice[i], tit, titCorto, region);
+        if (p <= -1000) continue;
+        if (n == MAX_OPCIONES && p <= puntos[MAX_OPCIONES - 1]) continue;
+        int k = n < MAX_OPCIONES ? n++ : MAX_OPCIONES - 1;
+        // Insertar ordenado (de mayor a menor).
+        while (k > 0 && puntos[k - 1] < p) { mejores[k] = mejores[k - 1]; puntos[k] = puntos[k - 1]; k--; }
+        mejores[k] = i;
+        puntos[k] = p;
+    }
+    manualTotal = n;
+    for (int k = 0; k < n && !manualCancelar; k++)
+    {
+        OpcionCaratula& o = opciones[k];
+        snprintf(o.nombre, sizeof o.nombre, "%s", indice[mejores[k]]);
+        char r[700] = "/";
+        AgregarCodificado(r, sizeof r, sistema);
+        snprintf(r + strlen(r), sizeof r - strlen(r), "/Named_Boxarts/");
+        AgregarCodificado(r, sizeof r, o.nombre);
+        snprintf(r + strlen(r), sizeof r - strlen(r), ".png");
+        if (PedirHttp(r, buf, MAXIMO, &cuerpo, &largo) == 200 && largo > 8 && cuerpo[0] == 0x89)
+        {
+            int w = 0, h = 0, canales = 0;
+            uint8_t* rgba = stbi_load_from_memory(cuerpo, largo, &w, &h, &canales, 4);
+            if (rgba)
+            {
+                o.px = Achicar(rgba, w, h, &o.w, &o.h);
+                stbi_image_free(rgba);
+                opcionPng[k] = (uint8_t*)malloc(largo);
+                if (opcionPng[k]) { memcpy(opcionPng[k], cuerpo, largo); opcionTam[k] = largo; }
+            }
+        }
+        manualListas = k + 1;
+    }
+    free(buf);
+    manualTerminado = true;
+    enCurso = false;
+    return NULL;
+}
+
+void CaratulaManualCerrar()
+{
+    manualCancelar = true;
+    while (enCurso && !manualTerminado) Dormir(10);
+    for (int k = 0; k < MAX_OPCIONES; k++)
+    {
+        free(opciones[k].px);
+        free(opcionPng[k]);
+        opciones[k] = OpcionCaratula();
+        opcionPng[k] = NULL;
+        opcionTam[k] = 0;
+    }
+}
+
+bool CaratulaManualEmpezar(const char* clave)
+{
+    if (enCurso) return false;   // hay una descarga en curso
+    CaratulaManualCerrar();
+    snprintf(manualClave, sizeof manualClave, "%s", clave);
+    manualListas = manualTotal = 0;
+    manualTerminado = manualCancelar = manualSinRed = false;
+    enCurso = true;
+    if (!Lanzar(HiloManual, NULL, "caratula_manual")) { enCurso = false; return false; }
+    return true;
+}
+
+int CaratulaManualEstado(int* total, bool* terminado, bool* sinRed)
+{
+    if (total) *total = manualTotal;
+    if (terminado) *terminado = manualTerminado;
+    if (sinRed) *sinRed = manualSinRed;
+    return manualListas;
+}
+
+const OpcionCaratula* CaratulaManualOpcion(int i) { return i >= 0 && i < MAX_OPCIONES ? &opciones[i] : NULL; }
+
+// La carátula de esa clave se vuelve a leer del disco la próxima vez que se pida.
+static void Recargar(const char* clave)
+{
+    for (Entrada& e : cache)
+        if (e.estado.load(std::memory_order_acquire) != E_VACIA && !strcmp(e.nombre, clave)) Descartar(e);
+}
+
+bool CaratulaManualElegir(int i)
+{
+    if (i < 0 || i >= MAX_OPCIONES || !opcionPng[i]) return false;
+    char destino[600];
+    RutaCaratula(manualClave, destino, sizeof destino);
+    char carpeta[600];
+    snprintf(carpeta, sizeof carpeta, "%s", destino);
+    char* b = strrchr(carpeta, '/');
+    if (b) { *b = 0; CrearCarpetas(carpeta); }
+    FILE* f = AbrirArchivo(destino, "wb");
+    bool ok = f && fwrite(opcionPng[i], 1, opcionTam[i], f) == (size_t)opcionTam[i];
+    if (f) fclose(f);
+    Recargar(manualClave);
+    return ok;
+}
+
+bool CaratulaQuitar(const char* clave)
+{
+    char ruta[600];
+    RutaCaratula(clave, ruta, sizeof ruta);
+    bool ok = BorrarArchivo(ruta);
+    AnotarNoEncontrada(clave);   // que la descarga automática no la vuelva a poner
+    Recargar(clave);
+    return ok;
 }

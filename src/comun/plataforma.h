@@ -14,6 +14,11 @@ bool Lanzar(void* (*f)(void*), void* arg, const char* nombre);
 // Reparte un trabajo entre el hilo principal y los trabajadores; vuelve cuando todas las partes terminaron.
 // f(parte, partes, arg) con parte en [0, partes).
 void IniciarTrabajadores(int n);
+// Si el programa se cae (acceso a memoria inválida...), anota en CARPETA_DATOS/cierre.txt dónde fue antes de cerrarse
+// (herramientas/cierre.py lo traduce a nombres de funciones con el mapa del ejecutable).
+void CapturarCierres();
+// Que malloc y free de la librería de C usen sus candados (hay varios hilos). Al empezar, antes de lanzar hilos.
+void ActivarCandadosLibc();
 int Partes();
 void EnParalelo(void (*f)(int parte, int partes, void* arg), void* arg);
 
@@ -61,7 +66,7 @@ int ErrorListado();
 // Saca a la aplicación del encierro del sistema (sandbox) con GoldHEN, para que vea el USB (/mnt/usb0...). Sin esto la
 // aplicación solo ve sus propias carpetas y /data. Devuelve 1 si quedó con acceso, 0 si GoldHEN lo negó y -1 si se
 // saltó porque una vez cerró el programa. El detalle queda en AccesoDetalle().
-// 'quien' nombra el anotador de este programa (/data/snes-ps4/acceso_<quien>.txt): cada programa lleva el suyo, así
+// 'quien' nombra el anotador de este programa (/data/allesiu/acceso_<quien>.txt): cada programa lleva el suyo, así
 // lo que pasa en uno (por ejemplo una prueba) no frena a otro. insistir = true lo intenta aunque una vez haya cerrado el
 // programa (cuando el usuario lo pide a propósito).
 // Afuera del encierro /app0 puede no existir: usar solo para recorrer el USB y volver con CerrarAccesoCompleto().
@@ -78,8 +83,13 @@ bool EscribirTexto(const char* ruta, const char* texto);
 // Espacio libre (bytes) en el disco donde está 'ruta' (y el total). false si no se pudo medir.
 bool EspacioLibre(const char* ruta, uint64_t* libres, uint64_t* total = 0);
 bool BorrarArchivo(const char* ruta);
+bool RenombrarArchivo(const char* de, const char* a);   // archivo o carpeta, dentro del mismo disco
+// Para el registro: cuánta memoria queda (en la consola, ver memoria_grande.cpp).
+extern "C" void MemoriaResumen(char* sale, int max);
 
-static const char* const CARPETA_DATOS = "/data/snes-ps4";
+static const char* const CARPETA_DATOS = "/data/allesiu";
+// La carpeta de las versiones anteriores (hasta la 1.4): al abrir, se renombra a CARPETA_DATOS (main.cpp).
+static const char* const CARPETA_DATOS_VIEJA = "/data/snes-ps4";
 
 // ---------- red (para bajar carátulas) ----------
 // La red de la consola se carga recién la primera vez que se usa (no al abrir el programa): si la consola no la permite,

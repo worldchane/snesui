@@ -24,6 +24,8 @@ struct ApiLibretro
     void (*unload_game)(void);
     void* (*get_memory_data)(unsigned);
     size_t (*get_memory_size)(unsigned);
+    void (*cheat_reset)(void);
+    void (*cheat_set)(unsigned, bool, const char*);
 };
 
 #define API_LIBRETRO_DECLARAR(p)                                                                                        \
@@ -48,6 +50,8 @@ struct ApiLibretro
     void p##retro_unload_game(void);                                                                                   \
     void* p##retro_get_memory_data(unsigned);                                                                          \
     size_t p##retro_get_memory_size(unsigned);                                                                         \
+    void p##retro_cheat_reset(void);                                                                                   \
+    void p##retro_cheat_set(unsigned, bool, const char*);                                                              \
     }
 
 #define API_LIBRETRO_TABLA(p)                                                                                           \
@@ -56,5 +60,6 @@ struct ApiLibretro
         p##retro_set_audio_sample_batch, p##retro_set_input_poll, p##retro_set_input_state, p##retro_init,             \
         p##retro_deinit, p##retro_get_system_info, p##retro_get_system_av_info, p##retro_set_controller_port_device,   \
         p##retro_reset, p##retro_run, p##retro_serialize_size, p##retro_serialize, p##retro_unserialize,               \
-        p##retro_load_game, p##retro_unload_game, p##retro_get_memory_data, p##retro_get_memory_size                   \
+        p##retro_load_game, p##retro_unload_game, p##retro_get_memory_data, p##retro_get_memory_size,                  \
+        p##retro_cheat_reset, p##retro_cheat_set                                                                       \
     }

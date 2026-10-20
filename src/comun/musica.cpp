@@ -299,6 +299,13 @@ void MusicaEncender(bool si, unsigned semilla)
     MusicaElegir(OtraCancion(-1));
 }
 
+int MusicaSiguiente()
+{
+    int c = (MusicaElegida() + 1) % NUM_CANCIONES;
+    MusicaElegir(c);
+    return c;
+}
+
 const char* MusicaNombre(int c) { return c >= 0 && c < NUM_CANCIONES ? RECETAS[c].nombre : "Sin música"; }
 void MusicaElegir(int c) { pedida.store(c >= -1 && c < NUM_CANCIONES ? c : -1, std::memory_order_release); }
 int MusicaElegida() { return pedida.load(std::memory_order_acquire); }

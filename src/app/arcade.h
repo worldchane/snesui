@@ -23,8 +23,17 @@ enum EstadoArcade
 };
 // Revisa un zip (o 7z) de un juego arcade contra lo que espera esta versión del emulador: compara las huellas (CRC) de
 // sus archivos, y si los que vienen del juego padre o de la BIOS están en sus zips (en la misma carpeta, o la BIOS en
-// /data/snes-ps4/bios). Deja en 'explicacion' (160 bytes) un texto para el usuario si no está completo.
+// /data/allesiu/bios). Deja en 'explicacion' (160 bytes) un texto para el usuario si no está completo.
 int ArcadeRevisar(const char* ruta, char* explicacion);
+// El juego de un zip (o 7z) por lo que tiene adentro (las huellas de sus archivos), sin importar su nombre; -1 si no
+// se parece a ninguno. ArcadeDeRuta prueba primero con el nombre.
+int ArcadeIdentificar(const char* ruta);
+int ArcadeDeRuta(const char* ruta);
+// Antes de abrir un juego arcade: deja en 'rutaNucleo' la ruta con el nombre corto que necesita FinalBurn Neo y arma
+// los alias (LibretroAlias) para el zip real y para el juego principal y las BIOS que tengan otro nombre.
+bool ArcadePrepararAlias(const char* ruta, char* rutaNucleo, int max);
+// El zip (o 7z) del juego 'j' en 'carpeta', con su nombre corto o reconocido por contenido; false si no está.
+bool ArcadeZipDe(const char* carpeta, int j, char* sale, int max);
 // El nombre del juego desde la ruta de su zip (".../juego.zip" → "juego"); en un búfer propio.
 const char* ArcadeNombreDeRuta(const char* ruta);
 // El texto corto de un estado ("Completo", "Faltan archivos"...).

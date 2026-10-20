@@ -4,3 +4,5 @@
 s/\btry\b/if (true)/g
 s/catch[ \t]*([ \t]*\.\.\.[ \t]*)/else if (false)/g
 s/\bthrow[ \t]\+/(void)/g
+# Con tipo ("catch (std::bad_alloc&)"): igual, el bloque nunca corre.
+s/catch[ \t]*([^)]*)/else if (false)/g

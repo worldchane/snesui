@@ -245,6 +245,16 @@ static const int BLOQUE_AUDIO = 1024;
 
 static void* HiloAudio(void*)
 {
+    // Prioridad alta (en la PS4 el número más chico es la más alta; los hilos nacen con 700): el sonido sale en bloques
+    // de 21 ms y, si este hilo esperaba detrás del dibujo (que usa todos los núcleos), la música se cortaba. Las
+    // funciones se buscan por nombre (no se suman a las que pide el programa para abrir).
+    {
+        void* (*yo)() = NULL;
+        int (*prioridad)(void*, int) = NULL;
+        if (sceKernelDlsym(0x2001, "scePthreadSelf", (void**)&yo) == 0 && sceKernelDlsym(0x2001, "scePthreadSetprio", (void**)&prioridad) == 0 &&
+            yo && prioridad)
+            prioridad(yo(), 300);
+    }
     double posJuego = 0;   // parte fraccionaria entre la muestra de 32 kHz actual y la siguiente
     static int16_t buf[BLOQUE_AUDIO * 2];
     static Voz voces[8];
@@ -531,9 +541,12 @@ static int errorListado;
 // la atiende GoldHEN; la orden 2 (JAILBREAK) quita el encierro y guarda en 'respaldo' lo que había antes.
 // Se hace con la llamada indirecta (número 0, el número real va en rdi): no pide funciones nuevas al sistema.
 extern "C" long LlamadaSistema(long numero, long a, long b);
+extern "C" long LlamadaSistema3(long numero, long a, long b, long c);   // la misma, con un argumento más (va en r10)
 __asm__(
     ".globl LlamadaSistema\n"
+    ".globl LlamadaSistema3\n"
     "LlamadaSistema:\n"
+    "LlamadaSistema3:\n"
     "  movq $0, %rax\n"
     "  movq %rcx, %r10\n"
     "  syscall\n"
@@ -569,6 +582,119 @@ bool EspacioLibre(const char* ruta, uint64_t* libres, uint64_t* total)
 }
 
 bool BorrarArchivo(const char* ruta) { return LlamadaSistema(10, (long)ruta, 0) == 0; }
+
+// ---------- cierres ----------
+// El manejador de las señales de error (SIGSEGV, SIGBUS, SIGILL, SIGFPE): escribe con llamadas directas al sistema
+// (open = 5, write = 4, close = 6; nada de printf ni malloc, que pueden ser justo lo que falló) la señal, la dirección
+// que se quiso tocar, la instrucción que falló y las direcciones de código que hay en la pila (las funciones que
+// venían llamando). Después vuelve: con SA_RESETHAND la señal queda como siempre y el sistema cierra el programa.
+// sigaction se busca por nombre en libkernel (no se suma a las funciones que pide el programa).
+static char cierreLinea[160];
+static int cierreLargo;
+static void CierreTexto(const char* t) { while (*t && cierreLargo < (int)sizeof cierreLinea - 1) cierreLinea[cierreLargo++] = *t++; }
+static void CierreHex(uint64_t v)
+{
+    char b[19] = "0x";
+    for (int i = 0; i < 16; i++) b[2 + i] = "0123456789abcdef"[(v >> (60 - 4 * i)) & 15];
+    b[18] = 0;
+    CierreTexto(b);
+}
+static void CierreEscribir(long fd)
+{
+    CierreTexto("\n");
+    LlamadaSistema3(4, fd, (long)cierreLinea, cierreLargo);
+    cierreLargo = 0;
+}
+static void AlCerrarse(int senal, void* info, void* contexto)
+{
+    long fd = LlamadaSistema3(5, (long)"/data/allesiu/cierre.txt", 0x1 | 0x200 | 0x8 /* escribir, crear, al final */, 0666);
+    if (fd < 0) return;
+    const uint8_t* uc = (const uint8_t*)contexto;
+    uint64_t dir = info ? *(const uint64_t*)((const uint8_t*)info + 24) : 0;
+    uint64_t ref = (uint64_t)(uintptr_t)&CapturarCierres;
+    cierreLargo = 0;
+    CierreTexto("cierre senal=");
+    char n[4] = {(char)('0' + senal / 10), (char)('0' + senal % 10), 0, 0};
+    CierreTexto(n);
+    CierreTexto(" dir=");
+    CierreHex(dir);
+    CierreTexto(" ref=");
+    CierreHex(ref);
+    CierreEscribir(fd);
+    // Los registros del momento del error (el contexto): las direcciones de código que haya (una es la instrucción
+    // que falló). El orden del contexto en la PS4 no es el de FreeBSD: se anota cada una con su posición.
+    if (uc)
+    {
+        CierreTexto("contexto");
+        for (int i = 0; i < 96; i++)
+        {
+            uint64_t v = ((const uint64_t*)uc)[i];
+            if (v + 0x4000000 > ref && v < ref + 0x4000000)
+            {
+                char k[8] = {' ', (char)('0' + i / 10), (char)('0' + i % 10), ':', 0};
+                CierreTexto(k);
+                CierreHex(v);
+            }
+        }
+        CierreEscribir(fd);
+    }
+    // La pila: el manejador corre en la misma pila del hilo que falló, justo debajo: desde acá hacia arriba están el
+    // contexto y después las funciones que venían llamando. Lo que parece una dirección de código, hasta 48.
+    {
+        volatile uint64_t marca = 0;
+        const uint64_t* p = (const uint64_t*)&marca;
+        int vistas = 0;
+        CierreTexto("pila");
+        for (int i = 0; i < 4096 && vistas < 48; i++)
+        {
+            uint64_t v = p[i];
+            if (v + 0x4000000 > ref && v < ref + 0x4000000 && v != ref)
+            {
+                CierreTexto(" ");
+                CierreHex(v);
+                vistas++;
+                if (vistas % 6 == 0) CierreEscribir(fd);
+            }
+        }
+        CierreEscribir(fd);
+    }
+    LlamadaSistema3(6, fd, 0, 0);
+}
+
+// La librería de C (musl) solo usa candados en malloc/free si cree que hay más de un hilo (__libc.threads_minus_1),
+// y eso lo cuenta su propio pthread_create; los hilos de acá son de la consola (scePthreadCreate): musl nunca se
+// enteraba y dos hilos pidiendo o liberando memoria a la vez la corrompían (cierres al navegar rápido, en free).
+// Con esto, musl usa sus candados (en la PS4 esperan dando vueltas: su __wait no hace nada). Antes de lanzar hilos.
+extern "C" struct LibcMusl { int puedeHilos, conHilos, segura; volatile int hilosMenosUno; } __libc;
+void ActivarCandadosLibc() { if (__libc.hilosMenosUno < 1) __libc.hilosMenosUno = 1; }
+
+void CapturarCierres()
+{
+    int (*accion)(int, const void*, void*) = NULL;
+    if (sceKernelDlsym(0x2001, "sigaction", (void**)&accion) != 0 || !accion) return;
+    // struct sigaction de FreeBSD: el manejador, las banderas y la máscara (4 enteros).
+    struct { void (*manejador)(int, void*, void*); int banderas; uint32_t mascara[4]; } sa = {};
+    sa.manejador = AlCerrarse;
+    sa.banderas = 0x40 | 0x04;   // SA_SIGINFO | SA_RESETHAND
+    static const int SENALES[] = {4, 8, 10, 11};   // SIGILL, SIGFPE, SIGBUS, SIGSEGV
+    for (int s : SENALES) accion(s, &sa, NULL);
+}
+bool RenombrarArchivo(const char* de, const char* a) { return LlamadaSistema(128, (long)de, (long)a) == 0; }   // rename
+extern "C" bool BorrarArchivoC(const char* ruta) { return BorrarArchivo(ruta); }   // para remove() (sistema_ps4.cpp)
+
+// mprotect para el recompilador de N64 (-Dmprotect=nucleo_mprotect en nucleos.sh): se busca por nombre en libkernel,
+// como las demás funciones nuevas, así el programa no la pide para abrir.
+extern "C" int nucleo_mprotect(void* dir, size_t tam, int prot)
+{
+    static int (*f)(void*, size_t, int) = NULL;
+    static bool buscada = false;
+    if (!buscada)
+    {
+        buscada = true;
+        if (sceKernelDlsym(0x2001, "mprotect", (void**)&f) != 0) f = NULL;
+    }
+    return f ? f(dir, tam, prot) : -1;
+}
 
 static char accesoDetalle[120];
 static uint64_t respaldo[16];   // struct jailbreak_backup del SDK (72 bytes): cómo estaba el encierro

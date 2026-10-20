@@ -49,16 +49,31 @@ imagen y música propia.
 - **Biblioteca.** Una pestaña por consola (más Todos, Recientes, Favoritos y Configuración), fondo pixel art animado y
   búsqueda por nombre. Los juegos van apareciendo mientras se revisa el USB; la lista se guarda en un índice, así que
   la próxima vez aparece al instante y solo se revisan los archivos nuevos. Hasta 30.000 juegos.
-- **Carátulas automáticas.** Se bajan desde la base de RetroArch para cada consola, aunque el nombre del archivo no
-  sea exacto. Las ya bajadas, y las que no existen en el servidor, no se vuelven a pedir.
+- **Estilos.** 21 interfaces (L2), 12 formas de menú (R2) y 50 estilos de botones (○). Por defecto, *Aero clásico*:
+  cajas de vidrio transparente con reflejo en los bordes sobre el paisaje pixel art.
+- **Primera vez.** Un asistente explica dónde poner los juegos, las BIOS y las carátulas, y elige los ajustes básicos.
+  Al actualizar se muestran las novedades, y al conectar un USB ALLESIU lo revisa solo.
+- **Carátulas.** Se bajan solas desde la base de RetroArch cuando la consola tiene internet, aunque el nombre del
+  archivo no sea exacto. También se copian las que ya tengas en el USB (formatos de RetroArch, ES-DE y Batocera) y se
+  puede elegir una a mano entre las más parecidas del servidor, o quitarla.
+- **Descripciones.** Si junto a tus juegos hay un `gamelist.xml` (de Batocera, ES-DE o un programa de datos), las
+  vistas de lista muestran la descripción, el año, el género y los jugadores.
+- **BIOS reconocidas por su contenido.** Con cualquier nombre y en cualquier carpeta del USB: ALLESIU las encuentra y
+  las copia a la consola. En *Configuración → BIOS* se ve cuáles hay y cuáles faltan.
+- **Trucos.** Archivos `.cht` de RetroArch, cada truco se activa o desactiva desde el menú de pausa.
+- **Continuar donde quedaste.** Al salir de un juego se guarda su estado y al volver a abrirlo sigue ahí (se puede
+  desactivar). Las ranuras de estado se pueden bloquear para no pisarlas sin querer.
+- **Bezels.** Una imagen decorativa en las franjas que deja libres la imagen del juego.
+- **Run-ahead.** Menos retraso entre el mando y la pantalla.
+- **Copia de seguridad.** Partidas, favoritos, recientes y ajustes al USB (`ALLESIU-respaldo/`) y de vuelta.
 - **Guardado.** La batería del cartucho se guarda sola (en la SNES, `.srm` compatible con snes9x y bsnes) y hay 4
   ranuras de estado rápido por juego, cada una con miniatura.
 - **Imagen.** Proporción como la consola original, píxeles cuadrados, píxel exacto o 16:9; filtros suave, nítido,
   nítido suavizado, líneas de TV, CRT y **HD** (escalado de bordes al estilo xBR, que redondea las diagonales de los
-  sprites). Configuración general y propia por juego.
+  sprites). Configuración general, propia por consola y propia por juego.
 - **Música.** Diez canciones originales de ALLESIU, compuestas y sintetizadas por el propio programa al estilo de los
-  chips de sonido de las consolas, suenan en orden aleatorio en la biblioteca y se apagan solas al jugar. Se puede
-  desactivar en Configuración.
+  chips de sonido de las consolas, suenan en orden aleatorio en la biblioteca y se apagan solas al jugar. L3 pasa a la
+  siguiente; se puede desactivar en Configuración.
 - **Avance rápido y rebobinar.** R2 acelera hasta ×4 y L2 vuelve atrás en el tiempo.
 - **Dos jugadores.** Con un segundo mando.
 - **Juegos en el USB o en la consola.** Se pueden copiar a la consola o al USB uno por uno, todos juntos o
@@ -88,7 +103,8 @@ Todavía no funcionan los juegos con DSP-3, DSP-4, ST011 y ST018.
 
 ### BIOS (opcionales salvo Atari Lynx)
 
-Se copian a `/data/snes-ps4/bios/` en la consola:
+Déjalas en cualquier parte del USB (por ejemplo en `bios/`): ALLESIU las reconoce por su contenido, aunque tengan otro
+nombre, y las copia a `/data/allesiu/bios/` en la consola.
 
 | Archivo | Para |
 |---|---|
@@ -103,7 +119,16 @@ Se copian a `/data/snes-ps4/bios/` en la consola:
 
 1. Descarga el PKG desde la sección [Releases](../../releases).
 2. Cópialo a un USB y, en la PS4, instálalo con GoldHEN (*Ajustes de depuración → Instalador de paquetes*).
-3. Copia tus ROMs en cualquier parte del USB y abre **ALLESIU**.
+3. Copia tus ROMs al USB y abre **ALLESIU**. Pueden ir en cualquier carpeta, pero lo más ordenado es una carpeta por
+   consola dentro de `roms/`, con los nombres de Batocera y ES-DE: `roms/snes`, `roms/nes`, `roms/gb`, `roms/gbc`,
+   `roms/gba`, `roms/megadrive`, `roms/mastersystem`, `roms/gamegear`, `roms/ngp`, `roms/ngpc`, `roms/atari2600`,
+   `roms/atari7800`, `roms/lynx`, `roms/arcade`, `roms/neogeo`, `roms/cps1`, `roms/cps2`, `roms/cps3`.
+
+En el USB también se pueden dejar, opcionalmente:
+
+- `caratulas/` (o las carpetas de carátulas de RetroArch, ES-DE o Batocera);
+- `trucos/<consola>/` o `cheats/` con archivos `.cht`;
+- `bezels/<consola>/<juego>.png`, `bezels/<consola>/default.png` o `bezels/<consola>.png`.
 
 ## Controles
 
@@ -111,11 +136,14 @@ Se copian a `/data/snes-ps4/bios/` en la consola:
 |---|---|
 | ✕ | Jugar |
 | △ | Actualizar (volver a revisar el USB) |
-| □ | Bajar las carátulas que falten |
-| OPTIONS | Opciones del juego: copiar a la consola o al USB, borrar, favorito, copiar o borrar todos |
+| □ | Agregar o quitar de favoritos |
+| OPTIONS | Opciones del juego: copiar a la consola o al USB, borrar, elegir la carátula, bajar las que faltan, copiar o borrar todos |
 | Panel táctil | Buscar por nombre (teclado en pantalla); ○ quita la búsqueda |
 | L1 / R1 | Cambiar de pestaña: Todos, cada consola, Recientes, Favoritos, Configuración |
-| L2 / R2 | Subir o bajar una página |
+| L2 / R2 | Cambiar la interfaz / la forma del menú |
+| ○ | Cambiar el estilo de los botones |
+| R3 | Un juego al azar |
+| L3 | La canción siguiente |
 | Stick derecho ← → | Saltar a la letra anterior o siguiente |
 
 | Jugando | |
@@ -126,20 +154,22 @@ Se copian a `/data/snes-ps4/bios/` en la consola:
 | Panel táctil | Select |
 | **R2** (mantener) | Avance rápido |
 | **L2** (mantener) | Rebobinar |
-| **L3 + R3** | Menú de pausa: guardar o cargar estado, proporción, filtro, reiniciar, salir |
+| **L3 + R3** | Menú de pausa: guardar o cargar estado, trucos, proporción, filtro, reiniciar, salir |
 
 **Dos jugadores:** inicia sesión con un segundo usuario de la PS4 en el otro mando; ALLESIU lo detecta solo.
 
 ## Dónde guarda las cosas
 
-Todo queda en `/data/snes-ps4/` en la consola (la carpeta conserva el nombre de cuando el proyecto era solo de SNES):
+Todo queda en `/data/allesiu/` en la consola (lo de versiones anteriores, en `/data/snes-ps4/`, se muda solo la
+primera vez):
 
-- `juegos/`: los juegos copiados desde el USB;
+- `roms/<consola>/`: los juegos copiados desde el USB, cada uno en la carpeta de su consola;
 - `guardados/`: las partidas y los estados rápidos (las consolas que no son la SNES, en `guardados/<consola>/`);
-- `caratulas/`: las carátulas bajadas;
+- `caratulas/`: las carátulas;
 - `bios/`: las BIOS;
-- `biblioteca.txt`: el índice de la biblioteca;
-- `ajustes.txt`: la configuración general.
+- `trucos/<consola>/` y `bezels/`: trucos y bezels propios (también se leen del USB);
+- `biblioteca.txt`, `metadatos.txt`: el índice de la biblioteca y las descripciones leídas de los `gamelist.xml`;
+- `ajustes.txt`, `ajustes_consolas.txt`: la configuración general y la propia de cada consola.
 
 ## Compilar
 

@@ -27,7 +27,8 @@ for raiz in fuentes:
                 redefinidos.update(re.findall(r'^\s*#\s*(?:undef|ifdef|ifndef)\s+([A-Za-z_]\w*)', texto, re.M))
                 redefinidos.update(re.findall(r'defined\s*\(?\s*([A-Za-z_]\w*)', texto))
 objetos = [o for o in objetos if o.strip()]
-NO_TOCAR = ('SameBoyIniciar_',)   # los llama la app con su nombre (consola.cpp)
+NO_TOCAR = ('SameBoyIniciar_',   # los llama la app con su nombre (consola.cpp)
+            'co_switch', 'co_active', 'co_create', 'co_delete')   # libco (N64): co_switch está escrita en ensamblador en línea
 
 def simbolos(ruta):
     d = open(ruta, 'rb').read()

@@ -8,6 +8,8 @@
 
 #include "../src/app/biblioteca.h"
 #include "../src/app/interfaz.h"
+#include "../src/app/mudanza.h"
+#include "../src/app/arcade.h"
 #include "../src/comun/lienzo.h"
 #include "../src/comun/pantalla.h"
 #include "../src/comun/texto.h"
@@ -51,6 +53,10 @@ static LONG WINAPI AlCaer(EXCEPTION_POINTERS* e)
 int main()
 {
     SetUnhandledExceptionFilter(AlCaer);
+    Mudanza();
+    ArcadeIniciar();
+    MudanzaOrdenarRoms();
+    if (MudanzaResumen()[0]) printf("mudanza: %s\n", MudanzaResumen());
     IniciarTrabajadores(4);
     auto inicioReal = std::chrono::steady_clock::now();
     bool avisado = false;
@@ -286,12 +292,70 @@ int main()
         {41.4f, B_OPTIONS, NULL},
         {42.0f, 0, "122_ficha"},
     };
+    // GUION=refrescar: actualizar la biblioteca (triángulo) varias veces, también en plena búsqueda, cambiar de pestaña
+    // y abrir juegos mientras busca.
+    static const Paso refrescar[] = {
+        {1.0f, B_TRIANGULO, NULL}, {1.5f, B_TRIANGULO, NULL},
+        {3.0f, B_R1, NULL}, {3.3f, B_R1, NULL}, {3.6f, B_ABAJO, NULL}, {3.9f, B_CRUZ, NULL},
+        {8.0f, B_L3 | B_R3, NULL}, {8.3f, B_ARRIBA, NULL}, {8.5f, B_CRUZ, NULL},
+        {10.0f, B_TRIANGULO, NULL}, {10.2f, B_R1, NULL}, {10.4f, B_R1, NULL}, {10.6f, B_R1, NULL},
+        {11.0f, 0, "60_refrescar"},
+        {20.0f, B_TRIANGULO, NULL}, {20.5f, B_L1, NULL}, {21.0f, B_ABAJO, NULL}, {21.2f, B_CRUZ, NULL},
+        {26.0f, B_L3 | B_R3, NULL}, {26.3f, B_ARRIBA, NULL}, {26.5f, B_CRUZ, NULL},
+        {40.0f, B_TRIANGULO, NULL}, {70.0f, B_TRIANGULO, NULL},
+        {99.0f, 0, "61_refrescar_fin"},
+    };
+    // GUION=bios: Configuración → BIOS (la penúltima fila).
+    static const Paso bios[] = {
+        {4.6f, B_L1, NULL},   // de Todos a la última pestaña (Configuración)
+        {5.3f, B_ARRIBA, NULL}, {5.5f, B_ARRIBA, NULL},
+        {6.2f, 0, "70_config_bios"},
+        {6.3f, B_CRUZ, NULL},
+        {6.9f, 0, "71_bios"},
+    };
+    // GUION=ficha: bajar uno y capturar (la ficha del segundo juego en el estilo de menú guardado).
+    static const Paso ficha[] = {{4.6f, B_ABAJO, NULL}, {5.6f, 0, "90_ficha"}, {5.8f, B_ABAJO, NULL}, {6.4f, B_ABAJO, NULL}, {7.0f, B_ABAJO, NULL}, {7.6f, B_ABAJO, NULL}, {8.4f, 0, "91_ficha"}};
+    // GUION=asistente: el asistente de primera vez, paso por paso (X), con una captura de cada uno.
+    static const Paso asistente[] = {
+        {4.8f, 0, "a0"}, {5.0f, B_CRUZ, NULL}, {5.8f, 0, "a1"}, {6.0f, B_CRUZ, NULL}, {6.8f, 0, "a2"}, {7.0f, B_CRUZ, NULL},
+        {7.8f, 0, "a3"}, {8.0f, B_CRUZ, NULL}, {8.8f, 0, "a4"}, {9.0f, B_CRUZ, NULL}, {9.8f, 0, "a5"}, {10.0f, B_CRUZ, NULL},
+        {10.8f, 0, "a6"}, {11.0f, B_CRUZ, NULL}, {11.8f, 0, "a7"}, {12.0f, B_CRUZ, NULL}, {12.8f, 0, "a8"},
+    };
+    // GUION=caratulas: bajar las carátulas que falten (□) y esperar.
+    static const Paso caratulas[] = {
+        {4.6f, B_CUADRADO, NULL},
+        {7.0f, 0, "79_bajando"},
+        {40.0f, 0, "80_caratulas"},
+    };
     const char* g = getenv("GUION");
-    bool corto = g && !strcmp(g, "acerca"), larga = g && !strcmp(g, "lista"), muchos = g && !strcmp(g, "mil"), copia = g && !strcmp(g, "copiar"), alUsb = g && !strcmp(g, "alusb"), borra = g && !strcmp(g, "borrar"), dg = g && !strcmp(g, "diag"), mu = g && !strcmp(g, "multi"), me = g && !strcmp(g, "menu"), ar = g && !strcmp(g, "arcade");
-    const Paso* pasos = corto ? acerca : larga ? lista : muchos ? mil : copia ? copiar : alUsb ? alusb : borra ? borrar : dg ? diag : mu ? multi : me ? menu : ar ? arcade : guion;
-    const int N = corto ? (int)(sizeof acerca / sizeof acerca[0]) : larga ? (int)(sizeof lista / sizeof lista[0]) : muchos ? (int)(sizeof mil / sizeof mil[0]) : copia ? (int)(sizeof copiar / sizeof copiar[0]) : alUsb ? (int)(sizeof alusb / sizeof alusb[0]) : borra ? (int)(sizeof borrar / sizeof borrar[0]) : dg ? (int)(sizeof diag / sizeof diag[0]) : mu ? (int)(sizeof multi / sizeof multi[0]) : me ? (int)(sizeof menu / sizeof menu[0]) : ar ? (int)(sizeof arcade / sizeof arcade[0]) : (int)(sizeof guion / sizeof guion[0]);
-    const double FIN = corto ? 7.0 : larga ? 9.0 : muchos ? 7.5 : copia ? 15.2 : alUsb ? 9.7 : borra ? 12.6 : dg ? 19.7 : mu ? 17.2 : me ? 18.8 : ar ? 42.3 : 42.0;
-    double peor = 0;
+    bool corto = g && !strcmp(g, "acerca"), larga = g && !strcmp(g, "lista"), muchos = g && !strcmp(g, "mil"), copia = g && !strcmp(g, "copiar"), alUsb = g && !strcmp(g, "alusb"), borra = g && !strcmp(g, "borrar"), dg = g && !strcmp(g, "diag"), mu = g && !strcmp(g, "multi"), me = g && !strcmp(g, "menu"), ar = g && !strcmp(g, "arcade"), rf = g && !strcmp(g, "refrescar"), bi = g && !strcmp(g, "bios"), ca = g && !strcmp(g, "caratulas"), fi = g && !strcmp(g, "ficha"), as = g && !strcmp(g, "asistente");
+    // GUION=estilos: L2 cuarenta veces (cada interfaz) y después R2 cuarenta veces (cada menú), con una captura de cada uno.
+    static Paso estilos[170];
+    static char nombresEstilos[80][24];
+    int nEstilos = 0;
+    bool es = g && !strcmp(g, "estilos");
+    if (es)
+    {
+        for (int i = 0; i < 80; i++)
+        {
+            float t0 = 4.6f + i * .7f;
+            estilos[nEstilos++] = {t0, (uint32_t)(i < 40 ? B_L2 : B_R2), NULL};
+            snprintf(nombresEstilos[i], sizeof nombresEstilos[i], i < 40 ? "est_i%02d" : "est_m%02d", (i % 40 + 1) % 40);
+            estilos[nEstilos++] = {t0 + .6f, 0, nombresEstilos[i]};
+        }
+    }
+    // GUION=medir: pasa de juego en juego (derecha y abajo) y cuenta cuánto cuesta cada parte del cuadro.
+    bool md = g && !strcmp(g, "medir");
+    if (md)
+        for (int i = 0; i < 40; i++) estilos[nEstilos++] = {4.6f + i * .15f, (uint32_t)(i % 8 == 7 ? B_ABAJO : B_DER), NULL};
+    if (md) es = true;
+    // GUION=estres: botones al azar en cada cuadro (sin ✕ ni OPTIONS), para buscar cierres al moverse muy rápido.
+    bool ets = g && !strcmp(g, "estres");
+    const Paso* pasos = es ? estilos : corto ? acerca : larga ? lista : muchos ? mil : copia ? copiar : alUsb ? alusb : borra ? borrar : dg ? diag : mu ? multi : me ? menu : ar ? arcade : rf ? refrescar : bi ? bios : ca ? caratulas : fi ? ficha : as ? asistente : guion;
+    const int N = es ? nEstilos : corto ? (int)(sizeof acerca / sizeof acerca[0]) : larga ? (int)(sizeof lista / sizeof lista[0]) : muchos ? (int)(sizeof mil / sizeof mil[0]) : copia ? (int)(sizeof copiar / sizeof copiar[0]) : alUsb ? (int)(sizeof alusb / sizeof alusb[0]) : borra ? (int)(sizeof borrar / sizeof borrar[0]) : dg ? (int)(sizeof diag / sizeof diag[0]) : mu ? (int)(sizeof multi / sizeof multi[0]) : me ? (int)(sizeof menu / sizeof menu[0]) : ar ? (int)(sizeof arcade / sizeof arcade[0]) : rf ? (int)(sizeof refrescar / sizeof refrescar[0]) : bi ? (int)(sizeof bios / sizeof bios[0]) : ca ? (int)(sizeof caratulas / sizeof caratulas[0]) : fi ? (int)(sizeof ficha / sizeof ficha[0]) : as ? (int)(sizeof asistente / sizeof asistente[0]) : (int)(sizeof guion / sizeof guion[0]);
+    const double FIN = ets ? 4.5 + atof(getenv("SEGUNDOS") ? getenv("SEGUNDOS") : "60") : md ? 10.6 : es ? 4.6 + 80 * .7 + 1 : corto ? 7.0 : larga ? 9.0 : muchos ? 7.5 : copia ? 15.2 : alUsb ? 9.7 : borra ? 12.6 : dg ? 19.7 : mu ? 17.2 : me ? 18.8 : ar ? 42.3 : rf ? 100.0 : bi ? 7.0 : ca ? 41.0 : fi ? 8.6 : as ? 13.0 : 42.0;
+    double peor = 0, medArmar = 0, medPintar = 0;
+    int medCuadros = 0;
     int k = 0;
     for (int cuadro = 0; tiempoSimulado < FIN; cuadro++)
     {
@@ -307,6 +371,20 @@ int main()
             if (pasos[k].captura) captura = pasos[k].captura;
             k++;
         }
+        if (ets && tiempoSimulado > 4.5)
+        {
+            static uint32_t az = 12345;
+            static const uint32_t lista[] = {B_DER, B_IZQ, B_ARRIBA, B_ABAJO, B_R3, B_L3, B_L1, B_R1, B_L2, B_R2, B_CUADRADO, B_CIRCULO, B_DER, B_ABAJO, B_R3, B_R3};
+            for (int b = 0; b < 2; b++)
+            {
+                az ^= az << 13; az ^= az >> 17; az ^= az << 5;
+                uint32_t bot = lista[az % 16];
+                if ((bot == B_L2 || bot == B_R2 || bot == B_CIRCULO || bot == B_CUADRADO) && az % 7) continue;   // estos, menos seguido
+                m.pulsados |= bot;
+                m.apretados |= bot;
+            }
+            if (cuadro % 600 == 0) { char n[32]; snprintf(n, sizeof n, "estres_%d", cuadro / 600); captura = NULL; printf("estres t=%.0f\n", tiempoSimulado); fflush(stdout); }
+        }
         int hallados = 0;
         if (!avisado && cuadro > 2 && !BibliotecaBuscando(&hallados))
         {
@@ -317,13 +395,35 @@ int main()
         auto t0 = std::chrono::steady_clock::now();
         PantallaComenzar();
         InterfazCuadro((float)tiempoSimulado, 1 / 60.f, m);
+        auto t1 = std::chrono::steady_clock::now();
         PantallaMostrar();
         double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+        if (md && tiempoSimulado > 4.6)
+        {
+            medArmar += std::chrono::duration<double, std::milli>(t1 - t0).count();
+            medPintar += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t1).count();
+            medCuadros++;
+        }
         if (tiempoSimulado > 4.3 && ms > peor) peor = ms;
         if (larga && tiempoSimulado > 4.3 && ms > 20) printf("  lento: %.1f ms en t=%.2f\n", ms, tiempoSimulado);
         if (captura) Guardar(captura);
         std::this_thread::sleep_for(std::chrono::milliseconds(16));   // a tiempo real: la descarga y la emulación corren en sus hilos
     }
     if (larga) printf("cuadro más lento en la biblioteca: %.1f ms\n", peor);
+    if (md && medCuadros)
+    {
+        printf("medir: %d cuadros, armar (interfaz + fondo) %.2f ms, pintar (todos los hilos) %.2f ms, peor %.1f ms\n", medCuadros,
+               medArmar / medCuadros, medPintar / medCuadros, peor);
+#ifdef MEDIR_ORDENES
+        extern uint64_t ciclosPorTipo[16];
+        extern uint64_t vidrioLentos, vidrioRapidos;
+        printf("  vidrio: %.0f px lentos y %.0f rápidos por cuadro\n", (double)vidrioLentos / medCuadros, (double)vidrioRapidos / medCuadros);
+        static const char* const nombres[16] = {"degradado", "fondo4", "caja", "sombra", "borde", "brillo", "linea", "texto", "imagen", "velo", "caja-h", "vidrio?"};
+        uint64_t tot = 0;
+        for (int i = 0; i < 16; i++) tot += ciclosPorTipo[i];
+        for (int i = 0; i < 16; i++)
+            if (ciclosPorTipo[i]) printf("  %-10s %5.1f %%  %.2f Mciclos/cuadro\n", i == 9 ? "vidrio" : i == 11 ? "velo" : i == 12 ? "agrandar" : i == 13 ? "copiar" : i < 12 ? nombres[i] : "?", 100.0 * ciclosPorTipo[i] / tot, ciclosPorTipo[i] / 1e6 / medCuadros);
+#endif
+    }
     return 0;
 }

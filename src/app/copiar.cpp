@@ -42,7 +42,7 @@ void TextoTamano(uint64_t bytes, char* out, int max)
 
 bool CarpetaUsb(char* out, int max, uint64_t* libresUsb)
 {
-    // El primer USB que se pueda abrir. Los juegos copiados van a su carpeta SNES (la búsqueda la recorre igual).
+    // El primer USB que se pueda abrir. Los juegos copiados van a su carpeta roms (cada uno en la de su consola).
     static const char* const USB[] = {"/mnt/usb0", "/mnt/usb1", "/mnt/usb2", "/mnt/usb3"};
     AbrirAccesoCompleto("snes");
     bool hay = false;
@@ -51,7 +51,7 @@ bool CarpetaUsb(char* out, int max, uint64_t* libresUsb)
         uint64_t libres = 0;
         if (ListarCarpeta(u, [](const char*, bool, void*) {}, NULL) >= 0 && EspacioLibre(u, &libres))
         {
-            snprintf(out, max, "%s/SNES", u);
+            snprintf(out, max, "%s/roms", u);
             if (libresUsb) *libresUsb = libres;
             hay = true;
             break;
@@ -106,31 +106,49 @@ static void* HiloCopia(void*)
     // la carpeta del juego).
     for (int i = 0, original = nRutas; i < original; i++)
     {
-        int j = ArcadeBuscar(ArcadeNombreDeRuta(rutas[i]));
+        int j = ArcadeDeRuta(rutas[i]);
         if (j < 0) continue;
         int padre = ArcadePadre(j);
         const int extra[3] = {padre, ArcadeBios(j), padre >= 0 ? ArcadeBios(padre) : -1};
         for (int e : extra)
         {
             if (e < 0 || nRutas >= capRutas) continue;
-            char r[512];
-            snprintf(r, sizeof r, "%s", rutas[i]);
-            char* barra = strrchr(r, '/');
+            char carpeta[512], r[600];
+            snprintf(carpeta, sizeof carpeta, "%s", rutas[i]);
+            char* barra = strrchr(carpeta, '/');
             if (!barra) continue;
-            snprintf(barra + 1, sizeof r - (size_t)(barra + 1 - r), "%s.zip", ArcadeNombre(e));
+            *barra = 0;
+            if (!ArcadeZipDe(carpeta, e, r, sizeof r)) continue;   // con su nombre corto o reconocido por contenido
             bool repetido = false;
             for (int k = 0; k < nRutas && !repetido; k++) repetido = !strcmp(rutas[k], r);
-            if (repetido || !ExisteArchivo(r)) continue;
+            if (repetido) continue;
             snprintf(rutas[nRutas++], sizeof rutas[0], "%s", r);
             progreso.total++;
         }
     }
 
-    // Tamaños, y cuáles ya están copiados (mismo nombre y tamaño en la consola).
+    // Cada juego en la carpeta de su consola, en la consola (juegos/snes, juegos/gba...) y en el USB (roms/snes...); los
+    // arcade, con sus BIOS y juegos originales, todos en arcade.
+    char (*carpetaDe)[300] = (char(*)[300])calloc(nRutas ? nRutas : 1, 300);
+    int nLista = 0;
+    const Juego* lista = BibliotecaJuegos(&nLista);
+    const char* arcade = ConsolaDe(SIS_ARCADE).carpeta;
+    for (int i = 0; carpetaDe && i < nRutas; i++)
+    {
+        const char* sub = NULL;
+        if (EsComprimido(rutas[i]) && ArcadeDeRuta(rutas[i]) >= 0) sub = arcade;
+        for (int k = 0; !sub && k < nLista; k++)
+            if (!strcmp(lista[k].ruta, rutas[i])) sub = EsArcade(lista[k].sistema) ? arcade : ConsolaDe(lista[k].sistema).carpeta;
+        if (sub) { snprintf(carpetaDe[i], 300, "%s/%s", destino, sub); CrearCarpetas(carpetaDe[i]); }
+        else snprintf(carpetaDe[i], 300, "%s", destino);
+    }
+
+    // Tamaños, y cuáles ya están copiados (mismo nombre y tamaño en la consola: en la carpeta de su sistema o, de las
+    // versiones anteriores, directamente en juegos/).
     uint64_t* tam = (uint64_t*)calloc(nRutas ? nRutas : 1, sizeof(uint64_t));
     bool* hacer = (bool*)calloc(nRutas ? nRutas : 1, sizeof(bool));
     uint64_t libres = 0;
-    bool medido = buf && tam && hacer && EspacioLibre(destino, &libres);
+    bool medido = buf && tam && hacer && carpetaDe && EspacioLibre(destino, &libres);
     if (!medido)
     {
         snprintf(progreso.detalle, sizeof progreso.detalle,
@@ -144,11 +162,12 @@ static void* HiloCopia(void*)
         uint64_t usado = 0;
         for (int i = 0; i < nRutas; i++)
         {
-            char dst[600];
-            snprintf(dst, sizeof dst, "%s/%s", destino, NombreArchivo(rutas[i]));
-            uint64_t t = 0, td = 0;
+            char dst[600], antes[600];
+            snprintf(dst, sizeof dst, "%s/%s", carpetaDe[i], NombreArchivo(rutas[i]));
+            snprintf(antes, sizeof antes, "%s/%s", destino, NombreArchivo(rutas[i]));
+            uint64_t t = 0, td = 0, ta = 0;
             if (!ExisteArchivo(rutas[i], &t)) { progreso.errores++; continue; }
-            if (ExisteArchivo(dst, &td) && td == t) { progreso.yaEstaban++; continue; }
+            if ((ExisteArchivo(dst, &td) && td == t) || (ExisteArchivo(antes, &ta) && ta == t)) { progreso.yaEstaban++; continue; }
             if (usado + t + reserva > libres) { progreso.sinEspacio++; continue; }
             usado += t;
             tam[i] = t;
@@ -171,7 +190,7 @@ static void* HiloCopia(void*)
             if (!hacer[i]) { continue; }
             snprintf(progreso.actual, sizeof progreso.actual, "%s", NombreArchivo(rutas[i]));
             char dst[600];
-            snprintf(dst, sizeof dst, "%s/%s", destino, NombreArchivo(rutas[i]));
+            snprintf(dst, sizeof dst, "%s/%s", carpetaDe[i], NombreArchivo(rutas[i]));
             uint64_t antes = progreso.bytesHechos, final = 0;
             bool ok = CopiarArchivo(rutas[i], dst, buf, BUF);
             // Verificación: la copia tiene que tener exactamente el tamaño del original.
@@ -195,6 +214,7 @@ static void* HiloCopia(void*)
     free(buf);
     free(tam);
     free(hacer);
+    free(carpetaDe);
     progreso.activa = false;
     progreso.terminada = true;
     enCurso.store(false, std::memory_order_release);

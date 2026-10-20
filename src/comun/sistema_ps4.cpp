@@ -3,6 +3,7 @@
 // La librería (variables estáticas, excepciones, abort) pide pthread_once, pthread_cond_*, pthread_rwlock_*, raise,
 // sigaction, sigprocmask y sched_yield. En la consola del usuario (9.00) los programas que las piden no llegan a abrir
 // (CE-41839-5, igual que los ejemplos oficiales de OpenOrbis). Definidas aquí, el programa ya no se las pide.
+#include <locale.h>
 #include <pthread.h>
 #include <signal.h>
 
@@ -43,6 +44,61 @@ extern "C"
 
     int sched_yield(void) { Ceder(); return 0; }
 
+    // Lo que piden la librería de C++ (condition_variable, mutex) y el núcleo de N64 (los semáforos de GLideN64 en su
+    // modo con hilos, que va apagado): en la consola cada función nueva es un riesgo de que no abra.
+    int pthread_cond_signal(pthread_cond_t*) { return 0; }
+    int pthread_cond_destroy(pthread_cond_t*) { return 0; }
+    int pthread_cond_timedwait(pthread_cond_t* c, pthread_mutex_t* m, const struct timespec*) { return pthread_cond_wait(c, m); }
+    int pthread_equal(pthread_t a, pthread_t b) { return a == b; }
+    int pthread_mutexattr_destroy(pthread_mutexattr_t*) { return 0; }
+    int pthread_mutexattr_settype(pthread_mutexattr_t*, int) { return 0; }   // nadie usa candados recursivos
+
+    // Semáforo: la cuenta en el primer entero.
+    int sem_init(void* s, int, unsigned v) { __atomic_store_n((int*)s, (int)v, __ATOMIC_RELEASE); return 0; }
+    int sem_destroy(void*) { return 0; }
+    int sem_post(void* s) { __atomic_add_fetch((int*)s, 1, __ATOMIC_RELEASE); return 0; }
+    int sem_trywait(void* s)
+    {
+        int* a = (int*)s;
+        int v = __atomic_load_n(a, __ATOMIC_ACQUIRE);
+        while (v > 0)
+            if (__atomic_compare_exchange_n(a, &v, v - 1, false, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) return 0;
+        return -1;
+    }
+    int sem_wait(void* s) { while (sem_trywait(s)) Ceder(); return 0; }
+    int sem_timedwait(void* s, const struct timespec*) { return sem_wait(s); }
+
+    // Valores fijos de la consola (el recompilador de N64 pregunta el tamaño de página).
+    long sysconf(int nombre)
+    {
+        switch (nombre)
+        {
+        case 30: return 16384;    // _SC_PAGESIZE
+        case 83: case 84: return 6;   // _SC_NPROCESSORS_CONF / _ONLN (los núcleos que usan los juegos)
+        default: return -1;
+        }
+    }
+
+    // remove (libpng): borrar con la llamada al sistema que ya usa la app.
+    bool BorrarArchivoC(const char* ruta);
+    int remove(const char* ruta) { return BorrarArchivoC(ruta) ? 0 : -1; }
+
+    // Idiomas: siempre el "C" que trae la librería (__c_locale). Las de la librería de C buscan archivos de idioma en el
+    // disco (piden fstat al sistema).
+    extern const struct __locale_struct __c_locale;
+    locale_t newlocale(int, const char*, locale_t) { return (locale_t)&__c_locale; }
+    void freelocale(locale_t) {}
+    locale_t uselocale(locale_t) { return LC_GLOBAL_LOCALE; }
+    char* setlocale(int, const char*) { return (char*)"C"; }
+    // El nombre de la zona horaria para strftime (%Z): la de la librería lee archivos de zonas del disco (fstat).
+    const char* __tm_to_tzname(const struct tm*) { return "UTC"; }
+
+    // Catálogos de mensajes (los pide la parte de idiomas de la librería de C++): no hay ninguno.
+    typedef void* nl_catd_allesiu;
+    nl_catd_allesiu catopen(const char*, int) { return (nl_catd_allesiu)-1; }
+    char* catgets(nl_catd_allesiu, int, int, const char* s) { return (char*)s; }
+    int catclose(nl_catd_allesiu) { return 0; }
+
     // Solo se usan al abortar: el juego se queda detenido ahí.
     int sigaction(int, const struct sigaction*, struct sigaction*) { return 0; }
     int sigprocmask(int, const sigset_t*, sigset_t*) { return 0; }
@@ -50,20 +106,22 @@ extern "C"
 }
 
 // ---------- piezas del runtime de C++ ----------
+// Débiles: si un núcleo trae igual la parte de la librería que las define (new.cpp, por ejemplo GLideN64 con sus
+// flujos de texto), valen las de la librería y no chocan al enlazar.
 // Con estas definiciones el programa no trae de la librería de C++ las partes de excepciones, tipos y new/delete:
 // los programas que las traen (el juego antes, los ejemplos oficiales) no abren en la consola del usuario.
 #include <cstddef>
 #include <cstdlib>
 #include <new>
 
-void* operator new(std::size_t n) { void* p = malloc(n ? n : 1); if (!p) abort(); return p; }
-void* operator new[](std::size_t n) { return operator new(n); }
-void* operator new(std::size_t n, const std::nothrow_t&) noexcept { return malloc(n ? n : 1); }
-void* operator new[](std::size_t n, const std::nothrow_t&) noexcept { return malloc(n ? n : 1); }
-void operator delete(void* p) noexcept { free(p); }
-void operator delete[](void* p) noexcept { free(p); }
-void operator delete(void* p, std::size_t) noexcept { free(p); }
-void operator delete[](void* p, std::size_t) noexcept { free(p); }
+__attribute__((weak)) void* operator new(std::size_t n) { void* p = malloc(n ? n : 1); if (!p) abort(); return p; }
+__attribute__((weak)) void* operator new[](std::size_t n) { return operator new(n); }
+__attribute__((weak)) void* operator new(std::size_t n, const std::nothrow_t&) noexcept { return malloc(n ? n : 1); }
+__attribute__((weak)) void* operator new[](std::size_t n, const std::nothrow_t&) noexcept { return malloc(n ? n : 1); }
+__attribute__((weak)) void operator delete(void* p) noexcept { free(p); }
+__attribute__((weak)) void operator delete[](void* p) noexcept { free(p); }
+__attribute__((weak)) void operator delete(void* p, std::size_t) noexcept { free(p); }
+__attribute__((weak)) void operator delete[](void* p, std::size_t) noexcept { free(p); }
 
 extern "C"
 {
@@ -74,4 +132,4 @@ extern "C"
 }
 
 // std::stable_sort pide memoria con std::nothrow: definido aquí para no traer new.cpp de la librería.
-namespace std { const nothrow_t nothrow{}; }
+namespace std { __attribute__((weak)) extern const nothrow_t nothrow; const nothrow_t nothrow{}; }

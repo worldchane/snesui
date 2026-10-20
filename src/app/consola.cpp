@@ -69,6 +69,25 @@ NUCLEO(a78, "ProSystem")
 static void Iniciar_lynx() {}
 NUCLEO(lynx, "Handy")
 #endif
+#ifdef CON_NUCLEO_S9X
+// Snes9x: el emulador de SNES de la app (el propio, en src/nucleo, queda como alternativa).
+static void Iniciar_s9x() {}
+NUCLEO(s9x, "Snes9x")
+#endif
+#ifdef CON_NUCLEO_N64
+// Mupen64Plus-Next. Sus opciones: por ahora el dibujo por software (Angrylion) y el RSP por HLE; el procesador, con
+// el intérprete en caché (en la PC se puede pedir otro con la variable de entorno N64_CPU).
+static void Iniciar_n64()
+{
+    LibretroOpcion("mupen64plus-rdp-plugin", "angrylion");
+    LibretroOpcion("mupen64plus-rsp-plugin", "cxd4");   // Angrylion necesita el RSP de bajo nivel
+    // El dibujo en 4 hilos (los de la app: n64/parallel_allesiu.cpp; los de C++ cerraban la app en la consola).
+    LibretroOpcion("mupen64plus-angrylion-multithread", "4");
+    const char* cpu = getenv("N64_CPU");
+    LibretroOpcion("mupen64plus-cpucore", cpu ? cpu : "cached_interpreter");
+}
+NUCLEO(n64, "Mupen64Plus-Next")
+#endif
 #ifdef CON_NUCLEO_ARC
 // El arcade se abre por la ruta: FinalBurn Neo lee el zip (y los del juego padre y la BIOS) por su cuenta, y algunos
 // sets pasan de los 64 MB que se cargan a memoria en las demás consolas.
@@ -82,31 +101,33 @@ static bool Cargar_arc(const char* r, char* e)
     if (!LibretroCargarRuta(&api_arc, "FinalBurn Neo", r, e)) return false;
     if (!arc_ALLESIU_ErrorFBNeo()) return true;
     ConsolaDe(SIS_ARCADE).Descargar();
-    snprintf(e, 160, "FinalBurn Neo no pudo abrir este juego: a sus zips les faltan archivos para esta versión del emulador.");
+    if (LibretroFaltoMemoria()) snprintf(e, 160, "No alcanzó la memoria de la consola para abrir este juego.");
+    else snprintf(e, 160, "FinalBurn Neo no pudo abrir este juego: a sus zips les faltan archivos para esta versión del emulador.");
     return false;
 }
 static bool CargarMemoria_arc(const char* r, const char*, uint8_t* d, uint32_t, char* e) { free(d); return Cargar_arc(r, e); }
 #endif
 
 static Consola consolas[NUM_SISTEMAS] = {
-    {SIS_SNES, "SNES", "SNES", "SNES", "sfc|smc|fig|swc", "Nintendo_-_Super_Nintendo_Entertainment_System", 4.f / 3},
-    {SIS_NES, "NES", "NES", "NES", "nes|fds|unf|unif", "Nintendo_-_Nintendo_Entertainment_System", 4.f / 3},
-    {SIS_GB, "GB", "Game Boy", "GB", "gb", "Nintendo_-_Game_Boy", 10.f / 9},
-    {SIS_GBC, "GBC", "Game Boy Color", "GBC", "gbc", "Nintendo_-_Game_Boy_Color", 10.f / 9},
-    {SIS_GBA, "GBA", "Game Boy Advance", "GBA", "gba", "Nintendo_-_Game_Boy_Advance", 3.f / 2},
-    {SIS_NGP, "NGP", "Neo Geo Pocket", "NGP", "ngp", "SNK_-_Neo_Geo_Pocket", 20.f / 19},
-    {SIS_NGPC, "NGPC", "Neo Geo Pocket Color", "NGPC", "ngc|ngpc", "SNK_-_Neo_Geo_Pocket_Color", 20.f / 19},
-    {SIS_MD, "MD", "Mega Drive / Genesis", "MD", "md|gen|smd|bin", "Sega_-_Mega_Drive_-_Genesis", 4.f / 3},
-    {SIS_A2600, "2600", "Atari 2600", "A2600", "a26", "Atari_-_2600", 4.f / 3},
-    {SIS_A7800, "7800", "Atari 7800", "A7800", "a78", "Atari_-_7800", 4.f / 3},
-    {SIS_LYNX, "LYNX", "Atari Lynx", "LYNX", "lnx", "Atari_-_Lynx", 160.f / 102},
-    {SIS_SMS, "SMS", "Master System", "SMS", "sms", "Sega_-_Master_System_-_Mark_III", 4.f / 3},
-    {SIS_GG, "GG", "Game Gear", "GG", "gg", "Sega_-_Game_Gear", 10.f / 9},
-    {SIS_ARCADE, "ARCADE", "Arcade", "ARCADE", "", "FBNeo_-_Arcade_Games", 4.f / 3},
-    {SIS_NEOGEO, "NEO GEO", "Neo Geo", "NEOGEO", "", "FBNeo_-_Arcade_Games", 4.f / 3},
-    {SIS_CPS1, "CPS1", "Capcom CPS1", "CPS1", "", "FBNeo_-_Arcade_Games", 4.f / 3},
-    {SIS_CPS2, "CPS2", "Capcom CPS2", "CPS2", "", "FBNeo_-_Arcade_Games", 4.f / 3},
-    {SIS_CPS3, "CPS3", "Capcom CPS3", "CPS3", "", "FBNeo_-_Arcade_Games", 4.f / 3},
+    {SIS_SNES, "SNES", "SNES", "snes", "sfc|smc|fig|swc", "Nintendo_-_Super_Nintendo_Entertainment_System", 4.f / 3},
+    {SIS_NES, "NES", "NES", "nes", "nes|fds|unf|unif", "Nintendo_-_Nintendo_Entertainment_System", 4.f / 3},
+    {SIS_GB, "GB", "Game Boy", "gb", "gb", "Nintendo_-_Game_Boy", 10.f / 9},
+    {SIS_GBC, "GBC", "Game Boy Color", "gbc", "gbc", "Nintendo_-_Game_Boy_Color", 10.f / 9},
+    {SIS_GBA, "GBA", "Game Boy Advance", "gba", "gba", "Nintendo_-_Game_Boy_Advance", 3.f / 2},
+    {SIS_NGP, "NGP", "Neo Geo Pocket", "ngp", "ngp", "SNK_-_Neo_Geo_Pocket", 20.f / 19},
+    {SIS_NGPC, "NGPC", "Neo Geo Pocket Color", "ngpc", "ngc|ngpc", "SNK_-_Neo_Geo_Pocket_Color", 20.f / 19},
+    {SIS_MD, "MD", "Mega Drive / Genesis", "megadrive", "md|gen|smd|bin", "Sega_-_Mega_Drive_-_Genesis", 4.f / 3},
+    {SIS_A2600, "2600", "Atari 2600", "atari2600", "a26", "Atari_-_2600", 4.f / 3},
+    {SIS_A7800, "7800", "Atari 7800", "atari7800", "a78", "Atari_-_7800", 4.f / 3},
+    {SIS_LYNX, "LYNX", "Atari Lynx", "lynx", "lnx", "Atari_-_Lynx", 160.f / 102},
+    {SIS_SMS, "SMS", "Master System", "mastersystem", "sms", "Sega_-_Master_System_-_Mark_III", 4.f / 3},
+    {SIS_GG, "GG", "Game Gear", "gamegear", "gg", "Sega_-_Game_Gear", 10.f / 9},
+    {SIS_ARCADE, "ARCADE", "Arcade", "arcade", "", "FBNeo_-_Arcade_Games", 4.f / 3},
+    {SIS_NEOGEO, "NEO GEO", "Neo Geo", "neogeo", "", "FBNeo_-_Arcade_Games", 4.f / 3},
+    {SIS_CPS1, "CPS1", "Capcom CPS1", "cps1", "", "FBNeo_-_Arcade_Games", 4.f / 3},
+    {SIS_CPS2, "CPS2", "Capcom CPS2", "cps2", "", "FBNeo_-_Arcade_Games", 4.f / 3},
+    {SIS_CPS3, "CPS3", "Capcom CPS3", "cps3", "", "FBNeo_-_Arcade_Games", 4.f / 3},
+    {SIS_N64, "N64", "Nintendo 64", "n64", "n64|z64|v64", "Nintendo_-_Nintendo_64", 4.f / 3},
 };
 static bool armadas;
 
@@ -157,6 +178,12 @@ static void Armar()
 #endif
 #ifdef CON_NUCLEO_LYNX
     USAR(lynx, SIS_LYNX)
+#endif
+#ifdef CON_NUCLEO_N64
+    USAR(n64, SIS_N64)
+#endif
+#ifdef CON_NUCLEO_S9X
+    USAR(s9x, SIS_SNES)   // reemplaza al emulador propio (armado arriba) en la SNES
 #endif
 #ifdef CON_NUCLEO_ARC
     USAR(arc, SIS_ARCADE, SIS_NEOGEO, SIS_CPS1, SIS_CPS2, SIS_CPS3)
@@ -327,6 +354,7 @@ static const Alias ALIAS[] = {
     {SIS_GG, "gg"}, {SIS_GG, "gamegear"},
     {SIS_A2600, "2600"}, {SIS_A2600, "a2600"}, {SIS_A2600, "atari2600"},
     {SIS_A7800, "7800"}, {SIS_A7800, "a7800"}, {SIS_A7800, "atari7800"},
+    {SIS_N64, "n64"}, {SIS_N64, "nintendo64"},
     {SIS_LYNX, "lynx"}, {SIS_LYNX, "atarilynx"},
     {SIS_ARCADE, "arcade"}, {SIS_ARCADE, "mame"}, {SIS_ARCADE, "fbneo"}, {SIS_ARCADE, "fba"}, {SIS_ARCADE, "finalburn"},
     {SIS_ARCADE, "finalburnneo"}, {SIS_ARCADE, "neogeo"}, {SIS_ARCADE, "cps1"}, {SIS_ARCADE, "cps2"}, {SIS_ARCADE, "cps3"},
@@ -369,7 +397,7 @@ static int ConsolaDeNombre(const char* nombre, size_t largo)
 
 int ConsolaPorCarpeta(const char* carpeta)
 {
-    // De la carpeta más honda hacia arriba: "USB/roms/GBA/Acción" → GBA. La carpeta de la app (/data/snes-ps4) no
+    // De la carpeta más honda hacia arriba: "USB/roms/GBA/Acción" → GBA. La carpeta de la app (/data/allesiu) no
     // cuenta: su nombre dice "snes" y todo lo copiado a la consola quedaba como juego de SNES.
     const char* tope = carpeta;
     size_t nd = strlen(CARPETA_DATOS);

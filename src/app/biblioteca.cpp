@@ -13,15 +13,18 @@
 #include "../comun/plataforma.h"
 #include "../nucleo/snes.h"
 #include "arcade.h"
+#include "bios.h"
+#include "caratula.h"
+#include "metadatos.h"
 #include "consola.h"
 #include "registro.h"
 
 static const char* const RAICES[] = {
-    "/mnt/usb0", "/mnt/usb1", "/mnt/usb2", "/mnt/usb3", "/data/snes-ps4/juegos",
+    "/mnt/usb0", "/mnt/usb1", "/mnt/usb2", "/mnt/usb3", "/data/allesiu/roms",
 };
 static const int MAX_PROFUNDIDAD = 8, MAX_CARPETAS = 20000;
 
-const char* CarpetasDeJuegos() { return "Busco en todos los USB (en la raíz y en todas sus carpetas) y en /data/snes-ps4/juegos"; }
+const char* CarpetasDeJuegos() { return "Busco en todos los USB (en la raíz y en todas sus carpetas) y en /data/allesiu/roms"; }
 
 static const char* Ext(const char* n) { const char* p = strrchr(n, '.'); return p ? p + 1 : ""; }
 // La consola de la rom, o -1 si no es una rom de una consola que el programa pueda abrir.
@@ -157,10 +160,9 @@ static void Completar(Juego& j)
 {
     const char* barra = strrchr(j.ruta, '/');
     snprintf(j.archivo, sizeof j.archivo, "%s", barra ? barra + 1 : j.ruta);
-    // La clave (carátula, favoritos, recientes) es el nombre del archivo sin extensión; en las consolas que no son la SNES,
-    // con su carpeta delante ("NES/<nombre>"), porque dos consolas pueden tener juegos con el mismo nombre.
-    if (j.sistema == SIS_SNES) snprintf(j.clave, sizeof j.clave, "%s", j.archivo);
-    else snprintf(j.clave, sizeof j.clave, "%s/%s", ConsolaDe(j.sistema).carpeta, j.archivo);
+    // La clave (carátula, favoritos, recientes) es el nombre del archivo sin extensión con la carpeta de su consola
+    // delante ("nes/<nombre>"), porque dos consolas pueden tener juegos con el mismo nombre.
+    snprintf(j.clave, sizeof j.clave, "%s/%s", ConsolaDe(j.sistema).carpeta, j.archivo);
     char* ext = strrchr(j.clave, '.');
     if (ext) *ext = 0;
     Iniciales(j);
@@ -254,7 +256,12 @@ static Repetidos MarcarRepetidos(Lista& l)
 // ---------- recorrido del USB ----------
 struct Busq { int prof, vistas, nuevos; bool rapida; char carpeta[1024]; };
 
-static bool Saltar(const char* n) { return n[0] == '.' || n[0] == '$' || !strcasecmp(n, "System Volume Information"); }
+// Carpetas que no tienen juegos: las ocultas, las del sistema y las de BIOS (sus zips no son juegos; las BIOS se buscan
+// aparte, ver bios.cpp).
+static bool Saltar(const char* n)
+{
+    return n[0] == '.' || n[0] == '$' || !strcasecmp(n, "System Volume Information") || !strcasecmp(n, "bios");
+}
 
 static int PorNombre(const void* a, const void* b);
 static void MarcarCopiados(Lista& l);
@@ -294,6 +301,25 @@ static void AlEncontrar(const char* nombre, bool carpeta, void* u)
     }
     // Las BIOS de las colecciones ("[BIOS] SNK Neo Geo Pocket Color (World).zip") no son juegos: abiertas, pantalla negra.
     if (!strncmp(nombre, "[BIOS]", 6)) return;
+    // Los datos de los juegos (descripción, año...) que arman Batocera, ES-DE y los programas de datos. En la búsqueda
+    // rápida solo si todavía no hay ninguno guardado.
+    if (!strcasecmp(nombre, "gamelist.xml"))
+    {
+        if (!b.rapida || !MetadatosHay())
+        {
+            char r[1100];
+            snprintf(r, sizeof r, "%s/%s", b.carpeta, nombre);
+            MetadatosLeerGamelist(r);
+        }
+        return;
+    }
+    // Una BIOS suelta en cualquier carpeta (no solo en bios/): se copia a la consola y no se lista como juego. En la
+    // búsqueda rápida, solo las que no están en el índice (las ya conocidas como juego no se vuelven a mirar).
+    {
+        char r[1100];
+        snprintf(r, sizeof r, "%s/%s", b.carpeta, nombre);
+        if ((!b.rapida || !BuscarAnterior(r)) && BiosProbar(r, nombre)) return;
+    }
     bool comprimido = EsComprimido(nombre);
     int sistema = comprimido ? 0 : SistemaDe(nombre);
     // ".bin" es muy común: suelto, solo cuenta como Mega Drive en una carpeta de Mega Drive o si trae la firma "SEGA" de
@@ -317,7 +343,8 @@ static void AlEncontrar(const char* nombre, bool carpeta, void* u)
     const Juego* antes = BuscarAnterior(j.ruta);
     // Un arcade que quedó sin reconocer (en "Arcade" con el nombre del zip) pero cuyo nombre la tabla sí conoce: se vuelve
     // a revisar (pasaba cuando la tabla todavía no estaba cargada; ver ArcadeIniciar en main.cpp).
-    if (antes && antes->sistema == SIS_ARCADE && antes->estado == ARC_DESCONOCIDO && ArcadeBuscar(ArcadeNombreDeRuta(antes->ruta)) >= 0)
+    // (también los de otro nombre: ahora se reconocen por lo que tienen adentro)
+    if (antes && antes->sistema == SIS_ARCADE && antes->estado == ARC_DESCONOCIDO)
         antes = NULL;
     // Un comprimido copiado a la consola que quedó como SNES: la carpeta de la app contaba como carpeta "de SNES" (ver
     // ConsolaPorCarpeta). Se vuelve a revisar (está en el disco de la consola: es rápido).
@@ -338,15 +365,19 @@ static void AlEncontrar(const char* nombre, bool carpeta, void* u)
         char base[128];
         snprintf(base, sizeof base, "%s", nombre);
         if (strrchr(base, '.')) *strrchr(base, '.') = 0;
-        int arc = comprimido && ConsolaDe(SIS_ARCADE).presente && (deCarpeta == SIS_ARCADE || deCarpeta < 0) ? ArcadeBuscar(base) : -1;
+        // En una carpeta de arcade ("arcade", "neogeo", "cps2"...) un zip con otro nombre ("<Título> (Neo Geo).zip") se
+        // reconoce por lo que tiene adentro.
+        bool hayArcade = ConsolaDe(SIS_ARCADE).presente, carpetaArcade = EsArcade(deCarpeta);
+        int arc = comprimido && hayArcade && (carpetaArcade || deCarpeta < 0) ? ArcadeBuscar(base) : -1;
+        if (arc < 0 && comprimido && hayArcade && carpetaArcade) arc = ArcadeIdentificar(j.ruta);
         int estado = ARC_SIN_REVISAR;
         if (arc >= 0)
         {
             char explicacion[160];
             estado = ArcadeRevisar(j.ruta, explicacion);
-            if (deCarpeta != SIS_ARCADE && estado == ARC_OTRA_VERSION) arc = -1;   // casi nada coincide: no era arcade
+            if (!carpetaArcade && estado == ARC_OTRA_VERSION) arc = -1;   // casi nada coincide: no era arcade
         }
-        if (arc >= 0 || (deCarpeta == SIS_ARCADE && ConsolaDe(SIS_ARCADE).presente))
+        if (arc >= 0 || (carpetaArcade && hayArcade))
         {
             if (arc >= 0 && ArcadeEsBios(arc)) return;
             sistema = arc >= 0 ? ArcadePlaca(arc) : SIS_ARCADE;   // Neo Geo, CPS1, CPS2 y CPS3 tienen pestaña propia
@@ -370,6 +401,17 @@ static void AlEncontrar(const char* nombre, bool carpeta, void* u)
             // Comprimido: la consola es la de la rom de adentro (si no hay ninguna, no es un juego).
             uint64_t tam = 0;
             sistema = ConsolaDeComprimido(j.ruta, NULL, 0, &tam);
+            // Sin rom de consola adentro: puede ser un juego arcade con otro nombre (se reconoce por su contenido).
+            int a = sistema < 0 && ConsolaDe(SIS_ARCADE).presente ? ArcadeIdentificar(j.ruta) : -1;
+            if (a >= 0 && ArcadeEsBios(a)) return;
+            if (a >= 0)
+            {
+                char explicacion[160];
+                sistema = ArcadePlaca(a);
+                j.estado = (int8_t)ArcadeRevisar(j.ruta, explicacion);
+                snprintf(info.titulo, sizeof info.titulo, "%s", ArcadeNombre(a));
+                tam = bytes;
+            }
             if (sistema < 0) return;
             j.sistema = sistema;
             info.valida = true;
@@ -471,6 +513,8 @@ static void LeerIndice()
 
 // ---------- búsqueda en segundo plano ----------
 static bool proximaRapida;   // la próxima búsqueda es la rápida (ver AlEncontrar)
+static std::atomic<int> caratulasCopiadas{0};   // de la última búsqueda, para el aviso (BibliotecaCaratulasCopiadas)
+static bool proximaInsiste;  // la pidió el usuario (triángulo): se vuelve a pedir el acceso aunque antes haya cerrado el programa
 
 static void* HiloBusqueda(void*)
 {
@@ -483,14 +527,24 @@ static void* HiloBusqueda(void*)
     static Busq b;
     memset(&b, 0, sizeof b);
     b.rapida = proximaRapida;
+    MetadatosEmpezar();
+    BiosRevisar();   // qué BIOS ya están en la consola (la búsqueda copia las que encuentre y falten)
     // Para ver el USB hay que salir del encierro del sistema con GoldHEN.
-    AbrirAccesoCompleto("snes");
+    if (AbrirAccesoCompleto("snes", proximaInsiste) <= 0) Registrar("Sin acceso al USB: %s", AccesoDetalle());
     bool algo = false;
     for (const char* c : RAICES)
     {
         snprintf(b.carpeta, sizeof b.carpeta, "%s", c);
         if (ListarCarpeta(c, AlEncontrar, &b) >= 0) algo = true;
     }
+    MetadatosTerminar();
+    // Las BIOS que haya en las carpetas de BIOS del USB y falten en la consola (con el mismo acceso abierto).
+    int bios = BiosBuscarEnUsb();
+    if (bios) Registrar("BIOS nuevas copiadas a la consola: %d", bios);
+    // Las carátulas que el usuario ya tenga en el USB, para los juegos que no tengan una.
+    int car = CaratulasDelUsb(nueva.j, nueva.n);
+    if (car) Registrar("Carátulas copiadas del USB: %d", car);
+    caratulasCopiadas.store(car, std::memory_order_release);
     CerrarAccesoCompleto();
     if (nueva.n > 1) qsort(nueva.j, nueva.n, sizeof(Juego), PorNombre);
     Registrar("Búsqueda %s: %d carpetas, %d juegos (%d nuevos o cambiados), %.1f s", b.rapida ? "rápida" : "completa",
@@ -511,13 +565,48 @@ static void* HiloBusqueda(void*)
     return NULL;
 }
 
-void BibliotecaBuscar() { BibliotecaBuscarDe(false); }
+// ---------- USB conectados ----------
+// Un hilo mira cada 5 s qué USB hay (solo mientras la biblioteca está a la vista y no se está buscando). La primera
+// vez anota los que hay; después avisa si apareció o se fue alguno.
+static std::atomic<bool> vigilar{false};
+static std::atomic<int> cambioUsb{0};   // 1 = se conectó uno, -1 = se sacó uno (lo toma BibliotecaCambioUsb)
+static void* HiloUsb(void*)
+{
+    static const char* const USB[] = {"/mnt/usb0", "/mnt/usb1", "/mnt/usb2", "/mnt/usb3"};
+    int antes = -1;
+    for (;;)
+    {
+        Dormir(5000);
+        if (!vigilar.load(std::memory_order_acquire) || buscando.load(std::memory_order_acquire)) continue;
+        int hay = 0;
+        AbrirAccesoCompleto("snes");
+        for (int i = 0; i < 4; i++) if (ListarCarpeta(USB[i], [](const char*, bool, void*) {}, NULL) >= 0) hay |= 1 << i;
+        CerrarAccesoCompleto();
+        if (antes >= 0 && hay != antes) cambioUsb.store((hay & ~antes) ? 1 : -1, std::memory_order_release);
+        antes = hay;
+    }
+    return NULL;
+}
 
-void BibliotecaBuscarDe(bool rapida)
+void BibliotecaVigilarUsb(bool si)
+{
+    static bool lanzado;
+    if (!lanzado) lanzado = Lanzar(HiloUsb, NULL, "usb");
+    vigilar.store(si, std::memory_order_release);
+}
+
+int BibliotecaCambioUsb() { return cambioUsb.exchange(0, std::memory_order_acq_rel); }
+
+int BibliotecaCaratulasCopiadas() { return caratulasCopiadas.exchange(0, std::memory_order_acq_rel); }
+
+void BibliotecaBuscar() { BibliotecaBuscarDe(false, true); }
+
+void BibliotecaBuscarDe(bool rapida, bool insistir)
 {
     if (buscando.load(std::memory_order_acquire) || hayNueva.load(std::memory_order_acquire)) return;
     buscando.store(true, std::memory_order_release);
     proximaRapida = rapida;
+    proximaInsiste = insistir;
     if (!Lanzar(HiloBusqueda, NULL, "biblioteca")) buscando.store(false, std::memory_order_release);
 }
 

@@ -12,5 +12,7 @@ void MusicaActiva(bool si);       // false: baja hasta silencio (por ejemplo, du
 // Encendida: suenan todas en orden aleatorio (cada una dos vueltas, con un fundido entre una y otra). 'semilla' cambia
 // el orden de una vez a otra (por ejemplo, el reloj al abrir la app).
 void MusicaEncender(bool si, unsigned semilla);
+// La canción que sigue a la que suena (en orden; después de la última, la primera). Devuelve cuál quedó.
+int MusicaSiguiente();
 // Suma n muestras estéreo de 48 kHz a L y R (las del hilo de sonido).
 void MusicaMezclar(float* L, float* R, int n);

@@ -9,6 +9,9 @@
 #include "../comun/plataforma.h"
 #include "../nucleos/comprimido.h"
 #include "consola.h"
+#include "nucleo_libretro.h"
+
+#include <atomic>
 
 #ifndef RUTA_ASSETS
 #define RUTA_ASSETS "/app0/assets"
@@ -92,21 +95,202 @@ const char* ArcadeEstadoTexto(int e)
 }
 
 // ¿Existe el zip (o 7z) de un juego en la carpeta 'carpeta' (o, si es una BIOS, en la carpeta de BIOS)?
-static bool HayZip(const char* carpeta, int j, bool bios)
+// ---------- reconocer un juego por su contenido ----------
+// FinalBurn Neo sabe qué juego es por el nombre corto del zip ("<nombre corto>.zip"). Muchas colecciones los traen con el
+// título ("<Título del juego> (Neo Geo).zip"): se los reconoce por las huellas (CRC) de los archivos de adentro, que están en la tabla.
+static uint64_t* porCrc;   // (crc << 32) | juego, ordenado: de cada huella, los juegos que la usan
+static uint32_t nPorCrc;
+static int CompararU64(const void* a, const void* b)
+{
+    uint64_t x = *(const uint64_t*)a, y = *(const uint64_t*)b;
+    return x < y ? -1 : x > y;
+}
+static bool ArmarPorCrc()
+{
+    if (porCrc) return true;
+    if (!ArcadeIniciar()) return false;
+    uint64_t* p = (uint64_t*)malloc(sizeof(uint64_t) * (nArchivos ? nArchivos : 1));
+    if (!p) return false;
+    uint32_t n = 0;
+    for (uint32_t j = 0; j < nJuegos; j++)
+        for (uint32_t k = 0; k < juegos[j].cuantos; k++)
+        {
+            const ArchivoArcade& a = archivos[juegos[j].primero + k];
+            // Solo los archivos propios: los que vienen del juego principal o de la BIOS (marca 1) están en la lista de
+            // cada juego que los usa (los de la BIOS de Neo Geo, en unos 250) y no dicen qué juego es.
+            if (a.crc && !(a.marcas & 3)) p[n++] = ((uint64_t)a.crc << 32) | j;
+        }
+    qsort(p, n, sizeof(uint64_t), CompararU64);
+    nPorCrc = n;
+    porCrc = p;
+    return true;
+}
+
+int ArcadeIdentificar(const char* ruta)
+{
+    static std::atomic_flag ocupado = ATOMIC_FLAG_INIT;   // la búsqueda y la apertura de un juego pueden llamarla a la vez
+    while (ocupado.test_and_set(std::memory_order_acquire)) {}
+    int elegido = -1;
+    static const int MAX = 2048;
+    EntradaComprimido* e = ArmarPorCrc() ? (EntradaComprimido*)malloc(sizeof(EntradaComprimido) * MAX) : NULL;
+    int n = e ? ComprimidoListarRuta(ruta, e, MAX) : -1;
+    static int cand[256], cuenta[256];
+    int nc = 0;
+    for (int i = 0; i < n; i++)
+    {
+        if (!e[i].crc) continue;
+        // La primera huella igual (búsqueda binaria) y todas las que siguen.
+        uint64_t clave = (uint64_t)e[i].crc << 32;
+        uint32_t a = 0, b = nPorCrc;
+        while (a < b) { uint32_t m = (a + b) / 2; if (porCrc[m] < clave) a = m + 1; else b = m; }
+        for (uint32_t k = a; k < nPorCrc && (porCrc[k] >> 32) == e[i].crc; k++)
+        {
+            int j = (int)(porCrc[k] & 0xFFFFFFFF), c = 0;
+            while (c < nc && cand[c] != j) c++;
+            if (c == nc) { if (nc == 256) continue; cand[nc] = j; cuenta[nc++] = 0; }
+            cuenta[c]++;
+        }
+    }
+    // Entre los candidatos (los que tienen algún archivo propio en el zip), el que mejor lo explica: la mayor parte de
+    // su lista completa (propios y heredados del juego principal) está en el zip y casi nada del zip le sobra. Así una
+    // versión (con sus archivos y los del original) gana al original, al que le faltan los que la versión cambia; a
+    // igual, el juego principal (un zip "merged" trae todas las versiones).
+    static uint32_t enZip[2048], deJuego[512];
+    int nz = 0;
+    for (int i = 0; i < n; i++) if (e[i].crc) enZip[nz++] = e[i].crc;
+    qsort(enZip, nz, sizeof(uint32_t), [](const void* a, const void* b) {
+        uint32_t x = *(const uint32_t*)a, y = *(const uint32_t*)b;
+        return x < y ? -1 : x > y;
+    });
+    auto Esta = [](const uint32_t* v, int n, uint32_t crc) {
+        int a = 0, b = n;
+        while (a < b) { int m = (a + b) / 2; if (v[m] < crc) a = m + 1; else b = m; }
+        return a < n && v[a] == crc;
+    };
+    double mejor = -1;
+    for (int c = 0; c < nc; c++)
+    {
+        const JuegoArcade& g = juegos[cand[c]];
+        int total = 0, presentes = 0, nj = 0;
+        for (uint32_t k = 0; k < g.cuantos; k++)
+        {
+            const ArchivoArcade& a = archivos[g.primero + k];
+            if ((a.marcas & 2) || !a.crc) continue;
+            total++;
+            if (Esta(enZip, nz, a.crc)) presentes++;
+            if (nj < 512) deJuego[nj++] = a.crc;
+        }
+        if (!total || presentes * 2 < total) continue;
+        qsort(deJuego, nj, sizeof(uint32_t), [](const void* a, const void* b) {
+            uint32_t x = *(const uint32_t*)a, y = *(const uint32_t*)b;
+            return x < y ? -1 : x > y;
+        });
+        int sobran = 0;
+        for (int i = 0; i < nz; i++) if (!Esta(deJuego, nj, enZip[i])) sobran++;
+        double puntaje = (double)presentes / total - .5 * sobran / (nz ? nz : 1) + (g.padre < 0 ? 1e-6 : 0);
+        if (puntaje > mejor) { mejor = puntaje; elegido = cand[c]; }
+    }
+    free(e);
+    ocupado.clear(std::memory_order_release);
+    return elegido;
+}
+
+int ArcadeDeRuta(const char* ruta)
+{
+    int j = ArcadeBuscar(ArcadeNombreDeRuta(ruta));
+    return j >= 0 ? j : ArcadeIdentificar(ruta);
+}
+
+// El zip (o 7z) del juego 'j' en 'carpeta': con su nombre corto o, si no, uno de otro nombre que sea ese juego (la
+// carpeta se recorre una vez y se recuerda). Las BIOS también en /data/allesiu/bios. Deja la ruta en 'sale'.
+struct RecorridoArcade { int n; char nombres[256][200]; };
+static void AlListarArcade(const char* nombre, bool esCarpeta, void* u)
+{
+    RecorridoArcade& r = *(RecorridoArcade*)u;
+    if (esCarpeta || r.n == 256 || !EsComprimido(nombre)) return;
+    snprintf(r.nombres[r.n++], sizeof r.nombres[0], "%s", nombre);
+}
+
+static bool BuscarZipDe(const char* carpeta, int j, bool bios, char* sale, int max)
 {
     static const char* const EXT[] = {"zip", "7z"};
     for (const char* e : EXT)
     {
-        char r[700];
-        snprintf(r, sizeof r, "%s/%s.%s", carpeta, ArcadeNombre(j), e);
-        if (ExisteArchivo(r)) return true;
+        snprintf(sale, max, "%s/%s.%s", carpeta, ArcadeNombre(j), e);
+        if (ExisteArchivo(sale)) return true;
         if (bios)
         {
-            snprintf(r, sizeof r, "%s/bios/%s.%s", CARPETA_DATOS, ArcadeNombre(j), e);
-            if (ExisteArchivo(r)) return true;
+            snprintf(sale, max, "%s/bios/%s.%s", CARPETA_DATOS, ArcadeNombre(j), e);
+            if (ExisteArchivo(sale)) return true;
         }
     }
-    return false;
+    static std::atomic_flag ocupado = ATOMIC_FLAG_INIT;
+    while (ocupado.test_and_set(std::memory_order_acquire)) {}
+    struct Visto { int juego; char ruta[600]; };
+    static Visto vistos[256];
+    static int nVistos;
+    static char recorrida[600];
+    if (strcmp(recorrida, carpeta))
+    {
+        snprintf(recorrida, sizeof recorrida, "%s", carpeta);
+        nVistos = 0;
+        static RecorridoArcade r;
+        r.n = 0;
+        ListarCarpeta(carpeta, AlListarArcade, &r);
+        for (int i = 0; i < r.n && nVistos < 256; i++)
+        {
+            char ruta[600];
+            snprintf(ruta, sizeof ruta, "%s/%s", carpeta, r.nombres[i]);
+            if (ArcadeBuscar(ArcadeNombreDeRuta(ruta)) >= 0) continue;   // ya tiene nombre corto: lo encontró arriba
+            int id = ArcadeIdentificar(ruta);
+            if (id < 0) continue;
+            vistos[nVistos].juego = id;
+            snprintf(vistos[nVistos++].ruta, sizeof vistos[0].ruta, "%s", ruta);
+        }
+    }
+    bool hay = false;
+    for (int i = 0; i < nVistos && !hay; i++)
+        if (vistos[i].juego == j) { snprintf(sale, max, "%s", vistos[i].ruta); hay = true; }
+    ocupado.clear(std::memory_order_release);
+    return hay;
+}
+
+bool ArcadeZipDe(const char* carpeta, int j, char* sale, int max) { return BuscarZipDe(carpeta, j, false, sale, max); }
+
+static bool HayZip(const char* carpeta, int j, bool bios)
+{
+    char r[700];
+    return BuscarZipDe(carpeta, j, bios, r, sizeof r);
+}
+
+bool ArcadePrepararAlias(const char* ruta, char* rutaNucleo, int max)
+{
+    LibretroAliasLimpiar();
+    snprintf(rutaNucleo, max, "%s", ruta);
+    int j = ArcadeDeRuta(ruta);
+    if (j < 0) return false;
+    char carpeta[600];
+    snprintf(carpeta, sizeof carpeta, "%s", ruta);
+    char* barra = strrchr(carpeta, '/');
+    if (!barra) return false;
+    *barra = 0;
+    const char* ext = strrchr(ruta, '.');
+    // El juego: con su nombre corto (si ya lo tiene, queda igual).
+    snprintf(rutaNucleo, max, "%s/%s%s", carpeta, ArcadeNombre(j), ext ? ext : ".zip");
+    if (strcmp(rutaNucleo, ruta)) LibretroAlias(rutaNucleo, ruta);
+    // El juego principal y las BIOS que tengan otro nombre en la misma carpeta.
+    int padre = ArcadePadre(j);
+    const int extra[3] = {padre, ArcadeBios(j), padre >= 0 ? ArcadeBios(padre) : -1};
+    for (int e : extra)
+    {
+        if (e < 0) continue;
+        char real[600], virt[700];
+        if (!BuscarZipDe(carpeta, e, true, real, sizeof real)) continue;
+        const char* x = strrchr(real, '.');
+        snprintf(virt, sizeof virt, "%s/%s%s", carpeta, ArcadeNombre(e), x ? x : ".zip");
+        if (strcmp(virt, real) && strncmp(real, CARPETA_DATOS, strlen(CARPETA_DATOS))) LibretroAlias(virt, real);
+    }
+    return true;
 }
 
 int ArcadeRevisar(const char* ruta, char* explicacion)
@@ -124,6 +308,7 @@ int ArcadeRevisar(const char* ruta, char* explicacion)
     char* punto = strrchr(nombre, '.');
     if (punto) *punto = 0;
     int j = ArcadeBuscar(nombre);
+    if (j < 0) j = ArcadeIdentificar(ruta);   // otro nombre: por lo que tiene adentro
     if (j < 0)
     {
         snprintf(explicacion, 160, "\"%s\" no es un juego de esta versión del emulador arcade (FinalBurn Neo).", nombre);
@@ -176,7 +361,7 @@ int ArcadeRevisar(const char* ruta, char* explicacion)
     int bios = g.bios;
     if ((necesitaBios || bios >= 0) && bios >= 0 && !HayZip(carpeta, bios, true))
     {
-        snprintf(explicacion, 160, "Necesita la BIOS %s.zip: ponla en la misma carpeta o en /data/snes-ps4/bios.", ArcadeNombre(bios));
+        snprintf(explicacion, 160, "Necesita la BIOS %s.zip: ponla en la misma carpeta o en /data/allesiu/bios.", ArcadeNombre(bios));
         return ARC_FALTA_BIOS;
     }
     (void)propios;

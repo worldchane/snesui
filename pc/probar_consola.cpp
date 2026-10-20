@@ -51,7 +51,7 @@ static Resultado Probar(const char* ruta, int cuadros, const char* png)
     Resultado r = {};
     const Consola* c = NULL;
     // Arcade: el nombre del zip es el de un juego conocido (FinalBurn Neo lo abre por la ruta).
-    int ja = EsComprimido(ruta) ? ArcadeBuscar(ArcadeNombreDeRuta(ruta)) : -1;
+    int ja = EsComprimido(ruta) ? ArcadeDeRuta(ruta) : -1;
     if (ja >= 0 && ConsolaDe(ArcadePlaca(ja)).presente)
     {
         c = &ConsolaDe(ArcadePlaca(ja));
@@ -65,7 +65,9 @@ static Resultado Probar(const char* ruta, int cuadros, const char* png)
             snprintf(r.consola, sizeof r.consola, "%s", c->nombre);
             return r;
         }
-        r.cargo = c->Cargar(ruta, r.error);
+        char rutaNucleo[600];
+        ArcadePrepararAlias(ruta, rutaNucleo, sizeof rutaNucleo);
+        r.cargo = c->Cargar(rutaNucleo, r.error);
         if (!r.cargo && estado != ARC_COMPLETO) snprintf(r.error, sizeof r.error, "%s", explicacion);
         else if (estado != ARC_COMPLETO) snprintf(r.error, sizeof r.error, "revision %d: %s", estado, explicacion);
     }
@@ -129,6 +131,25 @@ int main(int argc, char** argv)
 {
     SetUnhandledExceptionFilter(AlCaer);
     if (argc < 3) { printf("uso: probar_consola <rom | @lista.txt> <cuadros> [carpeta]\n"); return 1; }
+    // probar_consola identificar @lista.txt: qué juego arcade es cada zip por su contenido, comparado con su nombre.
+    if (!strcmp(argv[1], "identificar"))
+    {
+        FILE* lista = fopen(argv[2] + 1, "rb");
+        if (!lista) return 1;
+        char linea[1024];
+        int bien = 0, mal = 0, nada = 0;
+        while (fgets(linea, sizeof linea, lista))
+        {
+            linea[strcspn(linea, "\r\n")] = 0;
+            if (!linea[0]) continue;
+            int porNombre = ArcadeBuscar(ArcadeNombreDeRuta(linea)), porContenido = ArcadeIdentificar(linea);
+            if (porContenido < 0) { nada++; printf("NADA   %s\n", linea); }
+            else if (porContenido == porNombre) bien++;
+            else { mal++; printf("OTRO   %s -> %s\n", linea, ArcadeNombre(porContenido)); }
+        }
+        printf("%d bien, %d distintos, %d sin reconocer\n", bien, mal, nada);
+        return 0;
+    }
     // probar_consola reconocer @lista.txt: cuánto tarda la biblioteca en saber la consola de cada comprimido.
     if (!strcmp(argv[1], "reconocer"))
     {

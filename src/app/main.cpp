@@ -2,6 +2,8 @@
 // núcleos. Hecho con lo que ya funcionó en la PS4 del usuario (ver LEEME.md): sin excepciones de C++, sin RTTI, sin
 // std::thread y sin variables globales con constructores.
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include <orbis/libkernel.h>
 
@@ -13,6 +15,8 @@
 #include "arcade.h"
 #include "consola.h"
 #include "interfaz.h"
+#include "mudanza.h"
+#include "registro.h"
 
 // Los constructores globales de los núcleos libretro (ver herramientas/sin_constructores.py): en vez de quedar en
 // .init_array, que el sistema correría solo, van en la sección nucleo_init y se llaman acá, al empezar.
@@ -60,6 +64,7 @@ static TablaDePrueba tablaDePrueba;
 
 int main()
 {
+    ActivarCandadosLibc();          // malloc/free a salvo entre hilos (plataforma.cpp): antes que nada
 #ifdef PRUEBA_BSS_MB
     ((volatile char*)lastre)[0] = 1;
     ((volatile char*)lastre)[sizeof lastre - 1] = 1;
@@ -74,18 +79,24 @@ int main()
     IniciarNucleos();
 #endif
     setvbuf(stdout, NULL, _IONBF, 0);
+    CapturarCierres();              // si el programa se cae, queda anotado dónde en /data/allesiu/cierre.txt
     Segundos();
     IniciarMando();
     IniciarAudio();
-    CrearCarpetas(CARPETA_DATOS);   // /data/snes-ps4 (guardados, carátulas, ajustes)
+    Mudanza();                      // datos de versiones anteriores a /data/allesiu y sus carpetas nuevas (mudanza.cpp)
     CopiarBiosIncluidas();          // solo en la variante personal
     // La tabla de juegos arcade se carga acá, antes de los hilos: la búsqueda y las carátulas la consultan a la vez y,
     // cargada al vuelo, el que llegaba segundo la veía vacía (juegos en "Arcade" con el nombre del zip).
     ArcadeIniciar();
-    IniciarTrabajadores(4);
+    MudanzaOrdenarRoms();           // los juegos sueltos de la consola, cada uno a roms/<consola>
+    IniciarTrabajadores(5);         // con el hilo principal, 6 partes: los 6 núcleos de la consola para la app
     if (!PantallaIniciar()) for (;;) sceKernelUsleep(1000000);
     bool fuentes = CargarFuentes();
     InterfazIniciar();
+    if (MudanzaResumen()[0]) Registrar("%s", MudanzaResumen());   // después de la cabecera del registro
+    char memoria[160];
+    MemoriaResumen(memoria, sizeof memoria);
+    Registrar("Al iniciar: %s", memoria);
     Sonar(SON_INICIO);
 
     double t0 = Segundos(), antes = t0;

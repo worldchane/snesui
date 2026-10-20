@@ -8,19 +8,19 @@ enum Sistema
 {
     // El número de cada una se guarda en el índice de la biblioteca: las nuevas van siempre al final.
     SIS_SNES, SIS_NES, SIS_GB, SIS_GBC, SIS_GBA, SIS_NGP, SIS_NGPC, SIS_MD, SIS_A2600, SIS_A7800, SIS_LYNX,
-    SIS_SMS, SIS_GG, SIS_ARCADE, SIS_NEOGEO, SIS_CPS1, SIS_CPS2, SIS_CPS3,
+    SIS_SMS, SIS_GG, SIS_ARCADE, SIS_NEOGEO, SIS_CPS1, SIS_CPS2, SIS_CPS3, SIS_N64,
     NUM_SISTEMAS
 };
 
 // La imagen más grande que puede dar una consola (los búferes de la app tienen este tamaño).
-static const int CONSOLA_MAX_ANCHO = 512, CONSOLA_MAX_ALTO = 480;
+static const int CONSOLA_MAX_ANCHO = 640, CONSOLA_MAX_ALTO = 480;   // 640 × 480: la N64 en alta resolución
 
 struct Consola
 {
     int sistema;
     const char* nombre;        // corto, para pestañas y textos: "SNES", "NES", "GB"...
     const char* nombreLargo;   // "Game Boy Color"...
-    const char* carpeta;       // carpeta de juegos en el USB y en la consola: "SNES", "NES", "GBC"...
+    const char* carpeta;       // carpeta de la consola, con el nombre corto de Batocera y ES-DE: "snes", "megadrive"...
     const char* extensiones;   // separadas por '|', en minúsculas: "sfc|smc"
     const char* caratulas;     // repositorio de libretro-thumbnails con sus carátulas
     float aspecto;             // ancho / alto de la imagen en una tele de la época (la proporción "como la TV")
@@ -53,6 +53,9 @@ struct Consola
     // Diagnóstico (texto) y problemas detectados por el núcleo.
     int (*Diagnostico)(char* out, int max);
     bool (*Anomalia)(char* txt, int max);
+    // Trucos: borrar todos y poner uno (índice, activo, código en el formato de su consola). NULL si no tiene.
+    void (*TrucosBorrar)();
+    void (*Truco)(unsigned i, bool activo, const char* codigo);
 };
 
 const Consola& ConsolaDe(int sistema);
@@ -64,7 +67,7 @@ const Consola& ConsolaActiva();
 // La consola de una rom por su extensión (NULL si no es de ninguna).
 const Consola* ConsolaParaRuta(const char* ruta);
 
-// Variante personal (CON_BIOS_INCLUIDAS): copia a /data/snes-ps4/bios las BIOS que vienen en el paquete (/app0/assets/misc) y
+// Variante personal (CON_BIOS_INCLUIDAS): copia a /data/allesiu/bios las BIOS que vienen en el paquete (/app0/assets/misc) y
 // todavía no están. Devuelve cuántas copió.
 int CopiarBiosIncluidas();
 

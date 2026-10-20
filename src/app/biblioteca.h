@@ -1,6 +1,6 @@
 // Los juegos (de todas las consolas que trae el programa) que hay en el USB o en /data.
 //
-// La lista se arma en un hilo aparte y se guarda en un índice (/data/snes-ps4/biblioteca.txt): al abrir el programa
+// La lista se arma en un hilo aparte y se guarda en un índice (/data/allesiu/biblioteca.txt): al abrir el programa
 // se muestra el índice al instante y, mientras tanto, se vuelve a recorrer el USB. Las roms que ya estaban en el
 // índice con el mismo tamaño no se vuelven a leer; solo se analizan las nuevas o cambiadas. Cuando termina, la lista
 // nueva reemplaza a la anterior (BibliotecaNueva).
@@ -21,7 +21,7 @@ struct Juego
     bool pal;
     bool tieneRam;
     bool valida;
-    bool enUsb;            // está en un USB (si no, en la consola: /data/snes-ps4/juegos)
+    bool enUsb;            // está en un USB (si no, en la consola: /data/allesiu/roms)
     bool copiado;          // está en el USB y también hay una copia igual en la consola (se muestra solo la copia)
     bool tambienEnUsb;     // está en la consola y también hay una copia igual en un USB
     int8_t estado;         // arcade: si el zip está completo (EstadoArcade de arcade.h); 0 en las demás consolas
@@ -35,11 +35,16 @@ static const int MAX_JUEGOS = 30000;
 inline bool Visible(const Juego& j) { return !j.copiado && !j.repetido; }
 
 void BibliotecaIniciar();                  // carga el índice guardado y empieza a buscar en segundo plano
+// Mirar si se conecta o se saca un USB (mientras la biblioteca está a la vista). BibliotecaCambioUsb: 1 si apareció uno,
+// -1 si se sacó, 0 si nada (una vez por cambio).
+void BibliotecaVigilarUsb(bool si);
+int BibliotecaCambioUsb();
+int BibliotecaCaratulasCopiadas();          // cuántas carátulas copió del USB la última búsqueda (una vez; después 0)
 void BibliotecaBuscar();                   // vuelve a buscar, revisando todo (si ya está buscando, no hace nada)
-void BibliotecaBuscarDe(bool rapida);      // rápida: lo que ya está en el índice no se vuelve a revisar en el USB
+void BibliotecaBuscarDe(bool rapida, bool insistir = false);    // rápida: lo que ya está en el índice no se vuelve a revisar en el USB
 bool BibliotecaBuscando(int* encontrados); // true mientras busca; cuántas roms lleva
 bool BibliotecaNueva();                    // true (una vez) cuando hay una lista nueva: volver a pedir BibliotecaJuegos
 const Juego* BibliotecaJuegos(int* n);     // la lista actual, ordenada por nombre (no cambia hasta BibliotecaNueva)
 const char* CarpetasDeJuegos();
 // Carpeta de la consola donde se copian los juegos (y donde también se buscan).
-static const char* const CARPETA_JUEGOS_CONSOLA = "/data/snes-ps4/juegos";
+static const char* const CARPETA_JUEGOS_CONSOLA = "/data/allesiu/roms";   // cada juego en roms/<consola>

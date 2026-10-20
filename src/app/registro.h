@@ -1,5 +1,5 @@
 // Registro de diagnóstico automático: todo lo que pasa (programa abierto, juegos, errores, problemas detectados) queda en
-// <USB>/SNESUI-diagnostico/registro.txt (o /data/snes-ps4/diagnostico si no hay USB), para pasárselo al desarrollador.
+// <USB>/SNESUI-diagnostico/registro.txt (o /data/allesiu/diagnostico si no hay USB), para pasárselo al desarrollador.
 // Los informes completos (texto + captura .bmp + estado .st) van a la misma carpeta como informe-NNN.*.
 #pragma once
 #include <stdint.h>

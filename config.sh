@@ -1,15 +1,16 @@
 # Datos del PKG del emulador de SNES. TITLE_ID: 4 letras + 5 números. CONTENT_ID: IV0000-<TITLE_ID>_00-<16 letras/números>.
-VERSION=01.40
+VERSION=01.50
 # Desde la 1.4: todos los núcleos, con el arcade (FinalBurn Neo), y el guion del enlazador propio, que deja la zona
 # RELRO chica (las tablas de los núcleos van a .data: ver herramientas/link_allesiu.x). Sin él la PS4 no abre el programa.
-NUCLEOS_TODOS="gambatte fceumm gpgx mgba neopop prosystem handy fbneo"
+ENVOLVER_MEMORIA="--wrap=malloc --wrap=calloc --wrap=realloc --wrap=free"
+NUCLEOS_TODOS="gambatte fceumm gpgx mgba neopop prosystem handy fbneo snes9x"
 GUION_ALLESIU="$(cd "$(dirname "$0")/herramientas" && pwd -W)/link_allesiu.x"
 variante() {
   case "$1" in
-    app)    TITLE_ID=SNES00001; CONTENT_ID=IV0000-SNES00001_00-SNESPS4000000000; TITULO="ALLESIU";           CARPETAS="comun nucleo app"; DEFS=""; NUCLEOS="$NUCLEOS_TODOS"; GUION="$GUION_ALLESIU" ;;
+    app)    TITLE_ID=SNES00001; CONTENT_ID=IV0000-SNES00001_00-SNESPS4000000000; TITULO="ALLESIU";           CARPETAS="comun nucleo app"; DEFS="-DMEMORIA_DIRECTA"; NUCLEOS="$NUCLEOS_TODOS"; GUION="$GUION_ALLESIU"; LDEXTRA="$ENVOLVER_MEMORIA" ;;
     segura) TITLE_ID=SNES00009; CONTENT_ID=IV0000-SNES00009_00-SNESSEGURA000000; TITULO="ALLESIU (segura)"; CARPETAS="comun nucleo app"; DEFS="-DSIN_LISTADO -DSIN_RED" ;;
     # Solo para la consola del usuario, NUNCA para publicar: lleva sus BIOS (carpeta bios/ del proyecto, fuera de git).
-    personal) TITLE_ID=SNES00002; CONTENT_ID=IV0000-SNES00002_00-SNESPERSONAL0000; TITULO="ALLESIU"; CARPETAS="comun nucleo app"; DEFS="-DCON_BIOS_INCLUIDAS"; BIOS=1; NUCLEOS="$NUCLEOS_TODOS"; GUION="$GUION_ALLESIU" ;;
+    personal) TITLE_ID=SNES00002; CONTENT_ID=IV0000-SNES00002_00-SNESPERSONAL0000; TITULO="ALLESIU"; CARPETAS="comun nucleo app"; DEFS="-DCON_BIOS_INCLUIDAS -DMEMORIA_DIRECTA"; BIOS=1; NUCLEOS="$NUCLEOS_TODOS"; GUION="$GUION_ALLESIU"; LDEXTRA="$ENVOLVER_MEMORIA" ;;
     # Pruebas de arranque (2026-10-17: la 1.3 no abría en la consola). Cada una con su título, para instalarlas juntas.
     prueba1) TITLE_ID=SNES00003; CONTENT_ID=IV0000-SNES00003_00-SNESPRUEBA100000; TITULO="ALLESIU prueba 1"; CARPETAS="comun nucleo app"; DEFS=""; NUCLEOS=ninguno ;;
     prueba2) TITLE_ID=SNES00004; CONTENT_ID=IV0000-SNES00004_00-SNESPRUEBA200000; TITULO="ALLESIU prueba 2"; CARPETAS="comun nucleo app"; DEFS=""; NUCLEOS="gambatte fceumm mgba neopop prosystem handy" ;;
@@ -45,6 +46,52 @@ variante() {
     # prueba21: la 20 con la música en orden aleatorio (opción en Configuración), R2 de vuelta a bajar página y bloques
     # de audio de 1024 muestras (el sonido se cortaba al buscar juegos).
     prueba21) TITLE_ID=SNES00024; CONTENT_ID=IV0000-SNES00024_00-SNESPRUEBA210000; TITULO="ALLESIU prueba 21"; CARPETAS="comun nucleo app"; DEFS="-DCON_BIOS_INCLUIDAS"; BIOS=1; NUCLEOS="gambatte fceumm gpgx mgba neopop prosystem handy fbneo"; GUION="$(cd "$AQUI/herramientas" && pwd -W)/link_allesiu.x" ;;
+    # prueba22: la 1.4 personal con la prueba de memoria ejecutable (JIT) para el emulador de N64.
+    prueba22) TITLE_ID=SNES00025; CONTENT_ID=IV0000-SNES00025_00-SNESPRUEBA220000; TITULO="ALLESIU prueba 22"; CARPETAS="comun nucleo app"; DEFS="-DCON_BIOS_INCLUIDAS -DPRUEBA_JIT"; BIOS=1; NUCLEOS="$NUCLEOS_TODOS"; GUION="$GUION_ALLESIU" ;;
+    # prueba23: la 1.4 personal con el núcleo de N64 (Mupen64Plus-Next), para ver qué le falta al enlazar.
+    prueba23) TITLE_ID=SNES00026; CONTENT_ID=IV0000-SNES00026_00-SNESPRUEBA230000; TITULO="ALLESIU prueba 23"; CARPETAS="comun nucleo app"; DEFS="-DCON_BIOS_INCLUIDAS -DPRUEBA_JIT"; BIOS=1; NUCLEOS="$NUCLEOS_TODOS n64"; GUION="$GUION_ALLESIU"; LDEXTRA="--why-extract=C:/Users/Notebook/AppData/Local/Temp/n64/porque.txt --error-limit=0" ;;
+    # prueba24: la carpeta /data/allesiu (migra la vieja), copias por sistema, arcade por contenido (nombres largos),
+    # Snes9x para la SNES y N64 (por software) para probar.
+    prueba24) TITLE_ID=SNES00027; CONTENT_ID=IV0000-SNES00027_00-SNESPRUEBA240000; TITULO="ALLESIU prueba 24"; CARPETAS="comun nucleo app"; DEFS="-DCON_BIOS_INCLUIDAS"; BIOS=1; NUCLEOS="$NUCLEOS_TODOS n64"; GUION="$GUION_ALLESIU" ;;
+    # prueba25: la 24 sin N64 (para ver si la memoria fija de N64, ~300 MB, es lo que hace fallar los juegos).
+    prueba25) TITLE_ID=SNES00028; CONTENT_ID=IV0000-SNES00028_00-SNESPRUEBA250000; TITULO="ALLESIU prueba 25"; CARPETAS="comun nucleo app"; DEFS="-DCON_BIOS_INCLUIDAS"; BIOS=1; NUCLEOS="$NUCLEOS_TODOS"; GUION="$GUION_ALLESIU" ;;
+    # prueba26: la 24 (todas las consolas y N64) con la máquina de N64 pedida al abrirla (no fija) y la mudanza de /data que junta carpetas.
+    prueba26) TITLE_ID=SNES00029; CONTENT_ID=IV0000-SNES00029_00-SNESPRUEBA260000; TITULO="ALLESIU prueba 26"; CARPETAS="comun nucleo app"; DEFS="-DCON_BIOS_INCLUIDAS"; BIOS=1; NUCLEOS="$NUCLEOS_TODOS n64"; GUION="$GUION_ALLESIU" ;;
+    # prueba27: la 26 con el dibujo de N64 en un solo hilo y el tiempo de cada paso al salir de un juego en el registro.
+    prueba27) TITLE_ID=SNES00030; CONTENT_ID=IV0000-SNES00030_00-SNESPRUEBA270000; TITULO="ALLESIU prueba 27"; CARPETAS="comun nucleo app"; DEFS="-DCON_BIOS_INCLUIDAS"; BIOS=1; NUCLEOS="$NUCLEOS_TODOS n64"; GUION="$GUION_ALLESIU" ;;
+    # prueba28: la 27 con los bloques grandes de memoria en la memoria directa (memoria_grande.cpp) y la memoria libre en el registro.
+    prueba28) TITLE_ID=SNES00031; CONTENT_ID=IV0000-SNES00031_00-SNESPRUEBA280000; TITULO="ALLESIU prueba 28"; CARPETAS="comun nucleo app"; DEFS="-DCON_BIOS_INCLUIDAS -DMEMORIA_DIRECTA"; BIOS=1; NUCLEOS="$NUCLEOS_TODOS n64"; GUION="$GUION_ALLESIU"; LDEXTRA="$ENVOLVER_MEMORIA" ;;
+    # prueba29: la 28 con el RSP CXD4 para N64 (Angrylion no abre con el RSP por HLE) y el aviso de memoria al abrir.
+    prueba29) TITLE_ID=SNES00032; CONTENT_ID=IV0000-SNES00032_00-SNESPRUEBA290000; TITULO="ALLESIU prueba 29"; CARPETAS="comun nucleo app"; DEFS="-DCON_BIOS_INCLUIDAS -DMEMORIA_DIRECTA"; BIOS=1; NUCLEOS="$NUCLEOS_TODOS n64"; GUION="$GUION_ALLESIU"; LDEXTRA="$ENVOLVER_MEMORIA" ;;
+    # prueba30: la 29 sin la imagen del juego anterior al abrir otro.
+    prueba30) TITLE_ID=SNES00033; CONTENT_ID=IV0000-SNES00033_00-SNESPRUEBA300000; TITULO="ALLESIU prueba 30"; CARPETAS="comun nucleo app"; DEFS="-DCON_BIOS_INCLUIDAS -DMEMORIA_DIRECTA"; BIOS=1; NUCLEOS="$NUCLEOS_TODOS n64"; GUION="$GUION_ALLESIU"; LDEXTRA="$ENVOLVER_MEMORIA" ;;
+    # prueba31: la 30 con las carpetas de Batocera (mudanza), el detector de BIOS y las carátulas copiadas del USB.
+    prueba31) TITLE_ID=SNES00034; CONTENT_ID=IV0000-SNES00034_00-SNESPRUEBA310000; TITULO="ALLESIU prueba 31"; CARPETAS="comun nucleo app"; DEFS="-DCON_BIOS_INCLUIDAS -DMEMORIA_DIRECTA"; BIOS=1; NUCLEOS="$NUCLEOS_TODOS n64"; GUION="$GUION_ALLESIU"; LDEXTRA="$ENVOLVER_MEMORIA" ;;
+    # prueba32: la 31 con la descarga de carátulas arreglada (lista entera del servidor: la de NES tiene 13.418) y en el registro.
+    prueba32) TITLE_ID=SNES00035; CONTENT_ID=IV0000-SNES00035_00-SNESPRUEBA320000; TITULO="ALLESIU prueba 32"; CARPETAS="comun nucleo app"; DEFS="-DCON_BIOS_INCLUIDAS -DMEMORIA_DIRECTA"; BIOS=1; NUCLEOS="$NUCLEOS_TODOS n64"; GUION="$GUION_ALLESIU"; LDEXTRA="$ENVOLVER_MEMORIA" ;;
+    # prueba33: candidata a la 1.5 (personal, con N64 en pausa): carátulas automáticas y BIOS en cualquier carpeta del USB.
+    prueba33) TITLE_ID=SNES00036; CONTENT_ID=IV0000-SNES00036_00-SNESPRUEBA330000; TITULO="ALLESIU prueba 33"; CARPETAS="comun nucleo app"; DEFS="-DCON_BIOS_INCLUIDAS -DMEMORIA_DIRECTA"; BIOS=1; NUCLEOS="$NUCLEOS_TODOS n64"; GUION="$GUION_ALLESIU"; LDEXTRA="$ENVOLVER_MEMORIA" ;;
+    # prueba34: la 33 con 40 estilos de interfaz (L2) y 40 de menú (R2) para elegir.
+    prueba34) TITLE_ID=SNES00037; CONTENT_ID=IV0000-SNES00037_00-SNESPRUEBA340000; TITULO="ALLESIU prueba 34"; CARPETAS="comun nucleo app"; DEFS="-DCON_BIOS_INCLUIDAS -DMEMORIA_DIRECTA"; BIOS=1; NUCLEOS="$NUCLEOS_TODOS n64"; GUION="$GUION_ALLESIU"; LDEXTRA="$ENVOLVER_MEMORIA" ;;
+    # prueba35: todo lo de la etapa 1-3 (roms/<consola>, asistente, estilos, trucos, respaldo, bezels...), arcade de Midway
+    # más rápido (DCS) y las pruebas para el N64 (memoria ejecutable y GPU con shaders desde texto, -DPRUEBA_JIT).
+    prueba35) TITLE_ID=SNES00038; CONTENT_ID=IV0000-SNES00038_00-SNESPRUEBA350000; TITULO="ALLESIU prueba 35"; CARPETAS="comun nucleo app"; DEFS="-DCON_BIOS_INCLUIDAS -DMEMORIA_DIRECTA -DPRUEBA_JIT"; BIOS=1; NUCLEOS="$NUCLEOS_TODOS n64"; GUION="$GUION_ALLESIU"; LDEXTRA="$ENVOLVER_MEMORIA" ;;
+    # prueba36: la 35 con la prueba de la GPU una sola vez (Piglet deja la pantalla en negro; después muestra el resultado guardado).
+    prueba36) TITLE_ID=SNES00039; CONTENT_ID=IV0000-SNES00039_00-SNESPRUEBA360000; TITULO="ALLESIU prueba 36"; CARPETAS="comun nucleo app"; DEFS="-DCON_BIOS_INCLUIDAS -DMEMORIA_DIRECTA -DPRUEBA_JIT"; BIOS=1; NUCLEOS="$NUCLEOS_TODOS n64"; GUION="$GUION_ALLESIU"; LDEXTRA="$ENVOLVER_MEMORIA" ;;
+    # prueba37: estilos recortados, por defecto Aero clásico + Clásico + Tecla vidrio, vidrio transparente.
+    prueba37) TITLE_ID=SNES00040; CONTENT_ID=IV0000-SNES00040_00-SNESPRUEBA370000; TITULO="ALLESIU prueba 37"; CARPETAS="comun nucleo app"; DEFS="-DCON_BIOS_INCLUIDAS -DMEMORIA_DIRECTA -DPRUEBA_JIT"; BIOS=1; NUCLEOS="$NUCLEOS_TODOS n64"; GUION="$GUION_ALLESIU"; LDEXTRA="$ENVOLVER_MEMORIA" ;;
+    # prueba38: la 37 con vidrio líquido (lente y brillo en el borde, como iOS).
+    prueba38) TITLE_ID=SNES00041; CONTENT_ID=IV0000-SNES00041_00-SNESPRUEBA380000; TITULO="ALLESIU prueba 38"; CARPETAS="comun nucleo app"; DEFS="-DCON_BIOS_INCLUIDAS -DMEMORIA_DIRECTA -DPRUEBA_JIT"; BIOS=1; NUCLEOS="$NUCLEOS_TODOS n64"; GUION="$GUION_ALLESIU"; LDEXTRA="$ENVOLVER_MEMORIA" ;;
+    # prueba39: vidrio líquido más rápido (por tramos, fondo agrandado de a tercios), L3 = música, 5 trabajadores, cierre.txt.
+    prueba39) TITLE_ID=SNES00042; CONTENT_ID=IV0000-SNES00042_00-SNESPRUEBA390000; TITULO="ALLESIU prueba 39"; CARPETAS="comun nucleo app"; DEFS="-DCON_BIOS_INCLUIDAS -DMEMORIA_DIRECTA -DPRUEBA_JIT"; BIOS=1; NUCLEOS="$NUCLEOS_TODOS n64"; GUION="$GUION_ALLESIU"; LDEXTRA="$ENVOLVER_MEMORIA" ;;
+    # prueba40: la 39 con los candados de malloc de musl activados (__libc.threads_minus_1) y cierre.txt con contexto y pila.
+    prueba40) TITLE_ID=SNES00043; CONTENT_ID=IV0000-SNES00043_00-SNESPRUEBA400000; TITULO="ALLESIU prueba 40"; CARPETAS="comun nucleo app"; DEFS="-DCON_BIOS_INCLUIDAS -DMEMORIA_DIRECTA -DPRUEBA_JIT"; BIOS=1; NUCLEOS="$NUCLEOS_TODOS n64"; GUION="$GUION_ALLESIU"; LDEXTRA="$ENVOLVER_MEMORIA" ;;
+    # prueba41: la 40 con el teclado en pantalla según la interfaz (panel) y el estilo de botones (teclas).
+    prueba41) TITLE_ID=SNES00044; CONTENT_ID=IV0000-SNES00044_00-SNESPRUEBA410000; TITULO="ALLESIU prueba 41"; CARPETAS="comun nucleo app"; DEFS="-DCON_BIOS_INCLUIDAS -DMEMORIA_DIRECTA -DPRUEBA_JIT"; BIOS=1; NUCLEOS="$NUCLEOS_TODOS n64"; GUION="$GUION_ALLESIU"; LDEXTRA="$ENVOLVER_MEMORIA" ;;
+    # prueba42: la 41 con las pistas de la ventana de carátulas (y de Novedades) dentro de su ventana.
+    prueba42) TITLE_ID=SNES00045; CONTENT_ID=IV0000-SNES00045_00-SNESPRUEBA420000; TITULO="ALLESIU prueba 42"; CARPETAS="comun nucleo app"; DEFS="-DCON_BIOS_INCLUIDAS -DMEMORIA_DIRECTA -DPRUEBA_JIT"; BIOS=1; NUCLEOS="$NUCLEOS_TODOS n64"; GUION="$GUION_ALLESIU"; LDEXTRA="$ENVOLVER_MEMORIA" ;;
+    # prueba43: el mismo código que la 1.5 pública, con N64 y las BIOS (para probar lo que se publicaría).
+    prueba43) TITLE_ID=SNES00046; CONTENT_ID=IV0000-SNES00046_00-SNESPRUEBA430000; TITULO="ALLESIU prueba 43"; CARPETAS="comun nucleo app"; DEFS="-DCON_BIOS_INCLUIDAS -DMEMORIA_DIRECTA"; BIOS=1; NUCLEOS="$NUCLEOS_TODOS n64"; GUION="$GUION_ALLESIU"; LDEXTRA="$ENVOLVER_MEMORIA" ;;
     *) return 1 ;;
   esac
 }

@@ -34,6 +34,11 @@ void Sombra(float x, float y, float w, float h, float radio, float difuminado, f
 void Borde(float x, float y, float w, float h, float radio, float grosor, uint32_t c, float a);
 void Circulo(float cx, float cy, float r, uint32_t c, float a);
 void Aro(float cx, float cy, float r, float grosor, uint32_t c, float a);
+// Vidrio esmerilado (el estilo Aero de macOS): la caja muestra el fondo desenfocado (la imagen de LienzoVidrio, que cubre
+// toda la pantalla a baja resolución) teñido con 'tinte' en la proporción 'cuanto'. Sin imagen, es una caja del tinte.
+// cambio: la imagen es otra o cambió su contenido (si no, se reusa lo ya agrandado a pantalla completa).
+void LienzoVidrio(const uint32_t* px, int w, int h, bool cambio = true);
+void CajaVidrio(float x, float y, float w, float h, float radio, uint32_t tinte, float cuanto, float a);
 // Rectángulo de un color con la opacidad cambiando de arriba (aArriba) a abajo (aAbajo): sombras de bordes, viñetas.
 void Velo(float x, float y, float w, float h, float radio, uint32_t c, float aArriba, float aAbajo);
 void Brillo(float cx, float cy, float r, uint32_t c, float a);   // luz radial difusa

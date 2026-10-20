@@ -19,7 +19,7 @@ static int sesion;
 static double ultimaEscritura;
 static char carpeta[160];        // donde se escribe; vacío = buscarla de nuevo
 
-static const char* const FOTO = "/data/snes-ps4/foto-en-juego.txt";
+static const char* const FOTO = "/data/allesiu/foto-en-juego.txt";
 static const uint64_t MAX_REGISTRO = 2 * 1024 * 1024;
 
 static void Bloquear() { while (candado.test_and_set(std::memory_order_acquire)) {} }

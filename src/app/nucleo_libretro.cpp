@@ -41,11 +41,53 @@ static char infoDir[512], infoNombre[256], infoExt[16];
 static retro_game_info_ext infoExt_;
 
 // Los núcleos abren sus archivos (BIOS, por ejemplo) con esta, la misma de la app (ver nucleos/archivos.c).
-extern "C" FILE* NucleoAbrirArchivo(const char* ruta, const char* modo) { return AbrirArchivo(ruta, modo); }
+// Alias de archivos: el núcleo pide una ruta y se abre otra. Lo usa el arcade cuando el zip no tiene el nombre corto
+// que FinalBurn Neo necesita (ver ArcadePrepararAlias): se le pasa "carpeta/<nombre corto>.zip" y se abre el archivo real.
+struct Alias { char virtual_[600], real[600]; };
+static Alias alias[8];
+static int nAlias;
+static bool MismaRuta(const char* a, const char* b)
+{
+    for (; *a && *b; a++, b++)
+    {
+        char x = *a == 0x5C ? '/' : (*a >= 'A' && *a <= 'Z' ? *a + 32 : *a);   // la barra invertida de la PC, y sin mayúsculas
+        char y = *b == 0x5C ? '/' : (*b >= 'A' && *b <= 'Z' ? *b + 32 : *b);
+        if (x != y) return false;
+    }
+    return !*a && !*b;
+}
+void LibretroAliasLimpiar() { nAlias = 0; }
+void LibretroAlias(const char* virtual_, const char* real)
+{
+    if (nAlias == 8) return;
+    snprintf(alias[nAlias].virtual_, sizeof alias[0].virtual_, "%s", virtual_);
+    snprintf(alias[nAlias].real, sizeof alias[0].real, "%s", real);
+    nAlias++;
+}
+extern "C" FILE* NucleoAbrirArchivo(const char* ruta, const char* modo)
+{
+    for (int i = 0; i < nAlias; i++)
+        if (MismaRuta(ruta, alias[i].virtual_)) return AbrirArchivo(alias[i].real, modo);
+    return AbrirArchivo(ruta, modo);
+}
 
 // Mientras se abre un juego se anota también lo informativo (dónde buscó cada archivo, qué le faltó), salvo lo que se
 // repite por cada botón o cada rom encontrada: sirve para entender en el registro por qué un juego no abrió.
 static bool anotarTodo = false;
+static bool faltoMemoria = false;   // el núcleo dijo que no pudo pedir memoria (en esta carga)
+
+// Opciones de núcleo fijadas por la app (consola.cpp): clave y valor, como las del archivo de opciones de RetroArch.
+struct Opcion { char clave[64], valor[64]; };
+static Opcion opciones[16];
+static int nOpciones;
+void LibretroOpcion(const char* clave, const char* valor)
+{
+    int i = 0;
+    while (i < nOpciones && strcmp(opciones[i].clave, clave)) i++;
+    if (i == nOpciones) { if (nOpciones == 16) return; nOpciones++; }
+    snprintf(opciones[i].clave, sizeof opciones[i].clave, "%s", clave);
+    snprintf(opciones[i].valor, sizeof opciones[i].valor, "%s", valor);
+}
 
 static void Log(enum retro_log_level nivel, const char* fmt, ...)
 {
@@ -58,6 +100,7 @@ static void Log(enum retro_log_level nivel, const char* fmt, ...)
     if (nivel < RETRO_LOG_WARN && (strstr(t, "nSwitchCode") || strstr(t, "Using ROM with known crc"))) return;
     size_t n = strlen(t);
     while (n && (t[n - 1] == '\n' || t[n - 1] == '\r')) t[--n] = 0;
+    if (strstr(t, "ailed to allocate") || strstr(t, "ut of memory") || strstr(t, "err=7)")) faltoMemoria = true;
     Registrar("Núcleo %s: %s", nombreNucleo, t);
 }
 
@@ -77,7 +120,14 @@ static bool Entorno(unsigned cmd, void* dato)
     case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY: *(const char**)dato = carpetaGuardados; return true;
     case RETRO_ENVIRONMENT_GET_CAN_DUPE: *(bool*)dato = true; return true;
     case RETRO_ENVIRONMENT_GET_TARGET_SAMPLE_RATE: *(unsigned*)dato = 48000; return true;   // la de la PS4
-    case RETRO_ENVIRONMENT_GET_VARIABLE: return false;          // cada núcleo usa sus opciones por defecto
+    case RETRO_ENVIRONMENT_GET_VARIABLE:
+    {
+        // Las opciones que la app le fijó al núcleo (LibretroOpcion); las demás, por defecto.
+        retro_variable* v = (retro_variable*)dato;
+        for (int i = 0; i < nOpciones; i++)
+            if (v && v->key && !strcmp(v->key, opciones[i].clave)) { v->value = opciones[i].valor; return true; }
+        return false;
+    }
     case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE: *(bool*)dato = false; return true;
     case RETRO_ENVIRONMENT_SET_VARIABLES:
     case RETRO_ENVIRONMENT_SET_CORE_OPTIONS:
@@ -240,11 +290,13 @@ static bool Abrir(const char* ruta, const char* interno, uint8_t* datos, size_t 
 #endif
     retro_game_info gi = {rutaRom, rom, (size_t)tam, NULL};
     anotarTodo = true;
+    faltoMemoria = false;
     bool cargado = api->load_game(&gi);
     anotarTodo = false;
     if (!cargado)
     {
-        snprintf(error, 160, "El núcleo de %s no pudo abrir esta rom (¿está dañada o es de otra consola?).", nombreNucleo);
+        snprintf(error, 160, faltoMemoria ? "No alcanzó la memoria de la consola para abrir este juego con %s." :
+                 "El núcleo de %s no pudo abrir esta rom (¿está dañada o es de otra consola?).", nombreNucleo);
         return false;
     }
     retro_system_av_info av = {};
@@ -292,6 +344,9 @@ static void Descargar()
 }
 
 static void Reiniciar() { api->reset(); }
+// Trucos (códigos Game Genie, Action Replay...): cada núcleo entiende los de su consola.
+static void TrucosBorrar() { if (api && iniciado) api->cheat_reset(); }
+static void Truco(unsigned i, bool activo, const char* codigo) { if (api && iniciado) api->cheat_set(i, activo, codigo); }
 
 static int Cuadro(uint32_t* imagen, int* ancho, int* alto, int16_t* audio, int maxAudio)
 {
@@ -377,6 +432,8 @@ void LibretroLlenar(Consola& c)
 {
     c.Descargar = Descargar;
     c.Reiniciar = Reiniciar;
+    c.TrucosBorrar = TrucosBorrar;
+    c.Truco = Truco;
     c.Cuadro = Cuadro;
     c.Frecuencia = Frecuencia;
     c.Aspecto = Aspecto;
@@ -416,3 +473,5 @@ bool LibretroCargarMemoria(const ApiLibretro* a, const char* nombre, const char*
     nombreNucleo = nombre;
     return Abrir(ruta, interno, datos, tam, error);
 }
+
+bool LibretroFaltoMemoria() { return faltoMemoria; }
