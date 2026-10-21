@@ -617,6 +617,7 @@ bool GpuCargarModulos(char* error, int max)
         snprintf(error, max, "falta el compilador de shaders (libSceShaccVSH.sprx en /data/allesiu/gpu/).");
         return false;
     }
+    CargarModuloGpu("libScePrecompiledShaders.sprx");   // la pantalla de Piglet dibuja con ellos (ver prueba_gpu.cpp)
     bool (*configurar)(const OrbisPglConfig*) = NULL;
     if (sceKernelDlsym(modPiglet, "scePigletSetConfigurationVSH", (void**)&configurar) != 0 || !configurar)
     {

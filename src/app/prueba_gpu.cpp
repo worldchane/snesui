@@ -93,9 +93,9 @@ const char* PruebaGpu()
     if (resultado[0]) return resultado;
     char ruta[160], antes[320] = "", det[200] = "";
 #ifdef SOLO_PRUEBA_GPU
-    snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima.txt", CARPETA_DIAGNOSTICO);   // la variante mínima, con sus intentos
+    snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima2.txt", CARPETA_DIAGNOSTICO);   // la variante mínima, con sus intentos
 #else
-    snprintf(ruta, sizeof ruta, "%s/prueba_gpu5.txt", CARPETA_DIAGNOSTICO);
+    snprintf(ruta, sizeof ruta, "%s/prueba_gpu6.txt", CARPETA_DIAGNOSTICO);
 #endif
     LeerTexto(ruta, antes, sizeof antes);
     // Se hace una sola vez: Piglet toma la salida de video y la app queda en negro. Las veces siguientes, el resultado
@@ -148,6 +148,11 @@ const char* PruebaGpu()
     Registrar("Prueba GPU 1: %s", det);
     if (modPiglet < 0) return Fin("Piglet no cargó.");
     modShacc = Cargar("libSceShaccVSH.sprx", det, sizeof det);
+    Registrar("Prueba GPU 1: %s", det);
+    // Los shaders precompilados del sistema: la prueba de PCSX2 (que funcionó) los cargaba antes de abrir EGL, y la
+    // pantalla de Piglet ("composite") dibuja con ellos. Sin ellos, eglGetDisplay fallaba sin dar error.
+    int modPrecompilados = Cargar("libScePrecompiledShaders.sprx", det, sizeof det, true);
+    (void)modPrecompilados;
     Registrar("Prueba GPU 1: %s", det);
     int faltan = GlCargar(BuscarEnPiglet);
     Registrar("Prueba GPU 1: faltan %d funciones de OpenGL ES / EGL", faltan);
