@@ -93,9 +93,9 @@ const char* PruebaGpu()
     if (resultado[0]) return resultado;
     char ruta[160], antes[320] = "", det[200] = "";
 #ifdef SOLO_PRUEBA_GPU
-    snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima2.txt", CARPETA_DIAGNOSTICO);   // la variante mínima, con sus intentos
+    snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima3.txt", CARPETA_DIAGNOSTICO);   // la variante mínima, con sus intentos
 #else
-    snprintf(ruta, sizeof ruta, "%s/prueba_gpu6.txt", CARPETA_DIAGNOSTICO);
+    snprintf(ruta, sizeof ruta, "%s/prueba_gpu7.txt", CARPETA_DIAGNOSTICO);
 #endif
     LeerTexto(ruta, antes, sizeof antes);
     // Se hace una sola vez: Piglet toma la salida de video y la app queda en negro. Las veces siguientes, el resultado
@@ -134,6 +134,7 @@ const char* PruebaGpu()
     auto Fin = [&](const char* t) {
         // EGL se suelta siempre: la prueba corre antes de abrir la pantalla de la app (main.cpp), que la necesita.
         if (pantalla != EGL_NO_DISPLAY) { eglMakeCurrent(pantalla, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT); eglTerminate(pantalla); }
+        CerrarAccesoCompleto();
         snprintf(resultado, sizeof resultado, "GPU: %s", t);
         char g[340];
         snprintf(g, sizeof g, "terminada\n%s\n", resultado);
@@ -156,6 +157,10 @@ const char* PruebaGpu()
     Registrar("Prueba GPU 1: %s", det);
     int faltan = GlCargar(BuscarEnPiglet);
     Registrar("Prueba GPU 1: faltan %d funciones de OpenGL ES / EGL", faltan);
+    // Con el acceso completo de GoldHEN (eleva los permisos): en la prueba de PCSX2 la variante que lo pedía (C) abrió
+    // EGL; sin él, eglGetDisplay falla sin dar error. Los módulos ya están cargados (con el acceso, /app0 puede no verse).
+    int acceso = AbrirAccesoCompleto("gpu", true);
+    Registrar("Prueba GPU 1: acceso completo de GoldHEN: %d", acceso);
     bool (*configurar)(const OrbisPglConfig*) = NULL;
     sceKernelDlsym(modPiglet, "scePigletSetConfigurationVSH", (void**)&configurar);
     if (!configurar) return Fin("falta scePigletSetConfigurationVSH.");
@@ -182,6 +187,7 @@ const char* PruebaGpu()
         snprintf(resultado, sizeof resultado, "GPU: eglGetDisplay falló (0x%X) en el intento %d; se repite al abrir la app.", eglGetError(),
                  intento + 1);
         Registrar("%s", resultado);
+        CerrarAccesoCompleto();
         char t[48];
         snprintf(t, sizeof t, "intento %d\n", intento + 1);
         EscribirTexto(ruta, t);
