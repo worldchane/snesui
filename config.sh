@@ -123,6 +123,9 @@ variante() {
     # prueba56: la 55 (Piglet importado, firma del ejemplo oficial) con el registro de cierres desde el principio y una
     # marca al llegar a main (la 55 cerró la app con CE-34878-0 sin dejar rastro).
     prueba56) TITLE_ID=SNES00059; CONTENT_ID=IV0000-SNES00059_00-SNESPRUEBA560000; TITULO="ALLESIU GPU 8"; CARPETAS="comun nucleo app"; DEFS="-DMEMORIA_DIRECTA -DPRUEBA_JIT -DSOLO_PRUEBA_GPU -DPIGLET_IMPORTADO -DMARCA_GPU_FIRMA"; GPU=1; LIBEXTRA="-lScePigletv2VSH"; PAID=0x3800000000000035; AUTHINFO="$AUTH_PIGLET"; GUION="$GUION_ALLESIU"; LDEXTRA="$ENVOLVER_MEMORIA" ;;
+    # prueba57: la receta de ioQuake3-PS4 (probada en consolas): Piglet del firmware importado, PAID normal con el
+    # authinfo de Piglet, sin módulos en el paquete.
+    prueba57) TITLE_ID=SNES00060; CONTENT_ID=IV0000-SNES00060_00-SNESPRUEBA570000; TITULO="ALLESIU GPU 9"; CARPETAS="comun nucleo app"; DEFS="-DMEMORIA_DIRECTA -DPRUEBA_JIT -DSOLO_PRUEBA_GPU -DPIGLET_IMPORTADO -DPIGLET_SISTEMA"; LIBEXTRA="-lScePigletv2VSH"; AUTHINFO="$AUTH_PIGLET"; GUION="$GUION_ALLESIU"; LDEXTRA="$ENVOLVER_MEMORIA" ;;
     *) return 1 ;;
   esac
 }

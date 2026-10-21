@@ -100,6 +100,8 @@ const char* PruebaGpu()
 #ifdef SOLO_PRUEBA_GPU
 #ifdef MARCA_GPU_FIRMA
     snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima8.txt", CARPETA_DIAGNOSTICO);   // la de la firma de Piglet (prueba55)
+#elif defined(PIGLET_SISTEMA)
+    snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima9.txt", CARPETA_DIAGNOSTICO);   // la receta de ioQuake3 (prueba57)
 #else
     snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima6.txt", CARPETA_DIAGNOSTICO);
 #endif   // la variante mínima, con sus intentos
@@ -139,6 +141,9 @@ const char* PruebaGpu()
     bool pigletSistema = intento % 2 == 1;   // 0 y 2: el de RetroArch (paquete); 1 y 3: el del sistema
 #ifdef PIGLET_IMPORTADO
     pigletSistema = false;   // importado: el sistema ya cargó el del paquete al crear el proceso
+#endif
+#ifdef PIGLET_SISTEMA
+    pigletSistema = true;    // sin módulos en el paquete: el del firmware (como ioQuake3-PS4)
 #endif
     Registrar("Prueba GPU: intento %d de %d, Piglet %s", intento + 1, MAX_INTENTOS, pigletSistema ? "del sistema" : "del paquete");
     auto Paso = [&](int n) { char t[48]; snprintf(t, sizeof t, "paso %d intento %d\n", n, intento); EscribirTexto(ruta, t); };
