@@ -19,6 +19,7 @@
 #include <orbis/libkernel.h>
 
 #include "../comun/gl_funciones.h"
+#include "../comun/pantalla.h"
 #include "../comun/plataforma.h"
 #include "registro.h"
 
@@ -93,9 +94,9 @@ const char* PruebaGpu()
     if (resultado[0]) return resultado;
     char ruta[160], antes[320] = "", det[200] = "";
 #ifdef SOLO_PRUEBA_GPU
-    snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima4.txt", CARPETA_DIAGNOSTICO);   // la variante mínima, con sus intentos
+    snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima5.txt", CARPETA_DIAGNOSTICO);   // la variante mínima, con sus intentos
 #else
-    snprintf(ruta, sizeof ruta, "%s/prueba_gpu8.txt", CARPETA_DIAGNOSTICO);
+    snprintf(ruta, sizeof ruta, "%s/prueba_gpu9.txt", CARPETA_DIAGNOSTICO);
 #endif
     LeerTexto(ruta, antes, sizeof antes);
     // Se hace una sola vez: Piglet toma la salida de video y la app queda en negro. Las veces siguientes, el resultado
@@ -159,6 +160,7 @@ const char* PruebaGpu()
     Registrar("Prueba GPU 1: faltan %d funciones de OpenGL ES / EGL", faltan);
     // Con el acceso completo de GoldHEN (eleva los permisos): en la prueba de PCSX2 la variante que lo pedía (C) abrió
     // EGL; sin él, eglGetDisplay falla sin dar error. Los módulos ya están cargados (con el acceso, /app0 puede no verse).
+    QuitarPantallaDeCarga();   // como el ejemplo oficial de Piglet: con la pantalla de carga puesta, no hay pantalla para EGL
     int acceso = AbrirAccesoCompleto("gpu", true);
     Registrar("Prueba GPU 1: acceso completo de GoldHEN: %d", acceso);
     bool (*configurar)(const OrbisPglConfig*) = NULL;

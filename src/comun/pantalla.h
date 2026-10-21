@@ -8,3 +8,6 @@ void PantallaMostrar();
 // Milisegundos del último cuadro: dibujando (todos los núcleos) y entregándolo a la consola.
 float MsDibujo();
 float MsEntrega();
+// Quita la pantalla de carga del sistema (la que se ve al abrir la app). La GPU (Piglet) no abre su pantalla mientras
+// está puesta: el ejemplo oficial de Piglet la quita antes de iniciar EGL.
+void QuitarPantallaDeCarga();

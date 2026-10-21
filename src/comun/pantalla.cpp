@@ -26,7 +26,7 @@ static float msDibujo, msEntrega;
 // sceSystemServiceHideSplashScreen se busca por nombre en el momento (como la red en plataforma.cpp): así el programa
 // no suma una función del sistema a las que pide para abrir, y si no está no pasa nada. La versión "segura" (sin red)
 // no carga módulos: no pide ni siquiera estas dos funciones del sistema.
-static void QuitarPantallaDeCarga()
+void QuitarPantallaDeCarga()
 {
 #ifndef SIN_RED
     static const char* const RUTAS[] = {"libSceSystemService.sprx", "/system/common/lib/libSceSystemService.sprx"};
