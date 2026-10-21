@@ -16,6 +16,10 @@
 #include <orbis/Pad.h>
 #include <orbis/UserService.h>
 #include <orbis/libkernel.h>
+#include <orbis/Pigletv2VSH.h>
+
+#include "gpu.h"
+void Registrar(const char* fmt, ...);
 #include <SDL2/SDL.h>
 
 // ---------- tiempo ----------
@@ -583,13 +587,73 @@ bool EspacioLibre(const char* ruta, uint64_t* libres, uint64_t* total)
 
 bool BorrarArchivo(const char* ruta) { return LlamadaSistema(10, (long)ruta, 0) == 0; }
 
+// ---------- GPU (ver gpu.h) ----------
+// Piglet (OpenGL ES 2 del sistema) y el compilador de shaders se cargan en el momento; las consolas de venta no traen
+// el compilador: va dentro del paquete (pruebas) o en /data/allesiu/gpu/. Las funciones se buscan por nombre.
+static int modPiglet = -1;
+static int CargarModuloGpu(const char* nombre)
+{
+    const char* (*palabra)() = NULL;
+    if (sceKernelDlsym(0x2001, "sceKernelGetFsSandboxRandomWord", (void**)&palabra) != 0) palabra = NULL;
+    char ruta[256];
+    int ret = 0;
+    snprintf(ruta, sizeof ruta, "/app0/sce_module/%s", nombre);
+    int h = (int)sceKernelLoadStartModule(ruta, 0, NULL, 0, NULL, &ret);
+    if (h < 0) { snprintf(ruta, sizeof ruta, "%s/gpu/%s", CARPETA_DATOS, nombre); h = (int)sceKernelLoadStartModule(ruta, 0, NULL, 0, NULL, &ret); }
+    if (h < 0 && palabra && palabra()) { snprintf(ruta, sizeof ruta, "/%s/common/lib/%s", palabra(), nombre); h = (int)sceKernelLoadStartModule(ruta, 0, NULL, 0, NULL, &ret); }
+    if (h < 0) { snprintf(ruta, sizeof ruta, "/system/common/lib/%s", nombre); h = (int)sceKernelLoadStartModule(ruta, 0, NULL, 0, NULL, &ret); }
+    if (h >= 0) Registrar("GPU: %s cargado desde %s", nombre, ruta);
+    else Registrar("GPU: %s no cargó (0x%08X)", nombre, (unsigned)h);
+    return h;
+}
+
+bool GpuCargarModulos(char* error, int max)
+{
+    if (modPiglet >= 0) return true;
+    modPiglet = CargarModuloGpu("libScePigletv2VSH.sprx");
+    if (modPiglet < 0) { snprintf(error, max, "no se pudo cargar Piglet (OpenGL ES de la consola)."); return false; }
+    if (CargarModuloGpu("libSceShaccVSH.sprx") < 0)
+    {
+        snprintf(error, max, "falta el compilador de shaders (libSceShaccVSH.sprx en /data/allesiu/gpu/).");
+        return false;
+    }
+    bool (*configurar)(const OrbisPglConfig*) = NULL;
+    if (sceKernelDlsym(modPiglet, "scePigletSetConfigurationVSH", (void**)&configurar) != 0 || !configurar)
+    {
+        snprintf(error, max, "falta scePigletSetConfigurationVSH.");
+        return false;
+    }
+    OrbisPglConfig cfg;
+    memset(&cfg, 0, sizeof cfg);
+    cfg.size = sizeof cfg;
+    cfg.flags = ORBIS_PGL_FLAGS_USE_COMPOSITE_EXT | ORBIS_PGL_FLAGS_USE_FLEXIBLE_MEMORY | 0x60;
+    cfg.processOrder = 1;
+    cfg.systemSharedMemorySize = 64 * 1024 * 1024;
+    cfg.videoSharedMemorySize = 128 * 1024 * 1024;
+    cfg.maxMappedFlexibleMemory = 64 * 1024 * 1024;
+    cfg.drawCommandBufferSize = 1 * 1024 * 1024;
+    cfg.lcueResourceBufferSize = 1 * 1024 * 1024;
+    cfg.dbgPosCmd_0x40 = 640;
+    cfg.dbgPosCmd_0x44 = 480;
+    cfg.unk_0x5C = 2;
+    if (!configurar(&cfg)) { snprintf(error, max, "scePigletSetConfigurationVSH falló."); return false; }
+    return true;
+}
+
+void* GpuBuscar(const char* nombre)
+{
+    void* f = NULL;
+    if (modPiglet < 0 || sceKernelDlsym(modPiglet, nombre, &f) != 0) f = NULL;
+    return f;
+}
+
 // ---------- cierres ----------
 // El manejador de las señales de error (SIGSEGV, SIGBUS, SIGILL, SIGFPE): escribe con llamadas directas al sistema
 // (open = 5, write = 4, close = 6; nada de printf ni malloc, que pueden ser justo lo que falló) la señal, la dirección
 // que se quiso tocar, la instrucción que falló y las direcciones de código que hay en la pila (las funciones que
 // venían llamando). Después vuelve: con SA_RESETHAND la señal queda como siempre y el sistema cierra el programa.
 // sigaction se busca por nombre en libkernel (no se suma a las funciones que pide el programa).
-static char cierreLinea[160];
+static char cierreLinea[600];
 static int cierreLargo;
 static void CierreTexto(const char* t) { while (*t && cierreLargo < (int)sizeof cierreLinea - 1) cierreLinea[cierreLargo++] = *t++; }
 static void CierreHex(uint64_t v)
@@ -629,7 +693,7 @@ static void AlCerrarse(int senal, void* info, void* contexto)
         for (int i = 0; i < 96; i++)
         {
             uint64_t v = ((const uint64_t*)uc)[i];
-            if (v + 0x4000000 > ref && v < ref + 0x4000000)
+            if (v > 0x100000 && v + 0x4000000 > ref && v < ref + 0x4000000)
             {
                 char k[8] = {' ', (char)('0' + i / 10), (char)('0' + i % 10), ':', 0};
                 CierreTexto(k);
@@ -648,7 +712,7 @@ static void AlCerrarse(int senal, void* info, void* contexto)
         for (int i = 0; i < 4096 && vistas < 48; i++)
         {
             uint64_t v = p[i];
-            if (v + 0x4000000 > ref && v < ref + 0x4000000 && v != ref)
+            if (v > 0x100000 && v + 0x4000000 > ref && v < ref + 0x4000000 && v != ref)
             {
                 CierreTexto(" ");
                 CierreHex(v);

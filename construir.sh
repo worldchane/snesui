@@ -25,7 +25,7 @@ FLAGS="--target=x86_64-pc-freebsd12-elf -fPIC -funwind-tables -fno-exceptions -f
 AUTH_PIGLET=000000000000000000000000001C004000FF000000000080000000000000000000000000000000000000008000400040000000000000008000000000000000080040FFFF000000F000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 
 construir() {
-  BIOS=; NUCLEOS=; LDEXTRA=; GUION=   # GUION: guion del enlazador (vacío = el de OpenOrbis)
+  BIOS=; GPU=; NUCLEOS=; LDEXTRA=; GUION=   # GUION: guion del enlazador (vacío = el de OpenOrbis)
   variante "$1" || { echo "variante desconocida: $1 (hay: $TODAS personal)"; exit 1; }
   # Los núcleos libretro de las otras consolas (solo recompila lo que cambió); la app sabe cuáles hay por -DCON_NUCLEO_<X>.
   sh "$AQUI/src/nucleos/nucleos.sh" ps4 $NUCLEOS >/dev/null   # NUCLEOS: solo esos (pruebas); vacío = todos
@@ -53,6 +53,12 @@ construir() {
   # Archivos fijos del paquete: los módulos y right.sprx que trae el propio OpenOrbis, el ícono (512 × 512) y assets/. Sin pic1.png: la pantalla de
   # carga queda negra; el programa la quita al mostrar el primer cuadro (src/comun/pantalla.cpp).
   cp "$TC/samples/SDL2/sce_module/"*.prx "$PAQ/sce_module/"
+  # GPU=1 (solo pruebas personales, nunca la pública): Piglet y el compilador de shaders de Sony (gpu/, sacados del
+  # PKG de RetroArch). Las consolas de venta no traen el compilador; sin él no se compilan los shaders de GLideN64.
+  if [ -n "$GPU" ]; then
+    ls "$AQUI"/gpu/*.sprx >/dev/null 2>&1 || { echo "falta la carpeta gpu/ con libScePigletv2VSH.sprx y libSceShaccVSH.sprx"; exit 1; }
+    cp "$AQUI"/gpu/*.sprx "$PAQ/sce_module/"
+  fi
   cp "$TC/samples/SDL2/sce_sys/about/right.sprx" "$PAQ/sce_sys/about/"
   cp "$AQUI/icon0.png" "$PAQ/sce_sys/icon0.png"
   rm -rf "$PAQ/assets" "$PAQ/bios"

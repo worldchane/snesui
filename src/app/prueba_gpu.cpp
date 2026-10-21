@@ -35,20 +35,28 @@ int Cargar(const char* nombre, char* det, int max)
     if (sceKernelDlsym(0x2001, "sceKernelGetFsSandboxRandomWord", (void**)&palabra) != 0) palabra = NULL;
     char ruta[256];
     int ret = 0, h = -1;
-    if (palabra && palabra())
+    // Las consolas de venta no traen el compilador de shaders (libSceShaccVSH): va dentro del paquete (pruebas, sacado
+    // del de RetroArch) o en /data/allesiu/gpu/, donde cada uno pone los suyos. Después, la carpeta del sistema.
+    snprintf(ruta, sizeof ruta, "/app0/sce_module/%s", nombre);
+    h = (int)sceKernelLoadStartModule(ruta, 0, NULL, 0, NULL, &ret);
+    if (h < 0) { snprintf(ruta, sizeof ruta, "%s/gpu/%s", CARPETA_DATOS, nombre); h = (int)sceKernelLoadStartModule(ruta, 0, NULL, 0, NULL, &ret); }
+    if (h < 0 && palabra && palabra())
     {
         snprintf(ruta, sizeof ruta, "/%s/common/lib/%s", palabra(), nombre);
         h = (int)sceKernelLoadStartModule(ruta, 0, NULL, 0, NULL, &ret);
     }
     if (h < 0) { snprintf(ruta, sizeof ruta, "/system/common/lib/%s", nombre); h = (int)sceKernelLoadStartModule(ruta, 0, NULL, 0, NULL, &ret); }
-    snprintf(det, max, h >= 0 ? "%s cargado" : "%s no cargó (0x%08X)", nombre, (unsigned)h);
+    if (h >= 0) snprintf(det, max, "%s cargado desde %s", nombre, ruta);
+    else snprintf(det, max, "%s no cargó (0x%08X)", nombre, (unsigned)h);
     return h;
 }
 
+int faltanAnotadas;
 void* BuscarEnPiglet(const char* nombre)
 {
     void* f = NULL;
     if (sceKernelDlsym(modPiglet, nombre, &f) != 0) f = NULL;
+    if (!f && faltanAnotadas++ < 16) Registrar("Prueba GPU 1: falta %s", nombre);   // cuáles (no solo cuántas)
     return f;
 }
 
@@ -80,7 +88,7 @@ const char* PruebaGpu()
 {
     if (resultado[0]) return resultado;
     char ruta[160], antes[320] = "", det[200] = "";
-    snprintf(ruta, sizeof ruta, "%s/prueba_gpu.txt", CARPETA_DATOS);
+    snprintf(ruta, sizeof ruta, "%s/prueba_gpu3.txt", CARPETA_DATOS);
     LeerTexto(ruta, antes, sizeof antes);
     // Se hace una sola vez: Piglet toma la salida de video y la app queda en negro. Las veces siguientes, el resultado
     // guardado ("terminada" y la línea del resultado).
@@ -102,7 +110,10 @@ const char* PruebaGpu()
         return resultado;
     }
     auto Paso = [&](int n) { char t[16]; snprintf(t, sizeof t, "paso %d\n", n); EscribirTexto(ruta, t); };
+    EGLDisplay pantalla = EGL_NO_DISPLAY;
     auto Fin = [&](const char* t) {
+        // EGL se suelta siempre: la prueba corre antes de abrir la pantalla de la app (main.cpp), que la necesita.
+        if (pantalla != EGL_NO_DISPLAY) { eglMakeCurrent(pantalla, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT); eglTerminate(pantalla); }
         snprintf(resultado, sizeof resultado, "GPU: %s", t);
         char g[340];
         snprintf(g, sizeof g, "terminada\n%s\n", resultado);
@@ -140,8 +151,7 @@ const char* PruebaGpu()
     cfg.dbgPosCmd_0x44 = 480;
     cfg.unk_0x5C = 2;
     if (!configurar(&cfg)) return Fin("scePigletSetConfigurationVSH falló.");
-    EGLDisplay pantalla = EGL_NO_DISPLAY;
-    for (int i = 0; i < 3 && pantalla == EGL_NO_DISPLAY; i++) { pantalla = eglGetDisplay(EGL_DEFAULT_DISPLAY); if (pantalla == EGL_NO_DISPLAY) Dormir(100); }
+    for (int i = 0; i < 10 && pantalla == EGL_NO_DISPLAY; i++) { pantalla = eglGetDisplay(EGL_DEFAULT_DISPLAY); if (pantalla == EGL_NO_DISPLAY) Dormir(200); }
     if (pantalla == EGL_NO_DISPLAY) return Fin("eglGetDisplay falló.");
     EGLint ma = 0, mi = 0;
     if (!eglInitialize(pantalla, &ma, &mi)) { snprintf(det, sizeof det, "eglInitialize falló (0x%X).", eglGetError()); return Fin(det); }

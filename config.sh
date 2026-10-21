@@ -95,6 +95,12 @@ variante() {
     # prueba44: lo subido el 2026-10-20 (créditos, Super FX en Snes9x, "Preparando las carátulas") y el recompilador de N64
     # (máquina en n64_g_dev, a 256 MB del programa). Desde acá las pruebas se instalan con el título "ALLESIU".
     prueba44) TITLE_ID=SNES00047; CONTENT_ID=IV0000-SNES00047_00-SNESPRUEBA440000; TITULO="ALLESIU"; CARPETAS="comun nucleo app"; DEFS="-DCON_BIOS_INCLUIDAS -DMEMORIA_DIRECTA"; BIOS=1; NUCLEOS="$NUCLEOS_TODOS n64"; GUION="$GUION_ALLESIU"; LDEXTRA="$ENVOLVER_MEMORIA" ;;
+    # prueba45: la 44 con la prueba de GPU otra vez (marca prueba_gpu2.txt), con Piglet y el compilador de shaders de
+    # RetroArch dentro del paquete (GPU=1, carpeta gpu/).
+    prueba45) TITLE_ID=SNES00048; CONTENT_ID=IV0000-SNES00048_00-SNESPRUEBA450000; TITULO="ALLESIU"; CARPETAS="comun nucleo app"; DEFS="-DCON_BIOS_INCLUIDAS -DMEMORIA_DIRECTA -DPRUEBA_JIT"; BIOS=1; GPU=1; NUCLEOS="$NUCLEOS_TODOS n64"; GUION="$GUION_ALLESIU"; LDEXTRA="$ENVOLVER_MEMORIA" ;;
+    # prueba46: la prueba de GPU al arrancar, antes de abrir la pantalla de la app (marca prueba_gpu3.txt); cierre.txt
+    # con el filtro de direcciones corregido. Trae el código de GPU para núcleos (gpu.cpp), sin usarlo todavía en la N64.
+    prueba46) TITLE_ID=SNES00049; CONTENT_ID=IV0000-SNES00049_00-SNESPRUEBA460000; TITULO="ALLESIU"; CARPETAS="comun nucleo app"; DEFS="-DCON_BIOS_INCLUIDAS -DMEMORIA_DIRECTA -DPRUEBA_JIT"; BIOS=1; GPU=1; NUCLEOS="$NUCLEOS_TODOS n64"; GUION="$GUION_ALLESIU"; LDEXTRA="$ENVOLVER_MEMORIA" ;;
     *) return 1 ;;
   esac
 }

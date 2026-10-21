@@ -15,6 +15,7 @@
 #include "arcade.h"
 #include "consola.h"
 #include "interfaz.h"
+#include "prueba_jit.h"
 #include "mudanza.h"
 #include "registro.h"
 
@@ -90,7 +91,12 @@ int main()
     ArcadeIniciar();
     MudanzaOrdenarRoms();           // los juegos sueltos de la consola, cada uno a roms/<consola>
     IniciarTrabajadores(5);         // con el hilo principal, 6 partes: los 6 núcleos de la consola para la app
-    if (!PantallaIniciar()) for (;;) sceKernelUsleep(1000000);
+#ifdef PRUEBA_JIT
+    // La prueba de GPU antes de abrir la pantalla de la app: Piglet abre la salida de video por su cuenta y, con la de
+    // la app ya abierta, eglGetDisplay fallaba (prueba 45). Corre una sola vez (prueba_gpu3.txt).
+    PruebaGpu();
+#endif
+    if (!PantallaIniciar()) { Registrar("No se pudo abrir la pantalla"); for (;;) sceKernelUsleep(1000000); }
     bool fuentes = CargarFuentes();
     InterfazIniciar();
     if (MudanzaResumen()[0]) Registrar("%s", MudanzaResumen());   // después de la cabecera del registro

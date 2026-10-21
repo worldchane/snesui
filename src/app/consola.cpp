@@ -89,8 +89,31 @@ NUCLEO(s9x, "Snes9x")
 extern "C" int n64_dispositivo_preparar(void);
 static void Iniciar_n64()
 {
-    LibretroOpcion("mupen64plus-rdp-plugin", "angrylion");
-    LibretroOpcion("mupen64plus-rsp-plugin", "cxd4");   // Angrylion necesita el RSP de bajo nivel
+    // Con la GPU (GLideN64, por OpenGL ES): el RSP rápido (HLE) y la imagen a 640 x 480. Sin ella, Angrylion por
+    // software con el RSP de bajo nivel, que necesita. En la PC se elige con N64_RDP=gliden64; en la consola, con
+    // -DN64_GPU (pruebas).
+    const char* rdp = getenv("N64_RDP");
+#ifdef N64_GPU
+    if (!rdp) rdp = "gliden64";
+#endif
+    bool gpu = rdp && !strcmp(rdp, "gliden64");
+    LibretroOpcion("mupen64plus-rdp-plugin", gpu ? "gliden64" : "angrylion");
+    LibretroOpcion("mupen64plus-rsp-plugin", gpu ? "hle" : "cxd4");
+    if (gpu) LibretroOpcion("mupen64plus-43screensize", "640x480");
+    // En la PC, opciones extra para probar: N64_OPC="EnableFBEmulation=False,ThreadedRenderer=False" (sin "mupen64plus-").
+    if (const char* extra = getenv("N64_OPC"))
+    {
+        char copia[512];
+        snprintf(copia, sizeof copia, "%s", extra);
+        for (char* par = strtok(copia, ","); par; par = strtok(NULL, ","))
+            if (char* igual = strchr(par, '='))
+            {
+                *igual = 0;
+                char clave[96];
+                snprintf(clave, sizeof clave, "mupen64plus-%s", par);
+                LibretroOpcion(clave, igual + 1);
+            }
+    }
     // El dibujo en 4 hilos (los de la app: n64/parallel_allesiu.cpp; los de C++ cerraban la app en la consola).
     LibretroOpcion("mupen64plus-angrylion-multithread", "4");
     const char* cpu = getenv("N64_CPU");

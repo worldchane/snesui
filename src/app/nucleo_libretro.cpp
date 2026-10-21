@@ -10,6 +10,7 @@
 
 #include "../comun/plataforma.h"
 #include "registro.h"
+#include "../comun/gpu.h"
 
 static const ApiLibretro* api;
 static const char* nombreNucleo = "";
@@ -91,7 +92,8 @@ void LibretroOpcion(const char* clave, const char* valor)
 
 static void Log(enum retro_log_level nivel, const char* fmt, ...)
 {
-    if (nivel < RETRO_LOG_WARN && !anotarTodo) return;
+    static const bool detalle = getenv("NUCLEO_DETALLE") != NULL;   // en la PC: todos los mensajes del núcleo
+    if (nivel < RETRO_LOG_WARN && !anotarTodo && !detalle) return;
     char t[300];
     va_list a;
     va_start(a, fmt);
@@ -104,10 +106,33 @@ static void Log(enum retro_log_level nivel, const char* fmt, ...)
     Registrar("Núcleo %s: %s", nombreNucleo, t);
 }
 
+// Núcleos que dibujan con la GPU (OpenGL ES 2: la N64 con GLideN64). El contexto se arma en el primer cuadro, en el
+// hilo de la emulación (ver gpu.h).
+static retro_hw_render_callback hw;
+static bool hwPedido, hwListo;
+static const int HW_ANCHO = 640, HW_ALTO = 480;   // la imagen más grande que entra en la de la app (CONSOLA_MAX_*)
+static uintptr_t HwFramebuffer() { return GpuFramebuffer(); }
+static retro_proc_address_t HwFuncion(const char* nombre) { return (retro_proc_address_t)GpuFuncion(nombre); }
+
 static bool Entorno(unsigned cmd, void* dato)
 {
     switch (cmd)
     {
+    case RETRO_ENVIRONMENT_SET_HW_RENDER:
+    {
+        retro_hw_render_callback* cb = (retro_hw_render_callback*)dato;
+        bool es = cb->context_type == RETRO_HW_CONTEXT_OPENGLES2 || cb->context_type == RETRO_HW_CONTEXT_OPENGLES3 ||
+                  (cb->context_type == RETRO_HW_CONTEXT_OPENGLES_VERSION && cb->version_major <= 3);
+        Registrar("Núcleo %s: pide la GPU (tipo %d, versión %u.%u)%s", nombreNucleo, (int)cb->context_type, cb->version_major,
+                  cb->version_minor, es ? "" : ": no es OpenGL ES, no se puede");
+        if (!es) return false;
+        cb->get_current_framebuffer = HwFramebuffer;
+        cb->get_proc_address = HwFuncion;
+        hw = *cb;
+        hwPedido = true;
+        return true;
+    }
+    case RETRO_ENVIRONMENT_GET_PREFERRED_HW_RENDER: *(unsigned*)dato = RETRO_HW_CONTEXT_OPENGLES2; return true;
     case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT:
     {
         unsigned f = *(const unsigned*)dato;
@@ -179,6 +204,12 @@ static void Video(const void* datos, unsigned w, unsigned h, size_t pitch)
     if (!datos || !destino) return;   // cuadro repetido: queda el anterior
     if (w > (unsigned)CONSOLA_MAX_ANCHO) w = CONSOLA_MAX_ANCHO;
     if (h > (unsigned)CONSOLA_MAX_ALTO) h = CONSOLA_MAX_ALTO;
+    if (datos == RETRO_HW_FRAME_BUFFER_VALID)
+    {
+        // Dibujado en la GPU: se lee del framebuffer.
+        if (GpuLeer(destino, (int)w, (int)h)) { destinoAncho = (int)w; destinoAlto = (int)h; }
+        return;
+    }
     destinoAncho = (int)w;
     destinoAlto = (int)h;
     for (unsigned y = 0; y < h; y++)
@@ -333,8 +364,15 @@ static bool Cargar(const char* ruta, char* error)
 static void Descargar()
 {
     if (!api || !iniciado) return;
+    if (hwListo)
+    {
+        GpuActivar();
+        if (hw.context_destroy) hw.context_destroy();
+    }
     api->unload_game();
     api->deinit();
+    if (hwListo) { GpuCerrar(); GpuSoltar(); }
+    hwListo = hwPedido = false;
     iniciado = false;
     free(rom);
     rom = NULL;
@@ -354,7 +392,21 @@ static int Cuadro(uint32_t* imagen, int* ancho, int* alto, int16_t* audio, int m
     sonido = audio;
     sonidoMax = maxAudio;
     sonidoN = 0;
+    if (hwPedido && !hwListo)
+    {
+        char e[160] = "";
+        if (GpuAbrir(HW_ANCHO, HW_ALTO, e, sizeof e))
+        {
+            hwListo = true;
+            GpuAnotarError("al abrir");
+            if (hw.context_reset) hw.context_reset();
+            GpuAnotarError("tras context_reset");
+        }
+        else { Registrar("GPU: no se pudo preparar: %s", e); hwPedido = false; }
+    }
+    else if (hwListo) GpuActivar();
     api->run();
+    if (hwListo) GpuSoltar();
     destino = NULL;
     sonido = NULL;
     cuadros++;

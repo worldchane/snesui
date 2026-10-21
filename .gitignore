@@ -24,3 +24,6 @@ bios/
 
 # Herramientas de prueba con emuladores y roms de terceros (solo en esta PC)
 pc/referencia/
+
+# Módulos de Sony para la GPU (Piglet y el compilador de shaders, sacados del PKG de RetroArch): nunca se suben
+gpu/

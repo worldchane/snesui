@@ -119,8 +119,36 @@ static Resultado Probar(const char* ruta, int cuadros, const char* png)
 }
 
 #include <windows.h>
+// REGISTRO=1: al terminar (o al caerse) muestra las últimas líneas del registro de la app.
+int RegistroUltimas(char* out, int max);
+static void MostrarRegistro()
+{
+    if (!getenv("REGISTRO")) return;
+    static char r[16384];
+    RegistroUltimas(r, sizeof r);
+    fprintf(stderr, "---- registro ----\n%s\n", r);
+}
+// Antes que cualquier otro manejador (también en fibras y en DLL): en qué módulo y dirección fue el acceso inválido.
+static LONG WINAPI PrimeraFalla(EXCEPTION_POINTERS* e)
+{
+    DWORD c = e->ExceptionRecord->ExceptionCode;
+    if (c != 0xC0000005 && c != 0xC00000FD) return EXCEPTION_CONTINUE_SEARCH;   // acceso inválido, pila desbordada
+    static int vistas;
+    if (vistas++ > 3) return EXCEPTION_CONTINUE_SEARCH;
+    HMODULE m = NULL;
+    char nombre[MAX_PATH] = "?";
+    GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                       (LPCSTR)e->ExceptionRecord->ExceptionAddress, &m);
+    if (m) GetModuleFileNameA(m, nombre, sizeof nombre);
+    fprintf(stderr, "FALLA %08lx en %s + %llx (quiso tocar %llx)\n", c, nombre,
+            (unsigned long long)((char*)e->ExceptionRecord->ExceptionAddress - (char*)m),
+            (unsigned long long)(e->ExceptionRecord->NumberParameters > 1 ? e->ExceptionRecord->ExceptionInformation[1] : 0));
+    fflush(stderr);
+    return EXCEPTION_CONTINUE_SEARCH;
+}
 static LONG WINAPI AlCaer(EXCEPTION_POINTERS* e)
 {
+    MostrarRegistro();
     fprintf(stderr, "CAIDA codigo %08lx en %p (base %p, desplazamiento %llx)\n", e->ExceptionRecord->ExceptionCode,
             e->ExceptionRecord->ExceptionAddress, (void*)GetModuleHandleA(NULL),
             (unsigned long long)((char*)e->ExceptionRecord->ExceptionAddress - (char*)GetModuleHandleA(NULL)));
@@ -130,6 +158,7 @@ static LONG WINAPI AlCaer(EXCEPTION_POINTERS* e)
 int main(int argc, char** argv)
 {
     SetUnhandledExceptionFilter(AlCaer);
+    if (getenv("REGISTRO")) AddVectoredExceptionHandler(1, PrimeraFalla);
     if (argc < 3) { printf("uso: probar_consola <rom | @lista.txt> <cuadros> [carpeta]\n"); return 1; }
     // probar_consola identificar @lista.txt: qué juego arcade es cada zip por su contenido, comparado con su nombre.
     if (!strcmp(argv[1], "identificar"))
@@ -207,6 +236,7 @@ int main(int argc, char** argv)
         if (n % 50 == 0) printf("%d roms, %d abrieron, %d con imagen plana\n", n, ok, planas);
     }
     printf("total: %d roms, %d abrieron, %d con imagen plana al final\n", n, ok, planas);
+    MostrarRegistro();
     fclose(out);
     return 0;
 }

@@ -190,3 +190,21 @@ bool EscribirTexto(const char* r, const char* t)
 }
 
 extern "C" void MemoriaResumen(char* sale, int max) { snprintf(sale, max, "(memoria: solo en la consola)"); }
+
+// GPU (ver gpu.h): EGL y OpenGL ES 2 de ANGLE (libEGL.dll y libGLESv2.dll junto a simular.exe; vienen con Chrome,
+// Edge o Steam), la misma API que Piglet en la consola.
+static HMODULE moduloEgl, moduloGles;
+bool GpuCargarModulos(char* error, int max)
+{
+    if (moduloEgl && moduloGles) return true;
+    moduloGles = LoadLibraryA("libGLESv2.dll");
+    moduloEgl = LoadLibraryA("libEGL.dll");
+    if (!moduloEgl || !moduloGles) { snprintf(error, max, "faltan libEGL.dll y libGLESv2.dll (ANGLE) junto al programa."); return false; }
+    return true;
+}
+void* GpuBuscar(const char* nombre)
+{
+    void* f = moduloEgl ? (void*)GetProcAddress(moduloEgl, nombre) : NULL;
+    if (!f && moduloGles) f = (void*)GetProcAddress(moduloGles, nombre);
+    return f;
+}
