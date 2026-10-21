@@ -369,6 +369,21 @@ static int SistemaDeArchivo(const char* ruta, const char* nombre)
     return c ? c->sistema : -1;
 }
 
+// Los archivos de diagnóstico que versiones anteriores dejaban sueltos en /data/allesiu, a /data/allesiu/diagnostico.
+static void OrdenarDiagnostico()
+{
+    static const char* const SUELTOS[] = {"cierre.txt", "foto-en-juego.txt", "prueba_jit.txt", "prueba_jit2.txt",
+                                          "prueba_gpu.txt", "prueba_gpu2.txt", "prueba_gpu3.txt"};
+    CrearCarpetas(CARPETA_DIAGNOSTICO);
+    for (const char* n : SUELTOS)
+    {
+        char de[200], a[200];
+        snprintf(de, sizeof de, "%s/%s", CARPETA_DATOS, n);
+        snprintf(a, sizeof a, "%s/%s", CARPETA_DIAGNOSTICO, n);
+        if (ExisteArchivo(de) && !ExisteArchivo(a)) RenombrarArchivo(de, a);
+    }
+}
+
 void MudanzaOrdenarRoms()
 {
     char raiz[160];
@@ -432,6 +447,7 @@ void Mudanza()
     MigrarDatos();                  // /data/snes-ps4 de las versiones anteriores → /data/allesiu
     CrearCarpetas(CARPETA_DATOS);   // /data/allesiu (guardados, carátulas, ajustes)
     MigrarEstructura();             // carpetas de cada consola con los nombres de Batocera ("snes", "megadrive"...)
+    OrdenarDiagnostico();          // cierres y pruebas, a /data/allesiu/diagnostico
 }
 
 const char* MudanzaResumen() { return migracion; }

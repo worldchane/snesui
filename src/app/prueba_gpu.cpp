@@ -27,7 +27,7 @@ namespace {
 int modPiglet = -1, modShacc = -1;
 char resultado[300];
 
-int Cargar(const char* nombre, char* det, int max)
+int Cargar(const char* nombre, char* det, int max, bool sistemaPrimero = false)
 {
     // La carpeta de librerías del sistema vista desde la app: su nombre (al azar) se pide por nombre a libkernel, así el
     // programa no suma funciones a las que pide para abrir.
@@ -37,15 +37,19 @@ int Cargar(const char* nombre, char* det, int max)
     int ret = 0, h = -1;
     // Las consolas de venta no traen el compilador de shaders (libSceShaccVSH): va dentro del paquete (pruebas, sacado
     // del de RetroArch) o en /data/allesiu/gpu/, donde cada uno pone los suyos. Después, la carpeta del sistema.
-    snprintf(ruta, sizeof ruta, "/app0/sce_module/%s", nombre);
-    h = (int)sceKernelLoadStartModule(ruta, 0, NULL, 0, NULL, &ret);
-    if (h < 0) { snprintf(ruta, sizeof ruta, "%s/gpu/%s", CARPETA_DATOS, nombre); h = (int)sceKernelLoadStartModule(ruta, 0, NULL, 0, NULL, &ret); }
+    if (!sistemaPrimero)
+    {
+        snprintf(ruta, sizeof ruta, "/app0/sce_module/%s", nombre);
+        h = (int)sceKernelLoadStartModule(ruta, 0, NULL, 0, NULL, &ret);
+        if (h < 0) { snprintf(ruta, sizeof ruta, "%s/gpu/%s", CARPETA_DATOS, nombre); h = (int)sceKernelLoadStartModule(ruta, 0, NULL, 0, NULL, &ret); }
+    }
     if (h < 0 && palabra && palabra())
     {
         snprintf(ruta, sizeof ruta, "/%s/common/lib/%s", palabra(), nombre);
         h = (int)sceKernelLoadStartModule(ruta, 0, NULL, 0, NULL, &ret);
     }
     if (h < 0) { snprintf(ruta, sizeof ruta, "/system/common/lib/%s", nombre); h = (int)sceKernelLoadStartModule(ruta, 0, NULL, 0, NULL, &ret); }
+    if (h < 0 && sistemaPrimero) return Cargar(nombre, det, max, false);   // no está en el sistema: el del paquete
     if (h >= 0) snprintf(det, max, "%s cargado desde %s", nombre, ruta);
     else snprintf(det, max, "%s no cargó (0x%08X)", nombre, (unsigned)h);
     return h;
@@ -88,7 +92,7 @@ const char* PruebaGpu()
 {
     if (resultado[0]) return resultado;
     char ruta[160], antes[320] = "", det[200] = "";
-    snprintf(ruta, sizeof ruta, "%s/prueba_gpu3.txt", CARPETA_DATOS);
+    snprintf(ruta, sizeof ruta, "%s/prueba_gpu4.txt", CARPETA_DIAGNOSTICO);
     LeerTexto(ruta, antes, sizeof antes);
     // Se hace una sola vez: Piglet toma la salida de video y la app queda en negro. Las veces siguientes, el resultado
     // guardado ("terminada" y la línea del resultado).
@@ -100,16 +104,28 @@ const char* PruebaGpu()
         if (fin) *fin = 0;
         return resultado;
     }
-    if (!strncmp(antes, "paso", 4))
+    // Intentos: "intento N" (los N anteriores fallaron) o "paso P intento N" (el intento N se cortó en el paso P: se colgó
+    // o se apagó la consola). En la prueba de PCSX2 la primera vez falló y la siguiente funcionó: se reintenta al abrir.
+    int intento = 0, pasoCortado = 0;
+    if (!strncmp(antes, "intento", 7)) sscanf(antes, "intento %d", &intento);
+    if (!strncmp(antes, "paso", 4) && sscanf(antes, "paso %d intento %d", &pasoCortado, &intento) == 2)
     {
-        snprintf(resultado, sizeof resultado, "GPU: el paso %c no terminó la vez anterior (cerró o se colgó).", antes[5]);
+        Registrar("Prueba GPU: el intento %d se cortó en el paso %d (cerró, se colgó o se apagó)", intento + 1, pasoCortado);
+        intento++;
+    }
+    const int MAX_INTENTOS = 4;
+    if (intento >= MAX_INTENTOS)
+    {
+        snprintf(resultado, sizeof resultado, "GPU: no funcionó en %d intentos (ver el registro).", MAX_INTENTOS);
         char t[340];
         snprintf(t, sizeof t, "terminada\n%s\n", resultado);
         EscribirTexto(ruta, t);
         Registrar("%s", resultado);
         return resultado;
     }
-    auto Paso = [&](int n) { char t[16]; snprintf(t, sizeof t, "paso %d\n", n); EscribirTexto(ruta, t); };
+    bool pigletSistema = intento % 2 == 1;   // 0 y 2: el de RetroArch (paquete); 1 y 3: el del sistema
+    Registrar("Prueba GPU: intento %d de %d, Piglet %s", intento + 1, MAX_INTENTOS, pigletSistema ? "del sistema" : "del paquete");
+    auto Paso = [&](int n) { char t[48]; snprintf(t, sizeof t, "paso %d intento %d\n", n, intento); EscribirTexto(ruta, t); };
     EGLDisplay pantalla = EGL_NO_DISPLAY;
     auto Fin = [&](const char* t) {
         // EGL se suelta siempre: la prueba corre antes de abrir la pantalla de la app (main.cpp), que la necesita.
@@ -124,7 +140,7 @@ const char* PruebaGpu()
 
     // 1) Piglet y el compilador de shaders.
     Paso(1);
-    modPiglet = Cargar("libScePigletv2VSH.sprx", det, sizeof det);
+    modPiglet = Cargar("libScePigletv2VSH.sprx", det, sizeof det, pigletSistema);
     Registrar("Prueba GPU 1: %s", det);
     if (modPiglet < 0) return Fin("Piglet no cargó.");
     modShacc = Cargar("libSceShaccVSH.sprx", det, sizeof det);
@@ -142,9 +158,9 @@ const char* PruebaGpu()
     cfg.size = sizeof cfg;
     cfg.flags = ORBIS_PGL_FLAGS_USE_COMPOSITE_EXT | ORBIS_PGL_FLAGS_USE_FLEXIBLE_MEMORY | 0x60;
     cfg.processOrder = 1;
-    cfg.systemSharedMemorySize = 64 * 1024 * 1024;
-    cfg.videoSharedMemorySize = 128 * 1024 * 1024;
-    cfg.maxMappedFlexibleMemory = 64 * 1024 * 1024;
+    cfg.systemSharedMemorySize = 250 * 1024 * 1024;   // las de la prueba de PCSX2 (funcionó en esta consola)
+    cfg.videoSharedMemorySize = 512 * 1024 * 1024;
+    cfg.maxMappedFlexibleMemory = 170 * 1024 * 1024;
     cfg.drawCommandBufferSize = 1 * 1024 * 1024;
     cfg.lcueResourceBufferSize = 1 * 1024 * 1024;
     cfg.dbgPosCmd_0x40 = 640;
@@ -152,7 +168,16 @@ const char* PruebaGpu()
     cfg.unk_0x5C = 2;
     if (!configurar(&cfg)) return Fin("scePigletSetConfigurationVSH falló.");
     for (int i = 0; i < 10 && pantalla == EGL_NO_DISPLAY; i++) { pantalla = eglGetDisplay(EGL_DEFAULT_DISPLAY); if (pantalla == EGL_NO_DISPLAY) Dormir(200); }
-    if (pantalla == EGL_NO_DISPLAY) return Fin("eglGetDisplay falló.");
+    if (pantalla == EGL_NO_DISPLAY)
+    {
+        snprintf(resultado, sizeof resultado, "GPU: eglGetDisplay falló (0x%X) en el intento %d; se repite al abrir la app.", eglGetError(),
+                 intento + 1);
+        Registrar("%s", resultado);
+        char t[48];
+        snprintf(t, sizeof t, "intento %d\n", intento + 1);
+        EscribirTexto(ruta, t);
+        return resultado;
+    }
     EGLint ma = 0, mi = 0;
     if (!eglInitialize(pantalla, &ma, &mi)) { snprintf(det, sizeof det, "eglInitialize falló (0x%X).", eglGetError()); return Fin(det); }
     Registrar("Prueba GPU 2: EGL %d.%d", ma, mi);

@@ -19,7 +19,7 @@ static int sesion;
 static double ultimaEscritura;
 static char carpeta[160];        // donde se escribe; vacío = buscarla de nuevo
 
-static const char* const FOTO = "/data/allesiu/foto-en-juego.txt";
+static const char* const FOTO = "/data/allesiu/diagnostico/foto-en-juego.txt";
 static const uint64_t MAX_REGISTRO = 2 * 1024 * 1024;
 
 static void Bloquear() { while (candado.test_and_set(std::memory_order_acquire)) {} }
@@ -63,6 +63,29 @@ int RegistroUltimas(char* out, int max)
 }
 
 // La carpeta de diagnóstico: en el primer USB que haya, si no en /data. Llamar con el acceso completo abierto.
+// Copia lo de diagnóstico de la consola (CARPETA_DIAGNOSTICO) a <carpeta>/consola/: así se pasa una sola carpeta, la del
+// USB. Llamar con el acceso completo abierto.
+struct CopiaDiag { char destino[200]; int copiados; };
+static void AlListarDiag(const char* nombre, bool esCarpeta, void* u)
+{
+    CopiaDiag& c = *(CopiaDiag*)u;
+    if (esCarpeta || !strcmp(nombre, "registro.txt") || !strncmp(nombre, "informe", 7)) return;   // esos ya están en el USB
+    char de[300], a[300];
+    snprintf(de, sizeof de, "%s/%s", CARPETA_DIAGNOSTICO, nombre);
+    snprintf(a, sizeof a, "%s/%s", c.destino, nombre);
+    static char buf[64 * 1024];
+    int n = LeerTexto(de, buf, sizeof buf);
+    if (n > 0 && EscribirTexto(a, buf)) c.copiados++;
+}
+static void CopiarDiagnosticoConsola()
+{
+    if (!strncmp(carpeta, CARPETA_DIAGNOSTICO, strlen(CARPETA_DIAGNOSTICO))) return;   // sin USB: ya está ahí
+    CopiaDiag c = {};
+    snprintf(c.destino, sizeof c.destino, "%s/consola", carpeta);
+    if (!CrearCarpetas(c.destino)) return;
+    ListarCarpeta(CARPETA_DIAGNOSTICO, AlListarDiag, &c);
+}
+
 static bool BuscarCarpeta()
 {
     char usb[160];
@@ -134,6 +157,7 @@ void RegistroIniciar(const char* version)
 
     AbrirAccesoCompleto("snes");
     bool hay = BuscarCarpeta();
+    if (hay) CopiarDiagnosticoConsola();
     CerrarAccesoCompleto();
     Registrar("===== ALLESIU %s abierto (sesión %d). Registro en %s =====", version, sesion, hay ? carpeta : "(ninguna carpeta)");
     uint64_t libres = 0;

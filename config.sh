@@ -101,6 +101,9 @@ variante() {
     # prueba46: la prueba de GPU al arrancar, antes de abrir la pantalla de la app (marca prueba_gpu3.txt); cierre.txt
     # con el filtro de direcciones corregido. Trae el código de GPU para núcleos (gpu.cpp), sin usarlo todavía en la N64.
     prueba46) TITLE_ID=SNES00049; CONTENT_ID=IV0000-SNES00049_00-SNESPRUEBA460000; TITULO="ALLESIU"; CARPETAS="comun nucleo app"; DEFS="-DCON_BIOS_INCLUIDAS -DMEMORIA_DIRECTA -DPRUEBA_JIT"; BIOS=1; GPU=1; NUCLEOS="$NUCLEOS_TODOS n64"; GUION="$GUION_ALLESIU"; LDEXTRA="$ENVOLVER_MEMORIA" ;;
+    # prueba47: diagnóstico ordenado (/data/allesiu/diagnostico, copiado al USB en ALLESIU-diagnostico/consola) y la prueba
+    # de GPU con la memoria de la de PCSX2, hasta 4 intentos alternando el Piglet del paquete y el del sistema.
+    prueba47) TITLE_ID=SNES00050; CONTENT_ID=IV0000-SNES00050_00-SNESPRUEBA470000; TITULO="ALLESIU"; CARPETAS="comun nucleo app"; DEFS="-DCON_BIOS_INCLUIDAS -DMEMORIA_DIRECTA -DPRUEBA_JIT"; BIOS=1; GPU=1; NUCLEOS="$NUCLEOS_TODOS n64"; GUION="$GUION_ALLESIU"; LDEXTRA="$ENVOLVER_MEMORIA" ;;
     *) return 1 ;;
   esac
 }

@@ -88,6 +88,9 @@ bool RenombrarArchivo(const char* de, const char* a);   // archivo o carpeta, de
 extern "C" void MemoriaResumen(char* sale, int max);
 
 static const char* const CARPETA_DATOS = "/data/allesiu";
+// Lo de diagnóstico de la consola (cierres, pruebas, la foto del último juego), aparte de los datos del usuario.
+// Al abrir, se copia al USB en ALLESIU-diagnostico/consola/ (registro.cpp): se pasa una sola carpeta.
+static const char* const CARPETA_DIAGNOSTICO = "/data/allesiu/diagnostico";
 // La carpeta de las versiones anteriores (hasta la 1.4): al abrir, se renombra a CARPETA_DATOS (main.cpp).
 static const char* const CARPETA_DATOS_VIEJA = "/data/snes-ps4";
 

@@ -46,7 +46,7 @@ const char* PruebaJit()
     if (!mapear || !proteger) { snprintf(resultado, sizeof resultado, "JIT: no se encontraron mmap o mprotect."); return resultado; }
 
     char ruta[160], antes[64] = "";
-    snprintf(ruta, sizeof ruta, "%s/prueba_jit2.txt", CARPETA_DATOS);
+    snprintf(ruta, sizeof ruta, "%s/prueba_jit2.txt", CARPETA_DIAGNOSTICO);
     LeerTexto(ruta, antes, sizeof antes);
     int cerro = antes[0] == 'p' ? antes[9] - '0' : 0;   // "probando N": la parte N cerró el programa
     int saltar = antes[0] == 'c' ? antes[6] - '0' : 0;  // "cerro  N": ya se sabe, no se repite

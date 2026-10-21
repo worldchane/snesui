@@ -80,7 +80,8 @@ int main()
     IniciarNucleos();
 #endif
     setvbuf(stdout, NULL, _IONBF, 0);
-    CapturarCierres();              // si el programa se cae, queda anotado dónde en /data/allesiu/cierre.txt
+    CrearCarpetas(CARPETA_DIAGNOSTICO);
+    CapturarCierres();              // si el programa se cae, queda anotado dónde en /data/allesiu/diagnostico/cierre.txt
     Segundos();
     IniciarMando();
     IniciarAudio();

@@ -671,7 +671,7 @@ static void CierreEscribir(long fd)
 }
 static void AlCerrarse(int senal, void* info, void* contexto)
 {
-    long fd = LlamadaSistema3(5, (long)"/data/allesiu/cierre.txt", 0x1 | 0x200 | 0x8 /* escribir, crear, al final */, 0666);
+    long fd = LlamadaSistema3(5, (long)"/data/allesiu/diagnostico/cierre.txt", 0x1 | 0x200 | 0x8 /* escribir, crear, al final */, 0666);
     if (fd < 0) return;
     const uint8_t* uc = (const uint8_t*)contexto;
     uint64_t dir = info ? *(const uint64_t*)((const uint8_t*)info + 24) : 0;
