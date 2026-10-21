@@ -68,8 +68,15 @@ int main()
     ActivarCandadosLibc();          // malloc/free a salvo entre hilos (plataforma.cpp): antes que nada
 #ifdef PRUEBA_JIT
     // La prueba de GPU antes que todo lo demás (mando, audio, carpetas, acceso de GoldHEN, núcleos y pantalla):
-    // eglGetDisplay fallaba sin dar error con todo eso ya iniciado (pruebas 45 a 47).
+    // eglGetDisplay fallaba sin dar error con todo eso ya iniciado (pruebas 45 a 47). Con el registro de cierres ya
+    // activo (si se cae en la prueba, queda anotado dónde) y una marca de que el programa llegó a main.
     CrearCarpetas(CARPETA_DIAGNOSTICO);
+    CapturarCierres();
+    {
+        char m[160];
+        snprintf(m, sizeof m, "%s/llego_a_main.txt", CARPETA_DIAGNOSTICO);
+        EscribirTexto(m, "si\n");
+    }
     PruebaGpu();
 #endif
 #ifdef SOLO_PRUEBA_GPU

@@ -99,7 +99,7 @@ const char* PruebaGpu()
     char ruta[160], antes[320] = "", det[200] = "";
 #ifdef SOLO_PRUEBA_GPU
 #ifdef MARCA_GPU_FIRMA
-    snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima7.txt", CARPETA_DIAGNOSTICO);   // la de la firma de Piglet (prueba55)
+    snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima8.txt", CARPETA_DIAGNOSTICO);   // la de la firma de Piglet (prueba55)
 #else
     snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima6.txt", CARPETA_DIAGNOSTICO);
 #endif   // la variante mínima, con sus intentos
