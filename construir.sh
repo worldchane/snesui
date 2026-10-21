@@ -44,6 +44,9 @@ construir() {
         -c -o "$OBJ/${c}_$(basename "${f%.cpp}").o" "$f"
     done
   done
+  # Con N64: la dirección fija de su máquina para el recompilador, 256 MB después del principio del programa, pasado su
+  # final y sin memoria detrás (la pide n64/memoria_n64.c al abrir el núcleo).
+  case " $NUCLEOS " in *" n64 "*) LDEXTRA="$LDEXTRA --defsym=n64_g_dev=__text_start+0x10000000" ;; esac
   "$LLVM/ld.lld" -m elf_x86_64 -pie --script "${GUION:-$TCW\\link.x}" --eh-frame-hdr -Map "$OBJ/eboot.map" -o "$OBJ/eboot.elf" "-L$TCW\\lib" "$TCW\\lib\\crt1.o" "$OBJ"/*.o @$(cd "$AQUI/obj/nucleos/ps4" && pwd -W)/enlazar.rsp $LIBS $LDEXTRA
   "$BIN/create-fself.exe" -in "$OBJ/eboot.elf" --out "$OBJ/eboot.oelf" --eboot "$PAQ/eboot.bin" --paid 0x3800000000000011 >/dev/null
 

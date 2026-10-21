@@ -92,6 +92,9 @@ variante() {
     prueba42) TITLE_ID=SNES00045; CONTENT_ID=IV0000-SNES00045_00-SNESPRUEBA420000; TITULO="ALLESIU prueba 42"; CARPETAS="comun nucleo app"; DEFS="-DCON_BIOS_INCLUIDAS -DMEMORIA_DIRECTA -DPRUEBA_JIT"; BIOS=1; NUCLEOS="$NUCLEOS_TODOS n64"; GUION="$GUION_ALLESIU"; LDEXTRA="$ENVOLVER_MEMORIA" ;;
     # prueba43: el mismo código que la 1.5 pública, con N64 y las BIOS (para probar lo que se publicaría).
     prueba43) TITLE_ID=SNES00046; CONTENT_ID=IV0000-SNES00046_00-SNESPRUEBA430000; TITULO="ALLESIU prueba 43"; CARPETAS="comun nucleo app"; DEFS="-DCON_BIOS_INCLUIDAS -DMEMORIA_DIRECTA"; BIOS=1; NUCLEOS="$NUCLEOS_TODOS n64"; GUION="$GUION_ALLESIU"; LDEXTRA="$ENVOLVER_MEMORIA" ;;
+    # prueba44: lo subido el 2026-10-20 (créditos, Super FX en Snes9x, "Preparando las carátulas") y el recompilador de N64
+    # (máquina en n64_g_dev, a 256 MB del programa). Desde acá las pruebas se instalan con el título "ALLESIU".
+    prueba44) TITLE_ID=SNES00047; CONTENT_ID=IV0000-SNES00047_00-SNESPRUEBA440000; TITULO="ALLESIU"; CARPETAS="comun nucleo app"; DEFS="-DCON_BIOS_INCLUIDAS -DMEMORIA_DIRECTA"; BIOS=1; NUCLEOS="$NUCLEOS_TODOS n64"; GUION="$GUION_ALLESIU"; LDEXTRA="$ENVOLVER_MEMORIA" ;;
     *) return 1 ;;
   esac
 }

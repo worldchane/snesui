@@ -12,6 +12,7 @@
 #include "../nucleo/snes.h"
 #include "../nucleos/comprimido.h"
 #include "nucleo_libretro.h"
+#include "registro.h"
 
 // ---------- SNES: el núcleo propio ----------
 static int SnesCuadroConsola(uint32_t* imagen, int* ancho, int* alto, int16_t* audio, int maxAudio)
@@ -82,8 +83,10 @@ static void Iniciar_s9x()
 NUCLEO(s9x, "Snes9x")
 #endif
 #ifdef CON_NUCLEO_N64
-// Mupen64Plus-Next. Sus opciones: por ahora el dibujo por software (Angrylion) y el RSP por HLE; el procesador, con
-// el intérprete en caché (en la PC se puede pedir otro con la variable de entorno N64_CPU).
+// Mupen64Plus-Next. Sus opciones: por ahora el dibujo por software (Angrylion) y el RSP de bajo nivel; el procesador,
+// con el recompilador si la máquina quedó en su dirección fija (n64/memoria_n64.c) y si no, el intérprete en caché (en
+// la PC se puede pedir otro con la variable de entorno N64_CPU).
+extern "C" int n64_dispositivo_preparar(void);
 static void Iniciar_n64()
 {
     LibretroOpcion("mupen64plus-rdp-plugin", "angrylion");
@@ -91,7 +94,9 @@ static void Iniciar_n64()
     // El dibujo en 4 hilos (los de la app: n64/parallel_allesiu.cpp; los de C++ cerraban la app en la consola).
     LibretroOpcion("mupen64plus-angrylion-multithread", "4");
     const char* cpu = getenv("N64_CPU");
-    LibretroOpcion("mupen64plus-cpucore", cpu ? cpu : "cached_interpreter");
+    bool recompilador = n64_dispositivo_preparar() != 0;
+    LibretroOpcion("mupen64plus-cpucore", cpu ? cpu : recompilador ? "dynamic_recompiler" : "cached_interpreter");
+    Registrar("N64: procesador con %s", cpu ? cpu : recompilador ? "el recompilador" : "el intérprete (no se pudo ubicar la máquina)");
 }
 NUCLEO(n64, "Mupen64Plus-Next")
 #endif
