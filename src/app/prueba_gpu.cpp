@@ -93,9 +93,9 @@ const char* PruebaGpu()
     if (resultado[0]) return resultado;
     char ruta[160], antes[320] = "", det[200] = "";
 #ifdef SOLO_PRUEBA_GPU
-    snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima3.txt", CARPETA_DIAGNOSTICO);   // la variante mínima, con sus intentos
+    snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima4.txt", CARPETA_DIAGNOSTICO);   // la variante mínima, con sus intentos
 #else
-    snprintf(ruta, sizeof ruta, "%s/prueba_gpu7.txt", CARPETA_DIAGNOSTICO);
+    snprintf(ruta, sizeof ruta, "%s/prueba_gpu8.txt", CARPETA_DIAGNOSTICO);
 #endif
     LeerTexto(ruta, antes, sizeof antes);
     // Se hace una sola vez: Piglet toma la salida de video y la app queda en negro. Las veces siguientes, el resultado
