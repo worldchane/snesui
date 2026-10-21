@@ -31,7 +31,7 @@ static void Guardar(const char* nombre)
     std::vector<unsigned char> rgb(ANCHO * ALTO * 3);
     for (int i = 0; i < ANCHO * ALTO; i++) { rgb[i * 3] = pantalla[i] >> 16; rgb[i * 3 + 1] = pantalla[i] >> 8; rgb[i * 3 + 2] = pantalla[i]; }
     char ruta[128];
-    snprintf(ruta, sizeof ruta, "pc/salida/%s.png", nombre);
+    snprintf(ruta, sizeof ruta, "%s/%s.png", getenv("SALIDA_PC") ? getenv("SALIDA_PC") : "pc/salida", nombre);
     stbi_write_png(ruta, ANCHO, ALTO, 3, rgb.data(), ANCHO * 3);
     printf("captura %s\n", ruta);
 }
@@ -344,6 +344,37 @@ int main()
             estilos[nEstilos++] = {t0 + .6f, 0, nombresEstilos[i]};
         }
     }
+    // PASOS="t botones [captura]; ...": un guion libre. Botones con '+': X O CUAD TRI L1 R1 L2 R2 L3 R3 OPT TACTIL ARR
+    // ABA IZQ DER STICK (stick derecho a la derecha) o '-' (ninguno). Ej.: PASOS="4.6 R2; 5.4 - 01_menu; 6 X+L1".
+    static Paso libres[400];
+    static char nombresLibres[400][48];
+    int nLibres = 0;
+    double finLibre = 0;
+    if (const char* ps = getenv("PASOS"))
+    {
+        static const struct { const char* n; uint32_t b; } BOT[] = {
+            {"X", B_CRUZ}, {"O", B_CIRCULO}, {"CUAD", B_CUADRADO}, {"TRI", B_TRIANGULO}, {"L1", B_L1}, {"R1", B_R1},
+            {"L2", B_L2}, {"R2", B_R2}, {"L3", B_L3}, {"R3", B_R3}, {"OPT", B_OPTIONS}, {"TACTIL", B_TACTIL},
+            {"ARR", B_ARRIBA}, {"ABA", B_ABAJO}, {"IZQ", B_IZQ}, {"DER", B_DER}, {"STICK", STICK_DER}};
+        std::string todo = ps;
+        size_t i = 0;
+        while (i < todo.size() && nLibres < 400)
+        {
+            size_t fin = todo.find(';', i);
+            std::string paso = todo.substr(i, fin == std::string::npos ? std::string::npos : fin - i);
+            i = fin == std::string::npos ? todo.size() : fin + 1;
+            float t = 0;
+            char bot[64] = "", cap[48] = "";
+            if (sscanf(paso.c_str(), " %f %63s %47s", &t, bot, cap) < 2) continue;
+            uint32_t b = 0;
+            for (char* tok = strtok(bot, "+"); tok; tok = strtok(NULL, "+"))
+                for (const auto& k : BOT) if (!strcmp(tok, k.n)) b |= k.b;
+            snprintf(nombresLibres[nLibres], sizeof nombresLibres[nLibres], "%s", cap);
+            libres[nLibres] = {t, b, cap[0] ? nombresLibres[nLibres] : NULL};
+            nLibres++;
+            if (t > finLibre) finLibre = t;
+        }
+    }
     // GUION=medir: pasa de juego en juego (derecha y abajo) y cuenta cuánto cuesta cada parte del cuadro.
     bool md = g && !strcmp(g, "medir");
     if (md)
@@ -351,9 +382,9 @@ int main()
     if (md) es = true;
     // GUION=estres: botones al azar en cada cuadro (sin ✕ ni OPTIONS), para buscar cierres al moverse muy rápido.
     bool ets = g && !strcmp(g, "estres");
-    const Paso* pasos = es ? estilos : corto ? acerca : larga ? lista : muchos ? mil : copia ? copiar : alUsb ? alusb : borra ? borrar : dg ? diag : mu ? multi : me ? menu : ar ? arcade : rf ? refrescar : bi ? bios : ca ? caratulas : fi ? ficha : as ? asistente : guion;
-    const int N = es ? nEstilos : corto ? (int)(sizeof acerca / sizeof acerca[0]) : larga ? (int)(sizeof lista / sizeof lista[0]) : muchos ? (int)(sizeof mil / sizeof mil[0]) : copia ? (int)(sizeof copiar / sizeof copiar[0]) : alUsb ? (int)(sizeof alusb / sizeof alusb[0]) : borra ? (int)(sizeof borrar / sizeof borrar[0]) : dg ? (int)(sizeof diag / sizeof diag[0]) : mu ? (int)(sizeof multi / sizeof multi[0]) : me ? (int)(sizeof menu / sizeof menu[0]) : ar ? (int)(sizeof arcade / sizeof arcade[0]) : rf ? (int)(sizeof refrescar / sizeof refrescar[0]) : bi ? (int)(sizeof bios / sizeof bios[0]) : ca ? (int)(sizeof caratulas / sizeof caratulas[0]) : fi ? (int)(sizeof ficha / sizeof ficha[0]) : as ? (int)(sizeof asistente / sizeof asistente[0]) : (int)(sizeof guion / sizeof guion[0]);
-    const double FIN = ets ? 4.5 + atof(getenv("SEGUNDOS") ? getenv("SEGUNDOS") : "60") : md ? 10.6 : es ? 4.6 + 80 * .7 + 1 : corto ? 7.0 : larga ? 9.0 : muchos ? 7.5 : copia ? 15.2 : alUsb ? 9.7 : borra ? 12.6 : dg ? 19.7 : mu ? 17.2 : me ? 18.8 : ar ? 42.3 : rf ? 100.0 : bi ? 7.0 : ca ? 41.0 : fi ? 8.6 : as ? 13.0 : 42.0;
+    const Paso* pasos = nLibres ? libres : es ? estilos : corto ? acerca : larga ? lista : muchos ? mil : copia ? copiar : alUsb ? alusb : borra ? borrar : dg ? diag : mu ? multi : me ? menu : ar ? arcade : rf ? refrescar : bi ? bios : ca ? caratulas : fi ? ficha : as ? asistente : guion;
+    const int N = nLibres ? nLibres : es ? nEstilos : corto ? (int)(sizeof acerca / sizeof acerca[0]) : larga ? (int)(sizeof lista / sizeof lista[0]) : muchos ? (int)(sizeof mil / sizeof mil[0]) : copia ? (int)(sizeof copiar / sizeof copiar[0]) : alUsb ? (int)(sizeof alusb / sizeof alusb[0]) : borra ? (int)(sizeof borrar / sizeof borrar[0]) : dg ? (int)(sizeof diag / sizeof diag[0]) : mu ? (int)(sizeof multi / sizeof multi[0]) : me ? (int)(sizeof menu / sizeof menu[0]) : ar ? (int)(sizeof arcade / sizeof arcade[0]) : rf ? (int)(sizeof refrescar / sizeof refrescar[0]) : bi ? (int)(sizeof bios / sizeof bios[0]) : ca ? (int)(sizeof caratulas / sizeof caratulas[0]) : fi ? (int)(sizeof ficha / sizeof ficha[0]) : as ? (int)(sizeof asistente / sizeof asistente[0]) : (int)(sizeof guion / sizeof guion[0]);
+    const double FIN = nLibres ? finLibre + .3 : ets ? 4.5 + atof(getenv("SEGUNDOS") ? getenv("SEGUNDOS") : "60") : md ? 10.6 : es ? 4.6 + 80 * .7 + 1 : corto ? 7.0 : larga ? 9.0 : muchos ? 7.5 : copia ? 15.2 : alUsb ? 9.7 : borra ? 12.6 : dg ? 19.7 : mu ? 17.2 : me ? 18.8 : ar ? 42.3 : rf ? 100.0 : bi ? 7.0 : ca ? 41.0 : fi ? 8.6 : as ? 13.0 : 42.0;
     double peor = 0, medArmar = 0, medPintar = 0;
     int medCuadros = 0;
     int k = 0;

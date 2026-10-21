@@ -10,6 +10,7 @@ salida/
 pc/salida/
 pc/data/
 pc/usb/
+pc/demo/
 
 # Roms, BIOS y guardados: nunca se suben (tienen derechos de autor o son personales)
 *.sfc

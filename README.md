@@ -8,7 +8,12 @@ Pocket, Neo Geo Pocket Color, Atari 7800, Atari Lynx y **arcade** (Neo Geo, CPS1
 todo en la misma biblioteca, con interfaz en alta definición, carátulas automáticas, guardado de partidas, filtros de
 imagen y música propia.
 
-![Biblioteca](docs/imagen-biblioteca.png)
+![Biblioteca](docs/capturas/biblioteca.jpg)
+
+**Documentación:** [Guía completa con capturas](docs/GUIA.md) · [Carpetas: dónde va cada cosa](docs/CARPETAS.md) ·
+[BIOS](docs/BIOS.md)
+
+*En las capturas los nombres de los juegos son inventados y las carátulas están difuminadas a propósito.*
 
 ## Consolas
 
@@ -39,7 +44,7 @@ imagen y música propia.
 - Los sets tienen que ser de la versión de FinalBurn Neo que lleva ALLESIU. Antes de abrir un juego se revisan sus
   archivos: si falta alguno, si es de otra versión o si falta la BIOS, ALLESIU avisa exactamente qué falta.
 - Las versiones alternativas (clones) necesitan el zip del juego original en la misma carpeta, y los de Neo Geo, la
-  BIOS `neogeo.zip` (en la misma carpeta o en `/data/snes-ps4/bios/`). Al copiar un juego a la consola se copian
+  BIOS `neogeo.zip` (en la misma carpeta, en cualquier parte del USB o en `/data/allesiu/bios/`). Al copiar un juego a la consola se copian
   también esos zips.
 - `herramientas/reparar_arcade.py` rearma tus sets para esta versión: busca cada archivo por su huella (CRC) en todas
   las carpetas que le indiques y arma zips completos ("non-merged").
@@ -81,6 +86,18 @@ imagen y música propia.
 - **Diagnóstico automático.** Si un juego falla, ALLESIU lo detecta y guarda un informe en el USB, en
   `ALLESIU-diagnostico/`. No incluye datos personales.
 
+### Capturas
+
+| | |
+|---|---|
+| ![Lista detallada](docs/capturas/menu_09.jpg) | ![Carrusel](docs/capturas/menu_10.jpg) |
+| ![Configuración](docs/capturas/config.jpg) | ![BIOS](docs/capturas/bios.jpg) |
+| ![Buscar](docs/capturas/buscar.jpg) | ![Asistente](docs/capturas/asistente_3.jpg) |
+
+![Interfaces](docs/capturas/interfaces.jpg)
+
+Más en la [guía](docs/GUIA.md).
+
 ### SNES
 
 El emulador de SNES es propio y se compara cuadro por cuadro con bsnes:
@@ -94,16 +111,15 @@ El emulador de SNES es propio y se compara cuadro por cuadro con bsnes:
 
 Todavía no funcionan los juegos con DSP-3, DSP-4, ST011 y ST018.
 
-![Menú de pausa](docs/imagen-menu.png)
 
 ## Requisitos
 
 - PS4 con **GoldHEN**. Está probado en el firmware 9.00.
 - Tus propias ROMs. **No se incluye ninguna ROM ni ninguna BIOS.**
 
-### BIOS (opcionales salvo Atari Lynx)
+### BIOS (opcionales salvo Atari Lynx, Famicom Disk System y Neo Geo)
 
-Déjalas en cualquier parte del USB (por ejemplo en `bios/`): ALLESIU las reconoce por su contenido, aunque tengan otro
+Detalles, nombres y CRC de cada una en **[docs/BIOS.md](docs/BIOS.md)**. Déjalas en cualquier parte del USB (por ejemplo en `bios/`): ALLESIU las reconoce por su contenido, aunque tengan otro
 nombre, y las copia a `/data/allesiu/bios/` en la consola.
 
 | Archivo | Para |
@@ -159,6 +175,8 @@ En el USB también se pueden dejar, opcionalmente:
 **Dos jugadores:** inicia sesión con un segundo usuario de la PS4 en el otro mando; ALLESIU lo detecta solo.
 
 ## Dónde guarda las cosas
+
+Todos los detalles (carátulas, trucos, bezels, copia de seguridad) en **[docs/CARPETAS.md](docs/CARPETAS.md)**.
 
 Todo queda en `/data/allesiu/` en la consola (lo de versiones anteriores, en `/data/snes-ps4/`, se muda solo la
 primera vez):

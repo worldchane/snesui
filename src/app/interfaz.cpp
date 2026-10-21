@@ -1929,14 +1929,14 @@ static void Biblioteca(float t, float dt, const Mando& m)
     }
     if (nJuegos <= 0)
     {
-        float w = 1000, h = 420, x = (ANCHO - w) / 2, y = 330;
+        float w = 1000, h = 500, x = (ANCHO - w) / 2, y = 290;   // alto para las 4 líneas del texto y la nota de abajo
         Panel(x, y, w, h, 30, 1);
         Borde(x, y, w, h, 30, 1.5f, 0xFFFFFF, .08f);
         FranjaSnes(x + w / 2 - 120, y + 70, 240, 10, .9f);
-        Texto(F_TITULO, "Todavía no hay juegos", x + w / 2, y + 170, C_TEXTO, 1, 1);
+        Texto(F_TITULO, "Todavía no hay juegos", x + w / 2, y + 160, C_TEXTO, 1, 1);
         Parrafo(F_CUERPO, "Copia tus juegos al USB (lo más ordenado: roms/snes, roms/gba, roms/megadrive, roms/arcade...) y pulsa "
                           "triángulo para buscar. Las BIOS van en la carpeta bios. Las carátulas se bajan solas si hay internet. "
-                          "La ayuda completa está en Configuración → Asistente de inicio.", x + 80, y + 240, w - 160, C_TEXTO_2);
+                          "La ayuda completa está en Configuración → Asistente de inicio.", x + 80, y + 230, w - 160, C_TEXTO_2);
         Texto(F_PEQUENA, CarpetasDeJuegos(), x + w / 2, y + h - 48, C_TEXTO_3, 1, 1);
         return;
     }

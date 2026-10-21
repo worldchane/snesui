@@ -75,7 +75,8 @@ static std::string Ruta(const char* r)
     // Los núcleos de Windows arman rutas con la barra invertida ("\data\snes-ps4\juegos\x.zip"): se pasan a '/'.
     if (s.rfind("\\data", 0) == 0 || s.rfind("\\mnt", 0) == 0)
         for (char& c : s) if (c == 0x5C) c = '/';
-    if (s.rfind("/data", 0) == 0) return "pc/data" + s.substr(5);
+    // DATA_PC=<carpeta>: otros datos de la consola (por ejemplo, la biblioteca de demostración de pc/demo).
+    if (s.rfind("/data", 0) == 0) return std::string(getenv("DATA_PC") ? getenv("DATA_PC") : "pc/data") + s.substr(5);
     // USB_PC=<carpeta>: otro "USB" para el simulador (por ejemplo uno con solo juegos arcade).
     if (s.rfind("/mnt/usb0", 0) == 0) return std::string(getenv("USB_PC") ? getenv("USB_PC") : "pc/usb") + s.substr(9);
     if (s.rfind("/", 0) == 0) return "pc/no-existe" + s;
