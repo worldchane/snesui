@@ -521,6 +521,7 @@ static void* HiloDescarga(void*)
         CrearCarpetas(carpeta);
         {
             snprintf(progreso.detalle, sizeof progreso.detalle, "Leyendo la lista de carátulas de %s...", fds ? "Disk System" : con.nombre);
+            progreso.leyendoLista = true;
             char ruta[300] = "/";
             AgregarCodificado(ruta, sizeof ruta, sistema);
             snprintf(ruta + strlen(ruta), sizeof ruta - strlen(ruta), "/Named_Boxarts/");
@@ -534,6 +535,7 @@ static void* HiloDescarga(void*)
                 indiceCortado = cuerpo + largo >= buf + MAXIMO - 1;   // llenó el búfer: la lista llegó cortada
                 LeerIndice(cuerpo, largo);
             }
+            progreso.leyendoLista = false;
             Registrar("Carátulas de %s: lista del servidor con %d nombres%s (respuesta %d)", fds ? "Disk System" : con.nombre, nIndice,
                       indiceCortado ? ", cortada" : "", codigo);
         }

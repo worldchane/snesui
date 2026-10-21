@@ -1,6 +1,7 @@
 // Ver consola.h. Cada núcleo libretro se compila solo si construir.sh lo incluye (define CON_NUCLEO_<nombre>); las
 // consolas sin núcleo siguen en la tabla (para las pestañas y carpetas) pero no se pueden abrir.
 #include "consola.h"
+#include "ajustes.h"
 
 #include <ctype.h>
 #include <stdio.h>
@@ -70,8 +71,14 @@ static void Iniciar_lynx() {}
 NUCLEO(lynx, "Handy")
 #endif
 #ifdef CON_NUCLEO_S9X
-// Snes9x: el emulador de SNES de la app (el propio, en src/nucleo, queda como alternativa).
-static void Iniciar_s9x() {}
+// Snes9x: el emulador de SNES de la app (el propio, en src/nucleo, queda como alternativa). La aceleración del Super FX
+// de Configuración (×1 a ×4) va a su opción de frecuencia del chip.
+static void Iniciar_s9x()
+{
+    static const char* const VELOCIDAD[] = {"100%", "200%", "300%", "400%"};
+    int v = General().superfx;
+    LibretroOpcion("snes9x_overclock_superfx", VELOCIDAD[v >= 1 && v <= 4 ? v - 1 : 0]);
+}
 NUCLEO(s9x, "Snes9x")
 #endif
 #ifdef CON_NUCLEO_N64

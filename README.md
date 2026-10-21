@@ -19,7 +19,7 @@ imagen y música propia.
 
 | Consola | Extensiones | Emulador |
 |---|---|---|
-| SNES | `.sfc` `.smc` `.fig` `.swc` | propio, hecho desde cero |
+| SNES | `.sfc` `.smc` `.fig` `.swc` | |
 | NES / Famicom Disk System | `.nes` `.fds` `.unf` `.unif` | |
 | Game Boy / Game Boy Color | `.gb` `.gbc` | |
 | Game Boy Advance | `.gba` | |
@@ -100,16 +100,12 @@ Más en la [guía](docs/GUIA.md).
 
 ### SNES
 
-El emulador de SNES es propio y se compara cuadro por cuadro con bsnes:
+Desde la 1.5 la SNES funciona con **Snes9x**, que tiene la mayor compatibilidad, incluidos todos los chips especiales
+(Super FX, SA-1, DSP, Cx4, S-DD1, SPC7110...). El Super FX se puede acelerar ×2 a ×4 en *Configuración*.
 
-- en una colección de 762 juegos, el 90 % se ve idéntico a bsnes durante los primeros 30 segundos y ninguno se cuelga;
-- están los 8 modos de video (modo 7, alta resolución, transparencias, ventanas, mosaico, HDMA, entrelazado) y el
-  sonido completo con eco;
-- chips especiales: **Super FX** (con aceleración ×2 a ×4), **SA-1**, **DSP-1**, **DSP-2**, **ST010**, **Cx4**,
-  **S-DD1**, **SPC7110** (con su reloj) y **OBC1**. Los chips que no traen su programa en la rom se emulan con tablas
-  calculadas por fórmula: no hace falta ningún archivo de firmware.
-
-Todavía no funcionan los juegos con DSP-3, DSP-4, ST011 y ST018.
+El emulador de SNES propio de ALLESIU, hecho desde cero (en `src/nucleo`, comparado cuadro por cuadro con bsnes: el
+90 % de 762 juegos idéntico durante los primeros 30 segundos), sigue en el código como alternativa, pero la app ya no
+lo usa.
 
 
 ## Requisitos
@@ -206,8 +202,9 @@ globales y sin tablas constantes grandes de punteros. Están explicados en `cons
 
 ## Créditos
 
-Emuladores de otras consolas que usa ALLESIU:
+Emuladores que usa ALLESIU:
 
+- [Snes9x](https://github.com/snes9xgit/snes9x) (SNES), del equipo de Snes9x.
 - [FCEUmm](https://github.com/libretro/libretro-fceumm) (NES), del equipo de FCEU/FCE Ultra y libretro.
 - [Gambatte](https://github.com/libretro/gambatte-libretro) (Game Boy y Game Boy Color), de Sindre Aamås y libretro.
 - [mGBA](https://github.com/mgba-emu/mgba) (Game Boy Advance), de Vicki Pfau.

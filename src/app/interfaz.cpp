@@ -93,7 +93,9 @@ static void DibujarDescarga(float dt)
     char t[200];
     if (p.activa)
     {
-        snprintf(t, sizeof t, "Bajando carátulas   %d de %d", p.hechas, p.total);
+        // Mientras se baja la lista de nombres del servidor (puede tardar unos segundos), sin un "0 de N" que parezca trabado.
+        if (p.leyendoLista && !p.hechas) snprintf(t, sizeof t, "Preparando las carátulas…");
+        else snprintf(t, sizeof t, "Bajando carátulas   %d de %d", p.hechas, p.total);
         Texto(F_CUERPO_M, t, x + 28, y + 6, C_TEXTO, a);
         char corto[120];
         Texto(F_PEQUENA, Acortar(F_PEQUENA, p.detalle, w - 56, corto, sizeof corto), x + 28, y + 37, C_TEXTO_3, a);
@@ -1618,13 +1620,13 @@ static void AcercaDe()
     Texto(F_CUERPO_M, web, cx, y + 424, C_ACENTO, 1, 1);
     Texto(F_ETIQUETA, "Agradecimientos", cx, y + 470, C_TEXTO_2, 1, 1);
     static const char* const GRACIAS[] = {
-        "Carátulas: RetroArch (libretro-thumbnails)",
-        "Comparación de exactitud: snes9x y bsnes   ·   Documentación: fullsnes",
+        "Emuladores: Snes9x · FCEUmm · Gambatte · mGBA · Genesis Plus GX · Beetle NeoPop · ProSystem · Handy · FinalBurn Neo",
+        "Carátulas: RetroArch (libretro-thumbnails)   ·   Documentación de la SNES: fullsnes",
         "Herramientas para PS4: OpenOrbis y GoldHEN",
         "Letra Inter (OFL)   ·   Imágenes PNG: stb",
     };
     for (int i = 0; i < 4; i++) Texto(F_PEQUENA, GRACIAS[i], cx, y + 512 + i * 30, C_TEXTO_3, 1, 1);
-    Texto(F_PEQUENA, "ALLESIU no tiene relación con Nintendo, Sega, SNK ni Atari. Usa solo juegos que tengas.", cx, y + h + 26, C_TEXTO_3, 1, 1);
+    Texto(F_PEQUENA, "ALLESIU no tiene relación con Nintendo, Sega, SNK, Atari ni Capcom. Usa solo juegos que tengas.", cx, y + h + 26, C_TEXTO_3, 1, 1);
     int b[1] = {BM_CIRCULO};
     const char* tx[1] = {"Volver a la configuración"};
     Pistas(b, tx, 1);

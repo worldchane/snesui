@@ -28,6 +28,7 @@ struct ProgresoDescarga
 {
     bool activa, terminada, fallo;   // fallo: no hubo red
     bool automatica;                 // la pidió la app sola (ver EmpezarDescarga)
+    bool leyendoLista;               // bajando la lista de nombres del servidor de una consola (antes de las carátulas)
     int hechas, total, bajadas, sinCaratula;
     char detalle[160];
 };
