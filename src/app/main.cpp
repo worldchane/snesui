@@ -66,6 +66,18 @@ static TablaDePrueba tablaDePrueba;
 int main()
 {
     ActivarCandadosLibc();          // malloc/free a salvo entre hilos (plataforma.cpp): antes que nada
+#ifdef PRUEBA_JIT
+    // La prueba de GPU antes que todo lo demás (mando, audio, carpetas, acceso de GoldHEN, núcleos y pantalla):
+    // eglGetDisplay fallaba sin dar error con todo eso ya iniciado (pruebas 45 a 47).
+    CrearCarpetas(CARPETA_DIAGNOSTICO);
+    PruebaGpu();
+#endif
+#ifdef SOLO_PRUEBA_GPU
+    // Variante mínima (sin núcleos, sin interfaz): solo la prueba de GPU; el resultado queda en el registro del USB.
+    RegistroIniciar("prueba de GPU mínima");
+    Registrar("Resultado: %s", PruebaGpu());
+    for (;;) { RegistroCuadro(); sceKernelUsleep(500000); }
+#endif
 #ifdef PRUEBA_BSS_MB
     ((volatile char*)lastre)[0] = 1;
     ((volatile char*)lastre)[sizeof lastre - 1] = 1;
@@ -92,11 +104,6 @@ int main()
     ArcadeIniciar();
     MudanzaOrdenarRoms();           // los juegos sueltos de la consola, cada uno a roms/<consola>
     IniciarTrabajadores(5);         // con el hilo principal, 6 partes: los 6 núcleos de la consola para la app
-#ifdef PRUEBA_JIT
-    // La prueba de GPU antes de abrir la pantalla de la app: Piglet abre la salida de video por su cuenta y, con la de
-    // la app ya abierta, eglGetDisplay fallaba (prueba 45). Corre una sola vez (prueba_gpu3.txt).
-    PruebaGpu();
-#endif
     if (!PantallaIniciar()) { Registrar("No se pudo abrir la pantalla"); for (;;) sceKernelUsleep(1000000); }
     bool fuentes = CargarFuentes();
     InterfazIniciar();

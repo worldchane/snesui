@@ -104,6 +104,10 @@ variante() {
     # prueba47: diagnóstico ordenado (/data/allesiu/diagnostico, copiado al USB en ALLESIU-diagnostico/consola) y la prueba
     # de GPU con la memoria de la de PCSX2, hasta 4 intentos alternando el Piglet del paquete y el del sistema.
     prueba47) TITLE_ID=SNES00050; CONTENT_ID=IV0000-SNES00050_00-SNESPRUEBA470000; TITULO="ALLESIU"; CARPETAS="comun nucleo app"; DEFS="-DCON_BIOS_INCLUIDAS -DMEMORIA_DIRECTA -DPRUEBA_JIT"; BIOS=1; GPU=1; NUCLEOS="$NUCLEOS_TODOS n64"; GUION="$GUION_ALLESIU"; LDEXTRA="$ENVOLVER_MEMORIA" ;;
+    # prueba48: la prueba de GPU sola, sin núcleos ni interfaz (¿falla eglGetDisplay por el tamaño de la app?).
+    prueba48) TITLE_ID=SNES00051; CONTENT_ID=IV0000-SNES00051_00-SNESPRUEBA480000; TITULO="ALLESIU GPU"; CARPETAS="comun nucleo app"; DEFS="-DMEMORIA_DIRECTA -DPRUEBA_JIT -DSOLO_PRUEBA_GPU"; GPU=1; LDEXTRA="$ENVOLVER_MEMORIA" ;;
+    # prueba49: la app completa con la prueba de GPU antes que todo lo demás (marca prueba_gpu5.txt).
+    prueba49) TITLE_ID=SNES00052; CONTENT_ID=IV0000-SNES00052_00-SNESPRUEBA490000; TITULO="ALLESIU"; CARPETAS="comun nucleo app"; DEFS="-DCON_BIOS_INCLUIDAS -DMEMORIA_DIRECTA -DPRUEBA_JIT"; BIOS=1; GPU=1; NUCLEOS="$NUCLEOS_TODOS n64"; GUION="$GUION_ALLESIU"; LDEXTRA="$ENVOLVER_MEMORIA" ;;
     *) return 1 ;;
   esac
 }
