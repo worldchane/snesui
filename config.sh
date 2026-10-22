@@ -135,6 +135,9 @@ variante() {
     # prueba61: el arranque completo de ioQuake3-PS4 (módulos del sistema a mano, pantalla de carga, servicio de usuario)
     # antes de Piglet.
     prueba61) TITLE_ID=SNES00064; CONTENT_ID=IV0000-SNES00064_00-SNESPRUEBA610000; TITULO="ALLESIU GPU 13"; CARPETAS="comun nucleo app"; DEFS="-DMEMORIA_DIRECTA -DPRUEBA_JIT -DSOLO_PRUEBA_GPU -DPIGLET_IMPORTADO -DPIGLET_SISTEMA"; LIBEXTRA="-lScePigletv2VSH"; AUTHINFO="$AUTH_PIGLET"; GUION="$GUION_ALLESIU"; LDEXTRA="$ENVOLVER_MEMORIA" ;;
+    # prueba62: la 61 sin sceKernelDlsym(0x2001) (con el authinfo de Piglet cierra el programa): llamadas directas y
+    # /system/common/lib.
+    prueba62) TITLE_ID=SNES00065; CONTENT_ID=IV0000-SNES00065_00-SNESPRUEBA620000; TITULO="ALLESIU GPU 14"; CARPETAS="comun nucleo app"; DEFS="-DMEMORIA_DIRECTA -DPRUEBA_JIT -DSOLO_PRUEBA_GPU -DPIGLET_IMPORTADO -DPIGLET_SISTEMA"; LIBEXTRA="-lScePigletv2VSH"; AUTHINFO="$AUTH_PIGLET"; GUION="$GUION_ALLESIU"; LDEXTRA="$ENVOLVER_MEMORIA" ;;
     *) return 1 ;;
   esac
 }

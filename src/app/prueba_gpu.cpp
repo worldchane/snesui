@@ -41,8 +41,14 @@ int YaCargado(const char* nombre)
 {
     int (*lista)(OrbisKernelModule*, size_t, size_t*) = NULL;
     int (*info)(OrbisKernelModule, OrbisKernelModuleInfo*) = NULL;
+#ifdef PIGLET_IMPORTADO
+    // Con el authinfo de Piglet, sceKernelDlsym(0x2001, ...) cierra el programa (pruebas 56 a 61): llamadas directas.
+    lista = sceKernelGetModuleList;
+    info = sceKernelGetModuleInfo;
+#else
     if (sceKernelDlsym(0x2001, "sceKernelGetModuleList", (void**)&lista) != 0 || !lista) return -1;
     if (sceKernelDlsym(0x2001, "sceKernelGetModuleInfo", (void**)&info) != 0 || !info) return -1;
+#endif
     OrbisKernelModule m[256];
     size_t n = 0;
     if (lista(m, 256, &n) != 0) return -1;
@@ -67,7 +73,9 @@ int Cargar(const char* nombre, char* det, int max, bool sistemaPrimero = false)
     // La carpeta de librerías del sistema vista desde la app: su nombre (al azar) se pide por nombre a libkernel, así el
     // programa no suma funciones a las que pide para abrir.
     const char* (*palabra)() = NULL;
+#ifndef PIGLET_IMPORTADO
     if (sceKernelDlsym(0x2001, "sceKernelGetFsSandboxRandomWord", (void**)&palabra) != 0) palabra = NULL;
+#endif
     char ruta[256];
     int ret = 0, h = -1;
     // Las consolas de venta no traen el compilador de shaders (libSceShaccVSH): va dentro del paquete (pruebas, sacado
@@ -131,7 +139,7 @@ const char* PruebaGpu()
 #ifdef MARCA_GPU_FIRMA
     snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima8.txt", CARPETA_DIAGNOSTICO);   // la de la firma de Piglet (prueba55)
 #elif defined(PIGLET_SISTEMA)
-    snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima14.txt", CARPETA_DIAGNOSTICO);   // la receta de ioQuake3 (prueba57)
+    snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima15.txt", CARPETA_DIAGNOSTICO);   // la receta de ioQuake3 (prueba57)
 #else
     snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima6.txt", CARPETA_DIAGNOSTICO);
 #endif   // la variante mínima, con sus intentos
@@ -220,10 +228,7 @@ const char* PruebaGpu()
     // prueba60), después la pantalla de carga y el servicio de usuario.
     Paso(15);
     {
-        const char* (*palabra)() = NULL;
-        if (sceKernelDlsym(0x2001, "sceKernelGetFsSandboxRandomWord", (void**)&palabra) != 0) palabra = NULL;
-        char carpeta[64];
-        snprintf(carpeta, sizeof carpeta, palabra && palabra() ? "/%s/common/lib" : "/system/common/lib", palabra && palabra() ? palabra() : "");
+        const char* carpeta = "/system/common/lib";   // sin sceKernelDlsym(0x2001): con el authinfo de Piglet cierra el programa
         static const char* const MODULOS[] = {"libSceSystemService", "libSceUserService", "libSceAudioOut", "libScePad",
                                               "libSceNet", "libSceNetCtl", "libSceVideoOut", "libSceImeDialog"};
         for (const char* m : MODULOS)
