@@ -147,7 +147,7 @@ const char* PruebaGpu()
 #ifdef MARCA_GPU_FIRMA
     snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima8.txt", CARPETA_DIAGNOSTICO);   // la de la firma de Piglet (prueba55)
 #elif defined(PIGLET_SISTEMA)
-    snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima20.txt", CARPETA_DIAGNOSTICO);   // la receta de ioQuake3 (prueba57)
+    snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima21.txt", CARPETA_DIAGNOSTICO);   // la receta de ioQuake3 (prueba57)
 #else
     snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima6.txt", CARPETA_DIAGNOSTICO);
 #endif   // la variante mínima, con sus intentos

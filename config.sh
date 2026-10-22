@@ -150,6 +150,9 @@ variante() {
     # prueba67: la 66 guardando sus líneas en /data/allesiu/diagnostico/gpu_registro.txt (iniciar el registro del USB
     # cerraba el programa con el authinfo de Piglet y no se veían los resultados).
     prueba67) TITLE_ID=SNES00070; CONTENT_ID=IV0000-SNES00070_00-SNESPRUEBA670000; TITULO="ALLESIU GPU 19"; CARPETAS="comun nucleo app"; DEFS="-DMEMORIA_DIRECTA -DPRUEBA_JIT -DSOLO_PRUEBA_GPU -DPIGLET_IMPORTADO -DPIGLET_SISTEMA -DSIN_PREPARAR_PANTALLA -DCARGAR_VIDEO"; LIBEXTRA="-lScePigletv2VSH"; AUTHINFO="$AUTH_PIGLET"; GUION="$GUION_ALLESIU"; LDEXTRA="$ENVOLVER_MEMORIA" ;;
+    # prueba68: la 67 con la receta de love-ps4 para Piglet: PAID 0x3100000000000002 (identidad de sistema de
+    # RetroArch) + authinfo de Piglet + param.sfo de RetroArch (APP_TYPE 0, ATTRIBUTE 0x20814016, ATTRIBUTE2 0x6, gde, obs).
+    prueba68) TITLE_ID=SNES00072; CONTENT_ID=IV0000-SNES00072_00-SNESPRUEBA680000; TITULO="ALLESIU GPU 20"; CARPETAS="comun nucleo app"; DEFS="-DMEMORIA_DIRECTA -DPRUEBA_JIT -DSOLO_PRUEBA_GPU -DPIGLET_IMPORTADO -DPIGLET_SISTEMA -DSIN_PREPARAR_PANTALLA -DCARGAR_VIDEO"; LIBEXTRA="-lScePigletv2VSH"; PAID=0x3100000000000002; AUTHINFO="$AUTH_PIGLET"; SFO_RETROARCH=1; GUION="$GUION_ALLESIU"; LDEXTRA="$ENVOLVER_MEMORIA" ;;
     *) return 1 ;;
   esac
 }

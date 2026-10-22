@@ -25,7 +25,7 @@ FLAGS="--target=x86_64-pc-freebsd12-elf -fPIC -funwind-tables -fno-exceptions -f
 AUTH_PIGLET=000000000000000000000000001C004000FF000000000080000000000000000000000000000000000000008000400040000000000000008000000000000000080040FFFF000000F000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 
 construir() {
-  BIOS=; GPU=; PAID=; AUTHINFO=; LIBEXTRA=; NUCLEOS=; LDEXTRA=; GUION=   # GUION: guion del enlazador (vacío = el de OpenOrbis)
+  BIOS=; GPU=; PAID=; AUTHINFO=; SFO_RETROARCH=; LIBEXTRA=; NUCLEOS=; LDEXTRA=; GUION=   # GUION: guion del enlazador (vacío = el de OpenOrbis)
   variante "$1" || { echo "variante desconocida: $1 (hay: $TODAS personal)"; exit 1; }
   # Los núcleos libretro de las otras consolas (solo recompila lo que cambió); la app sabe cuáles hay por -DCON_NUCLEO_<X>.
   sh "$AQUI/src/nucleos/nucleos.sh" ps4 $NUCLEOS >/dev/null   # NUCLEOS: solo esos (pruebas); vacío = todos
@@ -77,13 +77,23 @@ construir() {
     SFO=sce_sys/param.sfo
     P="$BIN/PkgTool.Core.exe"
     "$P" sfo_new $SFO
-    "$P" sfo_setentry $SFO APP_TYPE --type Integer --maxsize 4 --value 1
+    if [ -n "$SFO_RETROARCH" ]; then
+      # Los de RetroArch para PS4: con los del ejemplo de OpenOrbis, el Piglet del sistema nunca devuelve una pantalla
+      # EGL (verificado por love-ps4; ver también scripts/make-pkg.sh de DolphinPS4). Van con PAID 0x3100000000000002.
+      "$P" sfo_setentry $SFO APP_TYPE --type Integer --maxsize 4 --value 0
+      "$P" sfo_setentry $SFO ATTRIBUTE --type Integer --maxsize 4 --value 0x20814016
+      "$P" sfo_setentry $SFO ATTRIBUTE2 --type Integer --maxsize 4 --value 0x6
+      "$P" sfo_setentry $SFO CATEGORY --type Utf8 --maxsize 4 --value gde
+      "$P" sfo_setentry $SFO FORMAT --type Utf8 --maxsize 4 --value obs
+    else
+      "$P" sfo_setentry $SFO APP_TYPE --type Integer --maxsize 4 --value 1
+      "$P" sfo_setentry $SFO ATTRIBUTE --type Integer --maxsize 4 --value 0
+      "$P" sfo_setentry $SFO CATEGORY --type Utf8 --maxsize 4 --value gd
+    fi
     "$P" sfo_setentry $SFO APP_VER --type Utf8 --maxsize 8 --value "$VERSION"
-    "$P" sfo_setentry $SFO ATTRIBUTE --type Integer --maxsize 4 --value 0
-    "$P" sfo_setentry $SFO CATEGORY --type Utf8 --maxsize 4 --value gd
     "$P" sfo_setentry $SFO CONTENT_ID --type Utf8 --maxsize 48 --value "$CONTENT_ID"
     "$P" sfo_setentry $SFO DOWNLOAD_DATA_SIZE --type Integer --maxsize 4 --value 0
-    "$P" sfo_setentry $SFO SYSTEM_VER --type Integer --maxsize 4 --value 0
+    "$P" sfo_setentry $SFO SYSTEM_VER --type Integer --maxsize 4 --value $( [ -n "$SFO_RETROARCH" ] && echo 0x3fc || echo 0 )
     "$P" sfo_setentry $SFO TITLE --type Utf8 --maxsize 128 --value "$TITULO"
     "$P" sfo_setentry $SFO TITLE_ID --type Utf8 --maxsize 12 --value "$TITLE_ID"
     "$P" sfo_setentry $SFO VERSION --type Utf8 --maxsize 8 --value "$VERSION"
