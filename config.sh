@@ -126,6 +126,8 @@ variante() {
     # prueba57: la receta de ioQuake3-PS4 (probada en consolas): Piglet del firmware importado, PAID normal con el
     # authinfo de Piglet, sin módulos en el paquete.
     prueba57) TITLE_ID=SNES00060; CONTENT_ID=IV0000-SNES00060_00-SNESPRUEBA570000; TITULO="ALLESIU GPU 9"; CARPETAS="comun nucleo app"; DEFS="-DMEMORIA_DIRECTA -DPRUEBA_JIT -DSOLO_PRUEBA_GPU -DPIGLET_IMPORTADO -DPIGLET_SISTEMA"; LIBEXTRA="-lScePigletv2VSH"; AUTHINFO="$AUTH_PIGLET"; GUION="$GUION_ALLESIU"; LDEXTRA="$ENVOLVER_MEMORIA" ;;
+    # prueba58: la 57 usando el Piglet que el sistema ya cargó (sin cargarlo otra vez: eso cerraba el programa).
+    prueba58) TITLE_ID=SNES00061; CONTENT_ID=IV0000-SNES00061_00-SNESPRUEBA580000; TITULO="ALLESIU GPU 10"; CARPETAS="comun nucleo app"; DEFS="-DMEMORIA_DIRECTA -DPRUEBA_JIT -DSOLO_PRUEBA_GPU -DPIGLET_IMPORTADO -DPIGLET_SISTEMA"; LIBEXTRA="-lScePigletv2VSH"; AUTHINFO="$AUTH_PIGLET"; GUION="$GUION_ALLESIU"; LDEXTRA="$ENVOLVER_MEMORIA" ;;
     *) return 1 ;;
   esac
 }

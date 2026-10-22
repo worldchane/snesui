@@ -32,8 +32,36 @@ namespace {
 int modPiglet = -1, modShacc = -1;
 char resultado[300];
 
+// Un módulo que el sistema ya cargó (importado al crear el proceso): su número, sin volver a cargarlo (una segunda copia
+// desde otra ruta cerraba el programa: prueba57). Como OrbisLink: la lista de módulos y el nombre de cada uno, con
+// funciones de libkernel buscadas por nombre (no se suman a las que pide el programa). -1 si no está.
+int YaCargado(const char* nombre)
+{
+    int (*lista)(OrbisKernelModule*, size_t, size_t*) = NULL;
+    int (*info)(OrbisKernelModule, OrbisKernelModuleInfo*) = NULL;
+    if (sceKernelDlsym(0x2001, "sceKernelGetModuleList", (void**)&lista) != 0 || !lista) return -1;
+    if (sceKernelDlsym(0x2001, "sceKernelGetModuleInfo", (void**)&info) != 0 || !info) return -1;
+    OrbisKernelModule m[256];
+    size_t n = 0;
+    if (lista(m, 256, &n) != 0) return -1;
+    for (size_t i = 0; i < n && i < 256; i++)
+    {
+        OrbisKernelModuleInfo in;
+        memset(&in, 0, sizeof in);
+        in.size = sizeof in;
+        if (info(m[i], &in) == 0 && !strcmp(in.name, nombre)) return (int)m[i];
+    }
+    return -1;
+}
+
 int Cargar(const char* nombre, char* det, int max, bool sistemaPrimero = false)
 {
+#ifdef PIGLET_IMPORTADO
+    {
+        int ya = YaCargado(nombre);
+        if (ya >= 0) { snprintf(det, max, "%s ya cargado por el sistema (%d)", nombre, ya); return ya; }
+    }
+#endif
     // La carpeta de librerías del sistema vista desde la app: su nombre (al azar) se pide por nombre a libkernel, así el
     // programa no suma funciones a las que pide para abrir.
     const char* (*palabra)() = NULL;
@@ -101,7 +129,7 @@ const char* PruebaGpu()
 #ifdef MARCA_GPU_FIRMA
     snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima8.txt", CARPETA_DIAGNOSTICO);   // la de la firma de Piglet (prueba55)
 #elif defined(PIGLET_SISTEMA)
-    snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima9.txt", CARPETA_DIAGNOSTICO);   // la receta de ioQuake3 (prueba57)
+    snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima11.txt", CARPETA_DIAGNOSTICO);   // la receta de ioQuake3 (prueba57)
 #else
     snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima6.txt", CARPETA_DIAGNOSTICO);
 #endif   // la variante mínima, con sus intentos
@@ -165,13 +193,16 @@ const char* PruebaGpu()
     modPiglet = Cargar("libScePigletv2VSH.sprx", det, sizeof det, pigletSistema);
     Registrar("Prueba GPU 1: %s", det);
     if (modPiglet < 0) return Fin("Piglet no cargó.");
+    Paso(12);   // marcas finas del paso 1 (12: el compilador, 13: los precompilados, 14: buscar las funciones)
     modShacc = Cargar("libSceShaccVSH.sprx", det, sizeof det);
     Registrar("Prueba GPU 1: %s", det);
     // Los shaders precompilados del sistema: la prueba de PCSX2 (que funcionó) los cargaba antes de abrir EGL, y la
     // pantalla de Piglet ("composite") dibuja con ellos. Sin ellos, eglGetDisplay fallaba sin dar error.
+    Paso(13);
     int modPrecompilados = Cargar("libScePrecompiledShaders.sprx", det, sizeof det, true);
     (void)modPrecompilados;
     Registrar("Prueba GPU 1: %s", det);
+    Paso(14);
     int faltan = GlCargar(BuscarEnPiglet);
     Registrar("Prueba GPU 1: faltan %d funciones de OpenGL ES / EGL", faltan);
     // Con el acceso completo de GoldHEN (eleva los permisos): en la prueba de PCSX2 la variante que lo pedía (C) abrió
