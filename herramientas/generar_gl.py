@@ -4,6 +4,8 @@
 # sistema para abrir.
 #   python herramientas/generar_gl.py <gl2.h> <egl.h> <salida.cpp>
 import re, sys
+NOTA = '// Con Piglet importado (PIGLET_IMPORTADO, como ioQuake3-PS4) estas funciones no se definen: el programa usa las de\n// Piglet directamente (con las nuestras con el mismo nombre, el sistema podía conectar a Piglet con ellas).\n#ifndef PIGLET_IMPORTADO\n'
+FIN = '#else\nint GlCargar(void* (*)(const char*)) { return 0; }   // las de Piglet ya están conectadas por el sistema\n#endif\n'
 
 def prototipos(ruta, api, entrada, prefijo):
     texto = open(ruta, encoding='latin-1').read()
@@ -21,7 +23,7 @@ lineas = [
     '#include <EGL/egl.h>',
     '#include <GLES2/gl2.h>',
     '',
-]
+] + NOTA.rstrip('\n').split('\n')
 cargas = []
 for (ret, nombre, args), entrada in [(p, 'GL_APIENTRY') for p in gl] + [(p, 'EGLAPIENTRY') for p in egl]:
     lista = [] if args in ('', 'void') else [a.strip() for a in args.split(',')]
@@ -33,5 +35,6 @@ for (ret, nombre, args), entrada in [(p, 'GL_APIENTRY') for p in gl] + [(p, 'EGL
     cargas.append('    p_%s = (%s (%s*)(%s))buscar("%s");' % (nombre, ret, entrada, tipo_args, nombre))
     cargas.append('    if (!p_%s) faltan++;' % nombre)
 lineas += ['', 'int GlCargar(void* (*buscar)(const char* nombre))', '{', '    int faltan = 0;'] + cargas + ['    return faltan;', '}', '']
+lineas += FIN.rstrip('\n').split('\n') + ['']
 open(sys.argv[3], 'w', encoding='utf-8').write('\n'.join(lineas))
 print('%d funciones de OpenGL ES 2 y %d de EGL' % (len(gl), len(egl)))

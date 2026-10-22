@@ -5,6 +5,9 @@
 #include <EGL/egl.h>
 #include <GLES2/gl2.h>
 
+// Con Piglet importado (PIGLET_IMPORTADO, como ioQuake3-PS4) estas funciones no se definen: el programa usa las de
+// Piglet directamente (con las nuestras con el mismo nombre, el sistema podía conectar a Piglet con ellas).
+#ifndef PIGLET_IMPORTADO
 static void (GL_APIENTRY* p_glActiveTexture)(GLenum texture);
 extern "C" void GL_APIENTRY glActiveTexture(GLenum texture) { p_glActiveTexture(texture); }
 static void (GL_APIENTRY* p_glAttachShader)(GLuint program, GLuint shader);
@@ -755,3 +758,6 @@ int GlCargar(void* (*buscar)(const char* nombre))
     if (!p_eglWaitSync) faltan++;
     return faltan;
 }
+#else
+int GlCargar(void* (*)(const char*)) { return 0; }   // las de Piglet ya están conectadas por el sistema
+#endif
