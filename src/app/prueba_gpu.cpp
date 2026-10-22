@@ -147,7 +147,7 @@ const char* PruebaGpu()
 #ifdef MARCA_GPU_FIRMA
     snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima8.txt", CARPETA_DIAGNOSTICO);   // la de la firma de Piglet (prueba55)
 #elif defined(PIGLET_SISTEMA)
-    snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima16.txt", CARPETA_DIAGNOSTICO);   // la receta de ioQuake3 (prueba57)
+    snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima17.txt", CARPETA_DIAGNOSTICO);   // la receta de ioQuake3 (prueba57)
 #else
     snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima6.txt", CARPETA_DIAGNOSTICO);
 #endif   // la variante mínima, con sus intentos
@@ -231,6 +231,11 @@ const char* PruebaGpu()
     // Como ioQuake3-PS4: la pantalla de carga se quita con la función ya enlazada (cargar otra vez su módulo, que el
     // sistema cargó al arrancar, es lo que cerraba el programa) y sin el acceso de GoldHEN (con el authinfo de Piglet,
     // otras llamadas al sistema cerraban el programa).
+#ifdef SIN_PREPARAR_PANTALLA
+    Paso(19);   // directo a Piglet: cargar los módulos del sistema y quitar la pantalla de carga cerraban el programa
+    if (false)
+#endif
+    {
     // El arranque de ioQuake3-PS4 (sys_main_ps4.c), en su orden: primero los módulos del sistema desde la carpeta de
     // bibliotecas (con el authinfo de Piglet no quedan listos solos: llamar a sus funciones cerraba el programa en la
     // prueba60), después la pantalla de carga y el servicio de usuario.
@@ -258,6 +263,7 @@ const char* PruebaGpu()
         memset(&p, 0, sizeof p);
         p.priority = 700;
         sceUserServiceInitialize(&p);
+    }
     }
     Paso(18);
 #else
