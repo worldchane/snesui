@@ -80,6 +80,20 @@ int main()
 #endif
 #ifdef SOLO_PRUEBA_GPU
     // Variante mínima (sin núcleos, sin interfaz): solo la prueba de GPU; el resultado queda en el registro del USB.
+#ifdef PIGLET_IMPORTADO
+    {
+        // Con el authinfo de Piglet, iniciar el registro (usa el acceso de GoldHEN para escribir en el USB) cierra el
+        // programa: las líneas de la prueba se agregan a un archivo de la consola, que la variante sin authinfo copia al
+        // USB (ALLESIU-diagnostico/consola/gpu_registro.txt).
+        Registrar("Resultado: %s", PruebaGpu());
+        static char lineas[6 * 1024];
+        RegistroUltimas(lineas, sizeof lineas);
+        char ruta[160];
+        snprintf(ruta, sizeof ruta, "%s/gpu_registro.txt", CARPETA_DIAGNOSTICO);
+        if (FILE* f = AbrirArchivo(ruta, "ab")) { fputs("---- prueba de GPU ----\n", f); fputs(lineas, f); fclose(f); }
+        for (;;) sceKernelUsleep(500000);
+    }
+#endif
     RegistroIniciar("prueba de GPU mínima");
     Registrar("Resultado: %s", PruebaGpu());
     for (;;) { RegistroCuadro(); sceKernelUsleep(500000); }
