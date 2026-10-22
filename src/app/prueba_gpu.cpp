@@ -147,7 +147,7 @@ const char* PruebaGpu()
 #ifdef MARCA_GPU_FIRMA
     snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima8.txt", CARPETA_DIAGNOSTICO);   // la de la firma de Piglet (prueba55)
 #elif defined(PIGLET_SISTEMA)
-    snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima18.txt", CARPETA_DIAGNOSTICO);   // la receta de ioQuake3 (prueba57)
+    snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima19.txt", CARPETA_DIAGNOSTICO);   // la receta de ioQuake3 (prueba57)
 #else
     snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima6.txt", CARPETA_DIAGNOSTICO);
 #endif   // la variante mínima, con sus intentos
@@ -214,7 +214,8 @@ const char* PruebaGpu()
     {
         const char* w = sceKernelGetFsSandboxRandomWord();
         static const char* const MODULOS[] = {"libSceVideoOut", "libSceSystemService", "libSceUserService"};
-        for (int i = 0; i < 3; i++)
+        // Solo la salida de video: cargar libSceSystemService cerraba el programa con el authinfo de Piglet (prueba65).
+        for (int i = 0; i < 1; i++)
         {
             Paso(21 + i);
             char ruta[160];
