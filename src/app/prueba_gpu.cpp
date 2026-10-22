@@ -18,6 +18,7 @@
 #include <orbis/Pigletv2VSH.h>
 #include <orbis/libkernel.h>
 #include <orbis/SystemService.h>
+#include <orbis/UserService.h>
 
 #include "../comun/gl_funciones.h"
 #include "../comun/pantalla.h"
@@ -130,7 +131,7 @@ const char* PruebaGpu()
 #ifdef MARCA_GPU_FIRMA
     snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima8.txt", CARPETA_DIAGNOSTICO);   // la de la firma de Piglet (prueba55)
 #elif defined(PIGLET_SISTEMA)
-    snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima13.txt", CARPETA_DIAGNOSTICO);   // la receta de ioQuake3 (prueba57)
+    snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima14.txt", CARPETA_DIAGNOSTICO);   // la receta de ioQuake3 (prueba57)
 #else
     snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima6.txt", CARPETA_DIAGNOSTICO);
 #endif   // la variante mínima, con sus intentos
@@ -214,9 +215,36 @@ const char* PruebaGpu()
     // Como ioQuake3-PS4: la pantalla de carga se quita con la función ya enlazada (cargar otra vez su módulo, que el
     // sistema cargó al arrancar, es lo que cerraba el programa) y sin el acceso de GoldHEN (con el authinfo de Piglet,
     // otras llamadas al sistema cerraban el programa).
+    // El arranque de ioQuake3-PS4 (sys_main_ps4.c), en su orden: primero los módulos del sistema desde la carpeta de
+    // bibliotecas (con el authinfo de Piglet no quedan listos solos: llamar a sus funciones cerraba el programa en la
+    // prueba60), después la pantalla de carga y el servicio de usuario.
     Paso(15);
-    sceSystemServiceHideSplashScreen();
+    {
+        const char* (*palabra)() = NULL;
+        if (sceKernelDlsym(0x2001, "sceKernelGetFsSandboxRandomWord", (void**)&palabra) != 0) palabra = NULL;
+        char carpeta[64];
+        snprintf(carpeta, sizeof carpeta, palabra && palabra() ? "/%s/common/lib" : "/system/common/lib", palabra && palabra() ? palabra() : "");
+        static const char* const MODULOS[] = {"libSceSystemService", "libSceUserService", "libSceAudioOut", "libScePad",
+                                              "libSceNet", "libSceNetCtl", "libSceVideoOut", "libSceImeDialog"};
+        for (const char* m : MODULOS)
+        {
+            char ruta[160];
+            snprintf(ruta, sizeof ruta, "%s/%s.sprx", carpeta, m);
+            int ret = 0;
+            int h = (int)sceKernelLoadStartModule(ruta, 0, NULL, 0, NULL, &ret);
+            Registrar("Prueba GPU 1: %s: 0x%X", m, (unsigned)h);
+        }
+    }
     Paso(16);
+    sceSystemServiceHideSplashScreen();
+    Paso(17);
+    {
+        OrbisUserServiceInitializeParams p;
+        memset(&p, 0, sizeof p);
+        p.priority = 700;
+        sceUserServiceInitialize(&p);
+    }
+    Paso(18);
 #else
     QuitarPantallaDeCarga();   // como el ejemplo oficial de Piglet: con la pantalla de carga puesta, no hay pantalla para EGL
     int acceso = AbrirAccesoCompleto("gpu", true);
