@@ -147,7 +147,7 @@ const char* PruebaGpu()
 #ifdef MARCA_GPU_FIRMA
     snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima8.txt", CARPETA_DIAGNOSTICO);   // la de la firma de Piglet (prueba55)
 #elif defined(PIGLET_SISTEMA)
-    snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima17.txt", CARPETA_DIAGNOSTICO);   // la receta de ioQuake3 (prueba57)
+    snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima18.txt", CARPETA_DIAGNOSTICO);   // la receta de ioQuake3 (prueba57)
 #else
     snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima6.txt", CARPETA_DIAGNOSTICO);
 #endif   // la variante mínima, con sus intentos
@@ -208,6 +208,23 @@ const char* PruebaGpu()
         return (const char*)resultado;
     };
 
+#ifdef CARGAR_VIDEO
+    // Antes de Piglet, como ioQuake3-PS4: la salida de video (Piglet la usa para abrir su pantalla; en la prueba64 no
+    // estaba cargada y eglGetDisplay fallaba sin dar error) y los dos servicios básicos. Uno por uno, con su marca.
+    {
+        const char* w = sceKernelGetFsSandboxRandomWord();
+        static const char* const MODULOS[] = {"libSceVideoOut", "libSceSystemService", "libSceUserService"};
+        for (int i = 0; i < 3; i++)
+        {
+            Paso(21 + i);
+            char ruta[160];
+            snprintf(ruta, sizeof ruta, w ? "/%s/common/lib/%s.sprx" : "/system/common/lib/%s.sprx", w ? w : MODULOS[i], MODULOS[i]);
+            int ret = 0;
+            int h = (int)sceKernelLoadStartModule(ruta, 0, NULL, 0, NULL, &ret);
+            Registrar("Prueba GPU 0: %s: 0x%X", MODULOS[i], (unsigned)h);
+        }
+    }
+#endif
     // 1) Piglet y el compilador de shaders.
     Paso(1);
     modPiglet = Cargar("libScePigletv2VSH.sprx", det, sizeof det, pigletSistema);
