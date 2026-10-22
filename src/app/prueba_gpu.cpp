@@ -17,6 +17,7 @@
 #include <GLES2/gl2.h>
 #include <orbis/Pigletv2VSH.h>
 #include <orbis/libkernel.h>
+#include <orbis/SystemService.h>
 
 #include "../comun/gl_funciones.h"
 #include "../comun/pantalla.h"
@@ -129,7 +130,7 @@ const char* PruebaGpu()
 #ifdef MARCA_GPU_FIRMA
     snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima8.txt", CARPETA_DIAGNOSTICO);   // la de la firma de Piglet (prueba55)
 #elif defined(PIGLET_SISTEMA)
-    snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima12.txt", CARPETA_DIAGNOSTICO);   // la receta de ioQuake3 (prueba57)
+    snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima13.txt", CARPETA_DIAGNOSTICO);   // la receta de ioQuake3 (prueba57)
 #else
     snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima6.txt", CARPETA_DIAGNOSTICO);
 #endif   // la variante mínima, con sus intentos
@@ -179,7 +180,9 @@ const char* PruebaGpu()
     auto Fin = [&](const char* t) {
         // EGL se suelta siempre: la prueba corre antes de abrir la pantalla de la app (main.cpp), que la necesita.
         if (pantalla != EGL_NO_DISPLAY) { eglMakeCurrent(pantalla, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT); eglTerminate(pantalla); }
+#ifndef PIGLET_IMPORTADO
         CerrarAccesoCompleto();
+#endif
         snprintf(resultado, sizeof resultado, "GPU: %s", t);
         char g[340];
         snprintf(g, sizeof g, "terminada\n%s\n", resultado);
@@ -207,9 +210,18 @@ const char* PruebaGpu()
     Registrar("Prueba GPU 1: faltan %d funciones de OpenGL ES / EGL", faltan);
     // Con el acceso completo de GoldHEN (eleva los permisos): en la prueba de PCSX2 la variante que lo pedía (C) abrió
     // EGL; sin él, eglGetDisplay falla sin dar error. Los módulos ya están cargados (con el acceso, /app0 puede no verse).
+#ifdef PIGLET_IMPORTADO
+    // Como ioQuake3-PS4: la pantalla de carga se quita con la función ya enlazada (cargar otra vez su módulo, que el
+    // sistema cargó al arrancar, es lo que cerraba el programa) y sin el acceso de GoldHEN (con el authinfo de Piglet,
+    // otras llamadas al sistema cerraban el programa).
+    Paso(15);
+    sceSystemServiceHideSplashScreen();
+    Paso(16);
+#else
     QuitarPantallaDeCarga();   // como el ejemplo oficial de Piglet: con la pantalla de carga puesta, no hay pantalla para EGL
     int acceso = AbrirAccesoCompleto("gpu", true);
     Registrar("Prueba GPU 1: acceso completo de GoldHEN: %d", acceso);
+#endif
     bool (*configurar)(const OrbisPglConfig*) = NULL;
 #ifdef PIGLET_IMPORTADO
     // Llamada directa: Piglet pasa a ser una biblioteca que el sistema carga al crear el proceso (como en RetroArch y
@@ -242,7 +254,9 @@ const char* PruebaGpu()
         snprintf(resultado, sizeof resultado, "GPU: eglGetDisplay falló (0x%X) en el intento %d; se repite al abrir la app.", eglGetError(),
                  intento + 1);
         Registrar("%s", resultado);
+#ifndef PIGLET_IMPORTADO
         CerrarAccesoCompleto();
+#endif
         char t[48];
         snprintf(t, sizeof t, "intento %d\n", intento + 1);
         EscribirTexto(ruta, t);
