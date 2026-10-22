@@ -29,6 +29,8 @@
 extern "C" bool scePigletSetConfigurationVSH(const OrbisPglConfig* config);
 #endif
 
+extern "C" const char* sceKernelGetFsSandboxRandomWord();
+
 namespace {
 
 int modPiglet = -1, modShacc = -1;
@@ -52,12 +54,16 @@ int YaCargado(const char* nombre)
     OrbisKernelModule m[256];
     size_t n = 0;
     if (lista(m, 256, &n) != 0) return -1;
+    Registrar("Prueba GPU: %d módulos cargados", (int)n);
     for (size_t i = 0; i < n && i < 256; i++)
     {
         OrbisKernelModuleInfo in;
         memset(&in, 0, sizeof in);
         in.size = sizeof in;
-        if (info(m[i], &in) == 0 && !strcmp(in.name, nombre)) return (int)m[i];
+        if (info(m[i], &in) != 0) continue;
+        static bool anotada;
+        if (!anotada) Registrar("Prueba GPU: módulo cargado %d: %s", (int)m[i], in.name);
+        if (!strcmp(in.name, nombre) || strstr(in.name, nombre)) return (int)m[i];
     }
     return -1;
 }
@@ -75,6 +81,8 @@ int Cargar(const char* nombre, char* det, int max, bool sistemaPrimero = false)
     const char* (*palabra)() = NULL;
 #ifndef PIGLET_IMPORTADO
     if (sceKernelDlsym(0x2001, "sceKernelGetFsSandboxRandomWord", (void**)&palabra) != 0) palabra = NULL;
+#else
+    palabra = sceKernelGetFsSandboxRandomWord;   // importada, como ioQuake3-PS4
 #endif
     char ruta[256];
     int ret = 0, h = -1;
@@ -139,7 +147,7 @@ const char* PruebaGpu()
 #ifdef MARCA_GPU_FIRMA
     snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima8.txt", CARPETA_DIAGNOSTICO);   // la de la firma de Piglet (prueba55)
 #elif defined(PIGLET_SISTEMA)
-    snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima15.txt", CARPETA_DIAGNOSTICO);   // la receta de ioQuake3 (prueba57)
+    snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima16.txt", CARPETA_DIAGNOSTICO);   // la receta de ioQuake3 (prueba57)
 #else
     snprintf(ruta, sizeof ruta, "%s/prueba_gpu_minima6.txt", CARPETA_DIAGNOSTICO);
 #endif   // la variante mínima, con sus intentos
@@ -228,7 +236,9 @@ const char* PruebaGpu()
     // prueba60), después la pantalla de carga y el servicio de usuario.
     Paso(15);
     {
-        const char* carpeta = "/system/common/lib";   // sin sceKernelDlsym(0x2001): con el authinfo de Piglet cierra el programa
+        char carpeta[64];   // la carpeta del sistema vista desde la app (importada, como ioQuake3-PS4)
+        const char* w = sceKernelGetFsSandboxRandomWord();
+        snprintf(carpeta, sizeof carpeta, w ? "/%s/common/lib" : "/system/common/lib", w ? w : "");
         static const char* const MODULOS[] = {"libSceSystemService", "libSceUserService", "libSceAudioOut", "libScePad",
                                               "libSceNet", "libSceNetCtl", "libSceVideoOut", "libSceImeDialog"};
         for (const char* m : MODULOS)

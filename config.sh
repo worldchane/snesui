@@ -138,6 +138,9 @@ variante() {
     # prueba62: la 61 sin sceKernelDlsym(0x2001) (con el authinfo de Piglet cierra el programa): llamadas directas y
     # /system/common/lib.
     prueba62) TITLE_ID=SNES00065; CONTENT_ID=IV0000-SNES00065_00-SNESPRUEBA620000; TITULO="ALLESIU GPU 14"; CARPETAS="comun nucleo app"; DEFS="-DMEMORIA_DIRECTA -DPRUEBA_JIT -DSOLO_PRUEBA_GPU -DPIGLET_IMPORTADO -DPIGLET_SISTEMA"; LIBEXTRA="-lScePigletv2VSH"; AUTHINFO="$AUTH_PIGLET"; GUION="$GUION_ALLESIU"; LDEXTRA="$ENVOLVER_MEMORIA" ;;
+    # prueba63: la 62 con la carpeta del sistema por sceKernelGetFsSandboxRandomWord importada (como ioQuake3) y la lista
+    # de módulos cargados en el registro.
+    prueba63) TITLE_ID=SNES00066; CONTENT_ID=IV0000-SNES00066_00-SNESPRUEBA630000; TITULO="ALLESIU GPU 15"; CARPETAS="comun nucleo app"; DEFS="-DMEMORIA_DIRECTA -DPRUEBA_JIT -DSOLO_PRUEBA_GPU -DPIGLET_IMPORTADO -DPIGLET_SISTEMA"; LIBEXTRA="-lScePigletv2VSH"; AUTHINFO="$AUTH_PIGLET"; GUION="$GUION_ALLESIU"; LDEXTRA="$ENVOLVER_MEMORIA" ;;
     *) return 1 ;;
   esac
 }
